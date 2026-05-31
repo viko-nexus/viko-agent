@@ -636,11 +636,37 @@ function chunk(text: string, limit: number, mode: 'length' | 'newline'): string[
 }
 
 // ─── Echo detection ────────────────────────────────────────────────────
+// The owner's WhatsApp number IS the bot's number, so both owner-typed and
+// bot-sent messages arrive as fromMe=true. The ONLY way to tell the bot's own
+// replies apart from the owner genuinely typing is by message ID. We track the
+// IDs of everything the bot sends. This map must survive restarts — otherwise
+// after a restart the bot's recent replies (re-delivered by Baileys) look like
+// fresh owner messages and get re-processed, causing reply loops.
 
+const SENT_IDS_FILE = join(STATE_DIR, '.sent-ids.tsv')
+const SENT_ID_TTL_MS = 60 * 60 * 1000 // keep 1h — covers post-restart redelivery
 const sentMessages = new Map<string, number>()
 
+function loadSentIds(): void {
+  try {
+    const cutoff = Date.now() - SENT_ID_TTL_MS
+    for (const line of readFileSync(SENT_IDS_FILE, 'utf8').split('\n')) {
+      if (!line) continue
+      const tab = line.indexOf('\t')
+      if (tab < 0) continue
+      const id = line.slice(0, tab)
+      const ts = Number(line.slice(tab + 1))
+      if (id && Number.isFinite(ts) && ts > cutoff) sentMessages.set(id, ts)
+    }
+  } catch {}
+}
+loadSentIds()
+
 function trackSent(key: WAMessageKey): void {
-  if (key.id) sentMessages.set(key.id, Date.now())
+  if (!key.id) return
+  const now = Date.now()
+  sentMessages.set(key.id, now)
+  try { appendFileSync(SENT_IDS_FILE, `${key.id}\t${now}\n`) } catch {}
 }
 
 function isEcho(key: WAMessageKey): boolean {
@@ -648,12 +674,18 @@ function isEcho(key: WAMessageKey): boolean {
   return key.id ? sentMessages.has(key.id) : false
 }
 
+// Prune expired IDs from memory and rewrite the file hourly.
 setInterval(() => {
-  const cutoff = Date.now() - 5 * 60 * 1000
+  const cutoff = Date.now() - SENT_ID_TTL_MS
   for (const [id, ts] of sentMessages) {
     if (ts < cutoff) sentMessages.delete(id)
   }
-}, 60_000).unref()
+  try {
+    const lines: string[] = []
+    for (const [id, ts] of sentMessages) lines.push(`${id}\t${ts}`)
+    writeFileSync(SENT_IDS_FILE, lines.length ? lines.join('\n') + '\n' : '')
+  } catch {}
+}, SENT_ID_TTL_MS).unref()
 
 // ─── Message stores (bounded) ──────────────────────────────────────────
 
