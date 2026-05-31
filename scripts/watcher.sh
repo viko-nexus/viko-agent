@@ -32,13 +32,13 @@ viko_busy() {
 
 send_to_viko() {
   local msg="$1"
-  if ! $TMUX has-session -t "$SESSION" 2>/dev/null; then
-    log "WARNING: viko-agent session not found"
-    return
-  fi
-  $TMUX send-keys -t "$SESSION:0" "" Enter 2>/dev/null
+  # Clear any existing input, then type message and submit with C-m
+  $TMUX send-keys -t "$SESSION:0" C-c 2>/dev/null
   sleep 0.3
-  $TMUX send-keys -t "$SESSION:0" "$msg" Enter 2>/dev/null
+  $TMUX send-keys -t "$SESSION:0" "$msg" 2>/dev/null
+  sleep 0.5
+  $TMUX send-keys -t "$SESSION:0" C-m 2>/dev/null
+  log "sent to viko"
 }
 
 log "started — polling every ${POLL}s"
