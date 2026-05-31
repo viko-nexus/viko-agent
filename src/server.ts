@@ -780,6 +780,42 @@ let ownJid = ''
 // Track active typing indicator loops per chat
 const composingTimers = new Map<string, ReturnType<typeof setInterval>>()
 
+// ─── Baileys health check ──────────────────────────────────────────────
+
+let lastEventAt = Date.now()
+
+function recordEvent(): void {
+  lastEventAt = Date.now()
+}
+
+async function runHealthCheck(): Promise<void> {
+  if (!sock || !ownJid) return
+  const silentMs = Date.now() - lastEventAt
+  const ALERT_AFTER_MS = 5 * 60 * 1000
+
+  if (silentMs < ALERT_AFTER_MS) return
+
+  process.stderr.write(`${LOG_PREFIX}: health check — no events for ${Math.round(silentMs / 1000)}s, pinging...\n`)
+
+  try {
+    await sock.fetchStatus(ownJid)
+    lastEventAt = Date.now()
+    process.stderr.write(`${LOG_PREFIX}: health check — ping OK\n`)
+  } catch {
+    process.stderr.write(`${LOG_PREFIX}: health check — ping FAILED, alerting owner and reconnecting\n`)
+    const access = loadAccess()
+    const owner = access.allowFrom[0]
+    if (sock && owner) {
+      void sock.sendMessage(owner, {
+        text: '⚠️ Viko WhatsApp connection appears lost. Auto-reconnecting...',
+      }).catch(() => {})
+    }
+    try { sock.end(undefined as any) } catch {}
+  }
+}
+
+setInterval(runHealthCheck, 2 * 60 * 1000).unref()
+
 function startComposing(chatId: string) {
   stopComposing(chatId)
   if (!sock) return
@@ -1870,6 +1906,7 @@ async function connectWhatsApp(): Promise<void> {
 
   sock.ev.on('messages.upsert', async (ev: { messages: WAMessage[]; type: string }) => {
     if (ev.type !== 'notify') return
+    recordEvent()
     for (const msg of ev.messages) {
       try {
         await handleMessage(msg)
