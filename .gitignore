@@ -12,3 +12,4 @@ projects/
 # Runtime / temp
 *.tmp
 .env
+node_modules
