@@ -11,7 +11,20 @@ WORKDIR="/Users/eksa/Projects/viko-agent"
 POLL=3
 COOLDOWN=10
 
-log() { echo "[watcher] $(date '+%H:%M:%S') $*"; }
+# ─── Colored, readable logging ─────────────────────────────────────────
+C_DIM=$'\e[2m'; C_CYAN=$'\e[36m'; C_GREEN=$'\e[32m'; C_YELLOW=$'\e[33m'
+C_BLUE=$'\e[34m'; C_RED=$'\e[31m'; C_BOLD=$'\e[1m'; C_RST=$'\e[0m'
+
+# _logline <color> <icon> <message...>
+_logline() {
+  local color="$1" icon="$2"; shift 2
+  print -r -- "${C_DIM}${C_CYAN}$(date '+%H:%M:%S')${C_DIM}${C_RST} ${color}${icon}${C_RST}  $*"
+}
+log()       { _logline "$C_DIM"    "·" "$*"; }   # general info (dim)
+log_msg()   { _logline "$C_GREEN"  "✉" "$*"; }   # inbound WhatsApp message
+log_route() { _logline "$C_YELLOW" "↳" "$*"; }   # routing to project
+log_act()   { _logline "$C_BLUE"   "▸" "$*"; }   # trigger / send action
+log_warn()  { _logline "$C_RED"    "⚠" "$*"; }   # busy / warning
 
 # Dynamic JID ↔ project mapping — reads access.json + resolves config.md symlinks
 load_jid_maps() {
@@ -67,12 +80,11 @@ send_to_viko() {
   $TMUX send-keys -t "$SESSION:0" "$msg" 2>/dev/null
   sleep 0.5
   $TMUX send-keys -t "$SESSION:0" C-m 2>/dev/null
-  log "sent to viko"
+  log_act "sent to Viko"
 }
 
-log "started — polling every ${POLL}s"
-log "watching: $MESSAGES"
-log "outbox dirs: $VIKO_DIR/{mankop,luxso,forecastinn}/outbox.jsonl"
+log "watcher started — polling every ${POLL}s"
+log "projects: ${(k)PROJECT_TO_JID}"
 
 seen_msgs_file="/tmp/viko-watcher-seen.txt"
 touch "$seen_msgs_file"
@@ -121,11 +133,14 @@ for line in open(msgs_file):
     msg_id = d.get("id","")
     if msg_id in seen:
         continue
+    # Collapse newlines/tabs/runs of spaces into single spaces so the full
+    # message shows on one readable log line, untruncated.
+    text = " ".join(d.get("text","").split())
     results.append(json.dumps({
         "id": msg_id,
         "chat_id": d.get("chat_id",""),
         "group": d.get("group_name","?"),
-        "text": d.get("text","")[:120]
+        "text": text
     }))
 
 print("\n".join(results))
@@ -141,14 +156,14 @@ PYEOF
         txt=$(python3 -c "import sys,json;d=json.loads(sys.argv[1]);print(d['text'])" "$msg_json" 2>/dev/null)
         chat_id=$(python3 -c "import sys,json;d=json.loads(sys.argv[1]);print(d['chat_id'])" "$msg_json" 2>/dev/null)
         msg_id=$(python3 -c "import sys,json;d=json.loads(sys.argv[1]);print(d['id'])" "$msg_json" 2>/dev/null)
-        log "new msg → [$grp] $txt"
+        log_msg "${C_BOLD}${grp}${C_RST}${C_GREEN}: ${txt}${C_RST}"
         pending_ids+=("$msg_id")
 
         # Resume project session for this group
         project="${JID_TO_PROJECT[$chat_id]}"
         if [[ -n "$project" ]]; then
-          log "routing to project: $project"
-          "$WORKDIR/scripts/session-manager.sh" resume "$project" &
+          log_route "project ${C_BOLD}${project}${C_RST}"
+          "$WORKDIR/scripts/session-manager.sh" resume "$project" >/dev/null 2>&1 &
         fi
       done <<< "$new_msgs"
 
@@ -160,10 +175,10 @@ PYEOF
           echo "$mid" >> "$seen_msgs_file"
         done
         last_trigger=$now
-        log "triggering Viko orchestrator..."
+        log_act "triggering Viko"
         send_to_viko "Check and reply to unreplied messages from configured WhatsApp groups."
       elif viko_busy; then
-        log "Viko busy — ${#pending_ids[@]} msg(s) pending, will retry next poll"
+        log_warn "Viko busy — ${#pending_ids[@]} msg(s) pending, retry next poll"
       fi
     fi
   fi
@@ -186,10 +201,12 @@ PYEOF
     while IFS= read -r line; do
       [[ -z "$line" ]] && continue
       msg_type=$(python3 -c "import sys,json;d=json.loads(sys.argv[1]);print(d.get('type','progress'))" "$line" 2>/dev/null)
-      msg_text=$(python3 -c "import sys,json;d=json.loads(sys.argv[1]);print(d.get('message',''))" "$line" 2>/dev/null)
+      # Full message text, whitespace collapsed to single line for readability
+      msg_text=$(python3 -c "import sys,json;d=json.loads(sys.argv[1]);print(' '.join(d.get('message','').split()))" "$line" 2>/dev/null)
       jid="${PROJECT_TO_JID[$project]}"
-      log "outbox [$project/$msg_type]: $msg_text"
+      log_msg "${C_BOLD}${project}${C_RST}${C_GREEN} [${msg_type}]: ${msg_text}${C_RST}"
       if [[ -n "$jid" && -n "$msg_text" ]]; then
+        log_act "forwarding ${project} ${msg_type} → WhatsApp"
         send_to_viko "Kirim pesan ini ke group WhatsApp $jid: \"$msg_text\" (${msg_type} dari $project agent)"
       fi
     done < <(tail -n +"$start_line" "$outbox")
