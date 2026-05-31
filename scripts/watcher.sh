@@ -26,6 +26,24 @@ log_route() { _logline "$C_YELLOW" "↳" "$*"; }   # routing to project
 log_act()   { _logline "$C_BLUE"   "▸" "$*"; }   # trigger / send action
 log_warn()  { _logline "$C_RED"    "⚠" "$*"; }   # busy / warning
 
+# ─── Singleton lock ────────────────────────────────────────────────────
+# Two watchers polling the same messages.jsonl both trigger Viko → double
+# replies. Refuse to start if another watcher is already alive. Path-agnostic
+# (catches orphans launched via any path), uses kill -0 + command check to
+# tolerate reused PIDs after reboot.
+WATCHER_LOCK="/tmp/viko-watcher.lock"
+if [[ -f "$WATCHER_LOCK" ]]; then
+  old_pid=$(cat "$WATCHER_LOCK" 2>/dev/null)
+  if [[ -n "$old_pid" ]] && kill -0 "$old_pid" 2>/dev/null \
+     && ps -p "$old_pid" -o command= 2>/dev/null | grep -q "watcher.sh"; then
+    log_warn "another watcher (pid $old_pid) already running — exiting"
+    exit 0
+  fi
+fi
+echo $$ > "$WATCHER_LOCK"
+# Release lock on exit. tmux kill-session sends HUP; cover it too.
+trap 'rm -f "$WATCHER_LOCK" 2>/dev/null' EXIT INT TERM HUP
+
 # Dynamic JID ↔ project mapping — reads access.json + resolves config.md symlinks
 load_jid_maps() {
   typeset -gA JID_TO_PROJECT
