@@ -1762,13 +1762,18 @@ async function connectWhatsApp(): Promise<void> {
       ownJid = jidNormalizedUser(sock!.user?.id ?? '')
       process.stderr.write(`${LOG_PREFIX}: connected as ${ownJid}\n`)
 
-      // Auto-add owner to allowlist on first connection
+      // Auto-add owner to allowlist on first connection.
+      // Note: isAllowedJid(jid, []) returns true (empty = allow all), so we
+      // check explicit membership instead to ensure the owner is always listed.
       const resolvedOwn = ownJid ? resolveToPhone(ownJid) : ownJid
       if (ownJid && !STATIC) {
         const access = loadAccess()
-        if (!isAllowedJid(ownJid, access.allowFrom)) {
+        const ownerExplicit = access.allowFrom.some(j =>
+          resolveToPhone(j) === resolveToPhone(ownJid) || j === ownJid
+        )
+        if (!ownerExplicit) {
           access.allowFrom.push(resolvedOwn)
-          if (access.dmPolicy === 'pairing' && access.allowFrom.length > 0) {
+          if (access.dmPolicy === 'pairing') {
             access.dmPolicy = 'allowlist'
             process.stderr.write(`${LOG_PREFIX}: auto-locked to allowlist mode\n`)
           }
