@@ -9,9 +9,9 @@ viko-agent/
 ├── .claude/skills/          ← custom Claude skills (/manage-project, /viko-status)
 ├── docs/superpowers/        ← design specs dan implementation plans
 ├── projects/                ← per-project personality configs (gitignored, symlinked)
-│   ├── mankop/              ← Koperasi Mankop (group JID: 120363409428298054@g.us)
-│   ├── luxso/               ← Luxso Executive Dashboard (group JID: 120363424541097083@g.us)
-│   └── forecastinn/         ← Forecastinn villa app (belum ada group)
+│   ├── alpha/               ← Project Alpha (group JID: 120363000000000001@g.us)
+│   ├── beta/                ← Project Beta (group JID: 120363000000000002@g.us)
+│   └── gamma/               ← Project Gamma (belum ada group)
 ├── scripts/
 │   ├── setup.sh             ← setup otomatis di mesin baru (jalankan pertama kali)
 │   ├── setup/               ← sub-scripts: 01-deps, 02-plugin, 03-phone, 04-links
@@ -29,9 +29,9 @@ viko-agent/
 
 | Project | Topic | Project Path | Group JID |
 |---------|-------|-------------|-----------|
-| mankop | Koperasi project Mankop — PM, Dev, QA, CS, Business Analysis | ~/Projects/mankop | 120363409428298054@g.us |
-| luxso | Luxso Executive Dashboard — villa management | ~/Projects/forecastinn/clients/Luxso-executive-dashboard | 120363424541097083@g.us |
-| forecastinn | Forecastinn villa app | ~/Projects/forecastinn | (belum ada group) |
+| alpha | Project Alpha — deskripsi singkat | ~/Projects/alpha | 120363000000000001@g.us |
+| beta | Project Beta — deskripsi singkat | ~/Projects/beta | 120363000000000002@g.us |
+| gamma | Project Gamma — deskripsi singkat | ~/Projects/gamma | (belum ada group) |
 
 ## Workflow Penting
 

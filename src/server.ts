@@ -783,6 +783,8 @@ const composingTimers = new Map<string, ReturnType<typeof setInterval>>()
 function startComposing(chatId: string) {
   stopComposing(chatId)
   if (!sock) return
+  // Send 'available' first — required for typing indicator to appear in groups
+  void sock.sendPresenceUpdate('available', chatId).catch(() => {})
   void sock.sendPresenceUpdate('composing', chatId).catch(() => {})
   const timer = setInterval(() => {
     if (!sock) { stopComposing(chatId); return }
