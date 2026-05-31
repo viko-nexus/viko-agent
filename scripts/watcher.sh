@@ -23,8 +23,8 @@ load_jid_maps() {
 
   while IFS='|' read -r jid project; do
     [[ -z "$jid" || -z "$project" ]] && continue
-    JID_TO_PROJECT["$jid"]="$project"
-    PROJECT_TO_JID["$project"]="$jid"
+    JID_TO_PROJECT[$jid]="$project"
+    PROJECT_TO_JID[$project]="$jid"
   done < <(python3 - <<'PYEOF' 2>/dev/null
 import json, os, pathlib
 
@@ -75,11 +75,19 @@ log "watching: $MESSAGES"
 log "outbox dirs: $VIKO_DIR/{mankop,luxso,forecastinn}/outbox.jsonl"
 
 seen_msgs_file="/tmp/viko-watcher-seen.txt"
-seen_outbox_file="/tmp/viko-outbox-seen.txt"
-touch "$seen_msgs_file" "$seen_outbox_file"
+touch "$seen_msgs_file"
 
 last_trigger=0
 poll_count=0
+
+declare -A outbox_line_counts
+# Initialize counts to current file sizes so we only process NEW entries
+for _p in "${(@k)PROJECT_TO_JID}"; do
+  _ob="$VIKO_DIR/$_p/outbox.jsonl"
+  if [[ -f "$_ob" ]]; then
+    outbox_line_counts[outbox_$_p]=$(wc -l < "$_ob" 2>/dev/null | tr -d ' ')
+  fi
+done
 
 while true; do
   sleep "$POLL"
@@ -161,29 +169,30 @@ PYEOF
   fi
 
   # ── 2. Check outbox files from project agents ────────────────────────────
-  for project in mankop luxso forecastinn; do
+  for project in "${(@k)PROJECT_TO_JID}"; do
     outbox="$VIKO_DIR/$project/outbox.jsonl"
     [[ ! -f "$outbox" ]] && continue
 
-    seen=$(cat "$seen_outbox_file")
+    okey="outbox_$project"
+    known=${outbox_line_counts[$okey]:-0}
+    total=$(wc -l < "$outbox" 2>/dev/null | tr -d ' ')
+    [[ -z "$total" ]] && total=0
+
+    (( total <= known )) && continue
+
+    start_line=$(( known + 1 ))
+    outbox_line_counts[$okey]=$total
 
     while IFS= read -r line; do
       [[ -z "$line" ]] && continue
-      line_hash=$(echo "$line" | md5)
-      if echo "$seen" | grep -qF "$line_hash"; then continue; fi
-      echo "$line_hash" >> "$seen_outbox_file"
-
-      msg_type=$(echo "$line" | python3 -c "import sys,json;d=json.loads(sys.stdin.read());print(d.get('type','progress'))" 2>/dev/null)
-      msg_text=$(echo "$line" | python3 -c "import sys,json;d=json.loads(sys.stdin.read());print(d.get('message',''))" 2>/dev/null)
+      msg_type=$(python3 -c "import sys,json;d=json.loads(sys.argv[1]);print(d.get('type','progress'))" "$line" 2>/dev/null)
+      msg_text=$(python3 -c "import sys,json;d=json.loads(sys.argv[1]);print(d.get('message',''))" "$line" 2>/dev/null)
       jid="${PROJECT_TO_JID[$project]}"
-
       log "outbox [$project/$msg_type]: $msg_text"
-
       if [[ -n "$jid" && -n "$msg_text" ]]; then
-        # Tell Viko to send this message to the group
-        send_to_viko "Kirim pesan ini ke group WhatsApp $jid: \"$msg_text\" (ini adalah ${msg_type} update dari project agent $project)"
+        send_to_viko "Kirim pesan ini ke group WhatsApp $jid: \"$msg_text\" (${msg_type} dari $project agent)"
       fi
-    done < "$outbox"
+    done < <(tail -n +"$start_line" "$outbox")
   done
 
 done
