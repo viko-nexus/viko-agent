@@ -13,9 +13,9 @@ WhatsApp AI assistant and developer agent running on Claude Code. One Claude ins
 
 | Project | Topic | Group JID |
 |---------|-------|-----------|
-| mankop | Koperasi Mankop | 120363409428298054@g.us |
-| luxso | Luxso Executive Dashboard | 120363424541097083@g.us |
-| forecastinn | Forecastinn villa app | (belum ada group) |
+| alpha | Project Alpha — topic A | 120363000000000001@g.us |
+| beta | Project Beta — topic B | 120363000000000002@g.us |
+| gamma | Project Gamma — topic C | (no group yet) |
 
 ## Adding a New Project
 
