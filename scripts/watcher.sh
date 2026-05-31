@@ -145,6 +145,7 @@ for line in open(msgs_file):
         "id": msg_id,
         "chat_id": d.get("chat_id",""),
         "group": d.get("group_name","?"),
+        "user": d.get("user","?"),
         "text": text
     }))
 
@@ -153,16 +154,21 @@ PYEOF
     )
 
     if [[ -n "$new_msgs" ]]; then
-      # Collect pending message info — do NOT mark seen yet (wait until triggered)
+      # Collect pending messages — do NOT mark seen yet (wait until triggered).
+      # We build a SPECIFIC trigger (the exact messages + chat_id) so Viko can
+      # reply directly without calling the unreplied tool or re-reading configs.
       pending_ids=()
+      pending_desc=()
       while IFS= read -r msg_json; do
         [[ -z "$msg_json" ]] && continue
         grp=$(python3 -c "import sys,json;d=json.loads(sys.argv[1]);print(d['group'])" "$msg_json" 2>/dev/null)
         txt=$(python3 -c "import sys,json;d=json.loads(sys.argv[1]);print(d['text'])" "$msg_json" 2>/dev/null)
+        usr=$(python3 -c "import sys,json;d=json.loads(sys.argv[1]);print(d.get('user','?'))" "$msg_json" 2>/dev/null)
         chat_id=$(python3 -c "import sys,json;d=json.loads(sys.argv[1]);print(d['chat_id'])" "$msg_json" 2>/dev/null)
         msg_id=$(python3 -c "import sys,json;d=json.loads(sys.argv[1]);print(d['id'])" "$msg_json" 2>/dev/null)
         log_msg "${C_BOLD}${grp}${C_RST}${C_GREEN}: ${txt}${C_RST}"
         pending_ids+=("$msg_id")
+        pending_desc+=("[group \"${grp}\" chat_id=${chat_id}] ${usr}: \"${txt}\"")
 
         # Resume project session for this group
         project="${JID_TO_PROJECT[$chat_id]}"
@@ -180,8 +186,14 @@ PYEOF
           echo "$mid" >> "$seen_msgs_file"
         done
         last_trigger=$now
-        log_act "triggering Viko"
-        send_to_viko "Check and reply to unreplied messages from configured WhatsApp groups."
+        log_act "triggering Viko (${#pending_ids[@]} msg)"
+        # Single-line specific trigger (no embedded newlines — they'd submit
+        # early in the TUI). Messages joined with " || ".
+        trigger="Balas pesan WhatsApp ini LANGSUNG ke group-nya pakai reply tool dengan chat_id yang tertera. JANGAN panggil tool unreplied. JANGAN baca ulang config.md kalau sudah pernah dibaca di sesi ini (cukup pakai personality yang sudah kamu tahu). Pesan: "
+        for d in "${pending_desc[@]}"; do
+          trigger+="${d} || "
+        done
+        send_to_viko "$trigger"
       elif viko_busy; then
         log_warn "Viko busy — ${#pending_ids[@]} msg(s) pending, retry next poll"
       fi
