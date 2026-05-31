@@ -1413,9 +1413,13 @@ async function handleMessage(msg: WAMessage): Promise<void> {
   const remoteJid = msg.key.remoteJid
   const isGroup = remoteJid.endsWith('@g.us')
 
-  // Allow owner's own messages in registered groups (so owner can trigger the bot)
+  // Echo handling: fromMe=true messages come from two sources:
+  // 1. Owner typing on phone → should trigger bot (allowed)
+  // 2. Bot's own reply echoed back by Baileys → must skip to avoid infinite loop
   if (isEcho(msg.key)) {
     if (!isGroup) return
+    // Skip bot's own sent messages (tracked in sentMessages by the reply tool)
+    if (msg.key.id && sentMessages.has(msg.key.id)) return
     const accessCheck = loadAccess()
     if (!(remoteJid in accessCheck.groups)) return
   }

@@ -90,7 +90,8 @@ PYEOF
     )
 
     if [[ -n "$new_msgs" ]]; then
-      # Use herestring (not pipe) to avoid subshell — keeps last_trigger in scope
+      # Collect pending message info — do NOT mark seen yet (wait until triggered)
+      pending_ids=()
       while IFS= read -r msg_json; do
         [[ -z "$msg_json" ]] && continue
         grp=$(python3 -c "import sys,json;d=json.loads(sys.argv[1]);print(d['group'])" "$msg_json" 2>/dev/null)
@@ -98,7 +99,7 @@ PYEOF
         chat_id=$(python3 -c "import sys,json;d=json.loads(sys.argv[1]);print(d['chat_id'])" "$msg_json" 2>/dev/null)
         msg_id=$(python3 -c "import sys,json;d=json.loads(sys.argv[1]);print(d['id'])" "$msg_json" 2>/dev/null)
         log "new msg → [$grp] $txt"
-        echo "$msg_id" >> "$seen_msgs_file"
+        pending_ids+=("$msg_id")
 
         # Resume project session for this group
         project="${JID_TO_PROJECT[$chat_id]}"
@@ -108,15 +109,18 @@ PYEOF
         fi
       done <<< "$new_msgs"
 
-      # Trigger Viko orchestrator — runs in parent shell, last_trigger updates correctly
+      # Only mark seen + trigger if Viko is idle — otherwise retry next poll
       now=$(date +%s)
       if (( now - last_trigger >= COOLDOWN )) && ! viko_busy; then
+        # Mark all pending messages as seen now that we're triggering
+        for mid in "${pending_ids[@]}"; do
+          echo "$mid" >> "$seen_msgs_file"
+        done
         last_trigger=$now
         log "triggering Viko orchestrator..."
         send_to_viko "Check and reply to unreplied messages from configured WhatsApp groups."
-        log "triggered"
       elif viko_busy; then
-        log "Viko busy, will retry next poll"
+        log "Viko busy — ${#pending_ids[@]} msg(s) pending, will retry next poll"
       fi
     fi
   fi
