@@ -825,6 +825,9 @@ const mcp = new Server(
       '',
       'When asked factual questions, current events, or anything you are not confident about, use WebSearch or WebFetch to look it up before answering. Do not guess or rely solely on training data for time-sensitive information.',
       '',
+      '== Owner fast-response ==',
+      'If the inbound message meta includes is_owner=true, the sender is the account owner (same WhatsApp number as this bot). For owner messages in groups: (1) immediately send a brief 1-sentence contextual acknowledgment — e.g. "Oke, lagi dicek bug-nya 🔍" or "Siap, buka halaman profilnya sekarang" — BEFORE doing any work, then (2) do the actual task and send the full result. For non-owner group messages, skip the fast-ack and just reply once with the full answer.',
+      '',
       '== Per-Group Personality & Context Isolation ==',
       'CRITICAL: Each WhatsApp group is a completely independent conversation context. You MUST treat messages from different chat_ids as entirely separate conversations with separate identities, knowledge, and personalities. NEVER let context from one group leak into another. When you receive a message, check the chat_id — if it differs from the previous message, mentally reset and switch to that group\'s context entirely.',
       '',
@@ -1490,10 +1493,20 @@ async function handleMessage(msg: WAMessage): Promise<void> {
     return
   }
 
-  // Ack reaction
+  // Ack reaction (configurable per access.json)
   if (access.ackReaction && sock && messageId) {
     void sock.sendMessage(remoteJid, {
       react: { text: access.ackReaction, key: msg.key },
+    }).catch(() => {})
+  }
+
+  // Owner fast-ack: send ⚡ reaction immediately so owner sees Viko received it
+  const isOwner = ownJid
+    ? (resolveToPhone(senderJid) === resolveToPhone(ownJid) || senderJid === ownJid)
+    : false
+  if (isOwner && isGroup && sock && messageId) {
+    void sock.sendMessage(remoteJid, {
+      react: { text: '⚡', key: msg.key },
     }).catch(() => {})
   }
 
@@ -1614,6 +1627,7 @@ async function handleMessage(msg: WAMessage): Promise<void> {
           ...(attachment.mime ? { attachment_mime: attachment.mime } : {}),
           ...(attachment.name ? { attachment_name: attachment.name } : {}),
         } : {}),
+        ...(isOwner ? { is_owner: true } : {}),
         ...(replyToId ? { reply_to_id: replyToId } : {}),
         ...(replyToSender ? { reply_to_sender: replyToSender } : {}),
         ...(replyToText ? { reply_to_text: replyToText } : {}),
