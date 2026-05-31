@@ -62,8 +62,13 @@ for jid in access.get('groups', {}):
         pass
 PYEOF
 )
-  log "loaded ${#JID_TO_PROJECT} JID→project mapping(s)"
+  # Only log when the mapping count changes (quiet on periodic no-op reloads)
+  if (( ${#JID_TO_PROJECT} != _prev_map_count )); then
+    log "loaded ${#JID_TO_PROJECT} JID→project mapping(s): ${(v)JID_TO_PROJECT}"
+    _prev_map_count=${#JID_TO_PROJECT}
+  fi
 }
+typeset -gi _prev_map_count=-1
 
 load_jid_maps
 
