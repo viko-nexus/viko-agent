@@ -41,8 +41,12 @@ if [[ -f "$WATCHER_LOCK" ]]; then
   fi
 fi
 echo $$ > "$WATCHER_LOCK"
-# Release lock on exit. tmux kill-session sends HUP; cover it too.
-trap 'rm -f "$WATCHER_LOCK" 2>/dev/null' EXIT INT TERM HUP
+# Release lock on exit. On a signal we must ALSO exit — a bare signal trap that
+# doesn't exit cancels the default termination, making the watcher unkillable
+# via SIGTERM (tmux kill-session / pkill). tmux kill-session sends HUP.
+_watcher_cleanup() { rm -f "$WATCHER_LOCK" 2>/dev/null; }
+trap _watcher_cleanup EXIT
+trap '_watcher_cleanup; exit 0' INT TERM HUP
 
 # Dynamic JID ↔ project mapping — reads access.json + resolves config.md symlinks
 load_jid_maps() {
