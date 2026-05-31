@@ -1,15 +1,13 @@
 #!/bin/zsh
-# watcher.sh — Two responsibilities:
-# 1. Poll messages.jsonl for unreplied group messages → trigger Viko orchestrator
-# 2. Poll ~/.viko/<project>/outbox.jsonl → forward agent messages to WA via Viko
+# watcher.sh — Forward project agent outbox messages to WhatsApp via Viko.
+# Incoming messages are handled natively by the WhatsApp plugin channel
+# (notifications/claude/channel push) — no polling needed for that path.
 
-MESSAGES="$HOME/.whatsapp-channel/messages.jsonl"
 VIKO_DIR="$HOME/.viko"
 SESSION="viko-agent"
 TMUX="/opt/homebrew/bin/tmux"
 WORKDIR="/Users/eksa/Projects/viko-agent"
 POLL=3
-COOLDOWN=10
 
 # ─── Colored, readable logging ─────────────────────────────────────────
 C_DIM=$'\e[2m'; C_CYAN=$'\e[36m'; C_GREEN=$'\e[32m'; C_YELLOW=$'\e[33m'
@@ -27,8 +25,8 @@ log_act()   { _logline "$C_BLUE"   "▸" "$*"; }   # trigger / send action
 log_warn()  { _logline "$C_RED"    "⚠" "$*"; }   # busy / warning
 
 # ─── Singleton lock ────────────────────────────────────────────────────
-# Two watchers polling the same messages.jsonl both trigger Viko → double
-# replies. Refuse to start if another watcher is already alive. Path-agnostic
+# Prevent two watchers running simultaneously (double outbox processing).
+# Refuse to start if another watcher is already alive. Path-agnostic
 # (catches orphans launched via any path), uses kill -0 + command check to
 # tolerate reused PIDs after reboot.
 WATCHER_LOCK="/tmp/viko-watcher.lock"
@@ -94,11 +92,6 @@ typeset -gi _prev_map_count=-1
 
 load_jid_maps
 
-viko_busy() {
-  pane=$($TMUX capture-pane -t "$SESSION:0" -p 2>/dev/null)
-  echo "$pane" | grep -qE 'esc to interrupt|Lollygag|Enchanting|Gallivanting|Zesting|Working|Swirling|Brewing|Cogitat|Calling|thinking'
-}
-
 send_to_viko() {
   local msg="$1"
   # Clear any existing input, then type message and submit with C-m
@@ -110,13 +103,9 @@ send_to_viko() {
   log_act "sent to Viko"
 }
 
-log "watcher started — polling every ${POLL}s"
+log "watcher started — outbox polling every ${POLL}s"
 log "projects: ${(k)PROJECT_TO_JID}"
 
-seen_msgs_file="/tmp/viko-watcher-seen.txt"
-touch "$seen_msgs_file"
-
-last_trigger=0
 poll_count=0
 
 declare -A outbox_line_counts
@@ -132,97 +121,11 @@ while true; do
   sleep "$POLL"
 
   (( poll_count++ ))
-  if (( poll_count % 10 == 0 )); then
+  if (( poll_count % 20 == 0 )); then
     load_jid_maps
   fi
 
-  # ── 1. Check for new unreplied group messages ────────────────────────────
-  if [[ -f "$MESSAGES" ]]; then
-    new_msgs=$(VIKO_MSGS="$MESSAGES" python3 - <<'PYEOF' 2>/dev/null
-import json, os
-
-msgs_file = os.environ["VIKO_MSGS"]
-seen = set(open("/tmp/viko-watcher-seen.txt").read().splitlines())
-results = []
-
-for line in open(msgs_file):
-    line = line.strip()
-    if not line:
-        continue
-    try:
-        d = json.loads(line)
-    except:
-        continue
-    if not d.get("chat_id","").endswith("@g.us"):
-        continue
-    if d.get("replied", True):
-        continue
-    msg_id = d.get("id","")
-    if msg_id in seen:
-        continue
-    # Collapse newlines/tabs/runs of spaces into single spaces so the full
-    # message shows on one readable log line, untruncated.
-    text = " ".join(d.get("text","").split())
-    results.append(json.dumps({
-        "id": msg_id,
-        "chat_id": d.get("chat_id",""),
-        "group": d.get("group_name","?"),
-        "user": d.get("user","?"),
-        "text": text
-    }))
-
-print("\n".join(results))
-PYEOF
-    )
-
-    if [[ -n "$new_msgs" ]]; then
-      # Collect pending messages — do NOT mark seen yet (wait until triggered).
-      # We build a SPECIFIC trigger (the exact messages + chat_id) so Viko can
-      # reply directly without calling the unreplied tool or re-reading configs.
-      pending_ids=()
-      pending_desc=()
-      while IFS= read -r msg_json; do
-        [[ -z "$msg_json" ]] && continue
-        grp=$(python3 -c "import sys,json;d=json.loads(sys.argv[1]);print(d['group'])" "$msg_json" 2>/dev/null)
-        txt=$(python3 -c "import sys,json;d=json.loads(sys.argv[1]);print(d['text'])" "$msg_json" 2>/dev/null)
-        usr=$(python3 -c "import sys,json;d=json.loads(sys.argv[1]);print(d.get('user','?'))" "$msg_json" 2>/dev/null)
-        chat_id=$(python3 -c "import sys,json;d=json.loads(sys.argv[1]);print(d['chat_id'])" "$msg_json" 2>/dev/null)
-        msg_id=$(python3 -c "import sys,json;d=json.loads(sys.argv[1]);print(d['id'])" "$msg_json" 2>/dev/null)
-        log_msg "${C_BOLD}${grp}${C_RST}${C_GREEN}: ${txt}${C_RST}"
-        pending_ids+=("$msg_id")
-        pending_desc+=("[group \"${grp}\" chat_id=${chat_id}] ${usr}: \"${txt}\"")
-
-        # Resume project session for this group
-        project="${JID_TO_PROJECT[$chat_id]}"
-        if [[ -n "$project" ]]; then
-          log_route "project ${C_BOLD}${project}${C_RST}"
-          "$WORKDIR/scripts/session-manager.sh" resume "$project" >/dev/null 2>&1 &
-        fi
-      done <<< "$new_msgs"
-
-      # Only mark seen + trigger if Viko is idle — otherwise retry next poll
-      now=$(date +%s)
-      if (( now - last_trigger >= COOLDOWN )) && ! viko_busy; then
-        # Mark all pending messages as seen now that we're triggering
-        for mid in "${pending_ids[@]}"; do
-          echo "$mid" >> "$seen_msgs_file"
-        done
-        last_trigger=$now
-        log_act "triggering Viko (${#pending_ids[@]} msg)"
-        # Single-line specific trigger (no embedded newlines — they'd submit
-        # early in the TUI). Messages joined with " || ".
-        trigger="Balas pesan WhatsApp ini LANGSUNG ke group-nya pakai reply tool dengan chat_id yang tertera. JANGAN panggil tool unreplied. JANGAN baca ulang config.md kalau sudah pernah dibaca di sesi ini (cukup pakai personality yang sudah kamu tahu). Pesan: "
-        for d in "${pending_desc[@]}"; do
-          trigger+="${d} || "
-        done
-        send_to_viko "$trigger"
-      elif viko_busy; then
-        log_warn "Viko busy — ${#pending_ids[@]} msg(s) pending, retry next poll"
-      fi
-    fi
-  fi
-
-  # ── 2. Check outbox files from project agents ────────────────────────────
+  # ── Forward outbox messages from project agents to WhatsApp ─────────────
   for project in "${(@k)PROJECT_TO_JID}"; do
     outbox="$VIKO_DIR/$project/outbox.jsonl"
     [[ ! -f "$outbox" ]] && continue
