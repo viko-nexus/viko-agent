@@ -9,9 +9,10 @@ LOGFILE="$WORKDIR/logs/viko-agent.log"
 
 mkdir -p "$WORKDIR/logs"
 
-# Kill existing session if any
+# Kill existing tmux session (kills watcher inside it too)
 $TMUX kill-session -t $SESSION 2>/dev/null
-pkill -f "watcher.sh" 2>/dev/null
+# Clear seen-IDs cache so fresh start picks up any unreplied messages
+rm -f /tmp/viko-watcher-seen.txt
 
 # Start Viko in tmux (window 0)
 # No stdout redirect — Claude needs a real TTY for interactive/channel mode.
