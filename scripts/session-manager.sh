@@ -122,9 +122,13 @@ case "$cmd" in
     fi
 
     log "injecting task into $sess"
-    $TMUX send-keys -t "$sess:0" "" Enter
+    # Clear input then type task and submit with C-m (Enter is unreliable in
+    # the Claude TUI — the text lands but doesn't always submit).
+    $TMUX send-keys -t "$sess:0" C-c 2>/dev/null
     sleep 0.3
-    $TMUX send-keys -t "$sess:0" "$task" Enter
+    $TMUX send-keys -t "$sess:0" "$task" 2>/dev/null
+    sleep 0.5
+    $TMUX send-keys -t "$sess:0" C-m 2>/dev/null
     ;;
 
   hibernate)
