@@ -59,6 +59,21 @@ mkdir -p projects/<nama>
 ### Cek Status Semua Projects
 Gunakan skill: `/viko-status`
 
+### Browser Automation (untuk task web/testing)
+**Default: agent-browser** (`agent-browser` CLI via Bash)
+**Fallback: Playwright MCP** (hanya jika agent-browser gagal atau tidak support use case)
+
+```zsh
+# Contoh penggunaan agent-browser:
+agent-browser open <url>
+agent-browser snapshot -i          # lihat elemen interaktif
+agent-browser fill @e3 "value"
+agent-browser screenshot out.png
+agent-browser close
+```
+
+Sebelum task browser, load skill: `/agent-browser` untuk referensi lengkap.
+
 ## Arsitektur
 
 ```

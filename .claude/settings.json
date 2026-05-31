@@ -2,5 +2,10 @@
   "skipDangerousModePermissionPrompt": true,
   "enabledPlugins": {
     "whatsapp-claude-channel@whatsapp-claude-plugin": true
+  },
+  "permissions": {
+    "allow": [
+      "Bash(agent-browser:*)"
+    ]
   }
 }
