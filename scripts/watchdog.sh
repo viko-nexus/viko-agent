@@ -5,7 +5,7 @@
 
 TMUX="/opt/homebrew/bin/tmux"
 SESSION="viko-agent"
-WORKDIR="/Users/eksa/Projects/viko-agent"
+WORKDIR="$(cd "$(dirname "$0")/.." && pwd)"
 LOGFILE="$WORKDIR/logs/watchdog.log"
 MIN_RESTART_INTERVAL=90  # seconds — protect Baileys from rapid reconnects
 POLL=15                  # seconds between health checks
@@ -13,6 +13,8 @@ POLL=15                  # seconds between health checks
 mkdir -p "$WORKDIR/logs"
 
 log() { echo "[watchdog] $(date '+%Y-%m-%d %H:%M:%S') $*" | tee -a "$LOGFILE"; }
+
+trap 'log "watchdog received SIGTERM, exiting"; exit 0' SIGTERM SIGINT
 
 last_start=0
 
@@ -26,11 +28,17 @@ start_viko() {
     sleep $wait
   fi
 
-  last_start=$(date +%s)
+  last_start=$now
   log "starting viko-agent..."
-  "$WORKDIR/scripts/start.sh" >> "$LOGFILE" 2>&1
+  if ! "$WORKDIR/scripts/start.sh" >> "$LOGFILE" 2>&1; then
+    log "WARNING: start.sh exited with code $?"
+  fi
   log "start.sh returned"
 }
+
+[[ -x "$TMUX" ]] || { echo "ERROR: tmux not found at $TMUX"; exit 1; }
+[[ -d "$WORKDIR" ]] || { echo "ERROR: workdir not found: $WORKDIR"; exit 1; }
+[[ -x "$WORKDIR/scripts/start.sh" ]] || { echo "ERROR: start.sh not found"; exit 1; }
 
 log "watchdog started (min_restart=${MIN_RESTART_INTERVAL}s, poll=${POLL}s)"
 start_viko
