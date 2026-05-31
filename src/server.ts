@@ -1741,9 +1741,9 @@ async function connectWhatsApp(): Promise<void> {
       process.stderr.write(`${LOG_PREFIX}: connected as ${ownJid}\n`)
 
       // Auto-add owner to allowlist on first connection
+      const resolvedOwn = ownJid ? resolveToPhone(ownJid) : ownJid
       if (ownJid && !STATIC) {
         const access = loadAccess()
-        const resolvedOwn = resolveToPhone(ownJid)
         if (!isAllowedJid(ownJid, access.allowFrom)) {
           access.allowFrom.push(resolvedOwn)
           if (access.dmPolicy === 'pairing' && access.allowFrom.length > 0) {
