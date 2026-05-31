@@ -11,19 +11,48 @@ WORKDIR="/Users/eksa/Projects/viko-agent"
 POLL=3
 COOLDOWN=10
 
-# Group JID → project name mapping
-declare -A JID_TO_PROJECT
-JID_TO_PROJECT["120363409428298054@g.us"]="mankop"
-JID_TO_PROJECT["120363424541097083@g.us"]="luxso"
-JID_TO_PROJECT["120363421917950995@g.us"]="forecastinn"
-
-# Group JID for each project (reverse map)
-declare -A PROJECT_TO_JID
-PROJECT_TO_JID["mankop"]="120363409428298054@g.us"
-PROJECT_TO_JID["luxso"]="120363424541097083@g.us"
-PROJECT_TO_JID["forecastinn"]="120363421917950995@g.us"
-
 log() { echo "[watcher] $(date '+%H:%M:%S') $*"; }
+
+# Dynamic JID ↔ project mapping — reads access.json + resolves config.md symlinks
+load_jid_maps() {
+  typeset -gA JID_TO_PROJECT
+  typeset -gA PROJECT_TO_JID
+  # Clear existing entries
+  JID_TO_PROJECT=()
+  PROJECT_TO_JID=()
+
+  while IFS='|' read -r jid project; do
+    [[ -z "$jid" || -z "$project" ]] && continue
+    JID_TO_PROJECT["$jid"]="$project"
+    PROJECT_TO_JID["$project"]="$jid"
+  done < <(python3 - <<'PYEOF' 2>/dev/null
+import json, os, pathlib
+
+access_file = pathlib.Path.home() / '.whatsapp-channel/access.json'
+groups_dir = pathlib.Path.home() / '.whatsapp-channel/groups'
+
+try:
+    access = json.loads(access_file.read_text())
+except Exception:
+    raise SystemExit(0)
+
+for jid in access.get('groups', {}):
+    config = groups_dir / jid / 'config.md'
+    try:
+        real = os.path.realpath(str(config))
+        parts = pathlib.Path(real).parts
+        if 'projects' in parts:
+            idx = list(parts).index('projects')
+            project = parts[idx + 1]
+            print(f"{jid}|{project}")
+    except Exception:
+        pass
+PYEOF
+)
+  log "loaded ${#JID_TO_PROJECT} JID→project mapping(s)"
+}
+
+load_jid_maps
 
 viko_busy() {
   pane=$($TMUX capture-pane -t "$SESSION:0" -p 2>/dev/null)
@@ -50,9 +79,15 @@ seen_outbox_file="/tmp/viko-outbox-seen.txt"
 touch "$seen_msgs_file" "$seen_outbox_file"
 
 last_trigger=0
+poll_count=0
 
 while true; do
   sleep "$POLL"
+
+  (( poll_count++ ))
+  if (( poll_count % 10 == 0 )); then
+    load_jid_maps
+  fi
 
   # ── 1. Check for new unreplied group messages ────────────────────────────
   if [[ -f "$MESSAGES" ]]; then
