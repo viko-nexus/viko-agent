@@ -24,13 +24,14 @@ while true; do
   [[ ! -f "$MESSAGES" ]] && continue
 
   # Find unreplied group messages not yet seen
-  new_msgs=$(python3 - <<'PYEOF' 2>/dev/null
-import json, sys
+  new_msgs=$(VIKO_MSGS="$MESSAGES" python3 - <<'PYEOF' 2>/dev/null
+import json, os
 
+msgs_file = os.environ["VIKO_MSGS"]
 seen = set(open("/tmp/viko-watcher-seen.txt").read().splitlines())
 results = []
 
-for line in open(sys.argv[1] if len(sys.argv) > 1 else "/dev/stdin"):
+for line in open(msgs_file):
     line = line.strip()
     if not line:
         continue
@@ -53,7 +54,7 @@ for line in open(sys.argv[1] if len(sys.argv) > 1 else "/dev/stdin"):
 
 print("\n".join(results))
 PYEOF
-  "$MESSAGES")
+  )
 
   [[ -z "$new_msgs" ]] && continue
 
