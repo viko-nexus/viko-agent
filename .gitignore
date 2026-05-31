@@ -1,5 +1,9 @@
 # Logs
+logs/
 *.log
+
+# Projects (local config, managed via symlinks)
+projects/
 
 # macOS
 .DS_Store
