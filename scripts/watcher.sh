@@ -90,25 +90,25 @@ PYEOF
     )
 
     if [[ -n "$new_msgs" ]]; then
-      echo "$new_msgs" | while read -r msg_json; do
+      # Use herestring (not pipe) to avoid subshell — keeps last_trigger in scope
+      while IFS= read -r msg_json; do
         [[ -z "$msg_json" ]] && continue
-        grp=$(echo "$msg_json" | python3 -c "import sys,json;d=json.loads(sys.stdin.read());print(d['group'])" 2>/dev/null)
-        txt=$(echo "$msg_json" | python3 -c "import sys,json;d=json.loads(sys.stdin.read());print(d['text'])" 2>/dev/null)
-        chat_id=$(echo "$msg_json" | python3 -c "import sys,json;d=json.loads(sys.stdin.read());print(d['chat_id'])" 2>/dev/null)
-        msg_id=$(echo "$msg_json" | python3 -c "import sys,json;d=json.loads(sys.stdin.read());print(d['id'])" 2>/dev/null)
+        grp=$(python3 -c "import sys,json;d=json.loads(sys.argv[1]);print(d['group'])" "$msg_json" 2>/dev/null)
+        txt=$(python3 -c "import sys,json;d=json.loads(sys.argv[1]);print(d['text'])" "$msg_json" 2>/dev/null)
+        chat_id=$(python3 -c "import sys,json;d=json.loads(sys.argv[1]);print(d['chat_id'])" "$msg_json" 2>/dev/null)
+        msg_id=$(python3 -c "import sys,json;d=json.loads(sys.argv[1]);print(d['id'])" "$msg_json" 2>/dev/null)
         log "new msg → [$grp] $txt"
         echo "$msg_id" >> "$seen_msgs_file"
 
-        # Identify project for this group
+        # Resume project session for this group
         project="${JID_TO_PROJECT[$chat_id]}"
         if [[ -n "$project" ]]; then
           log "routing to project: $project"
-          # Ensure project session is running
           "$WORKDIR/scripts/session-manager.sh" resume "$project" &
         fi
-      done
+      done <<< "$new_msgs"
 
-      # Trigger Viko orchestrator for WA reply
+      # Trigger Viko orchestrator — runs in parent shell, last_trigger updates correctly
       now=$(date +%s)
       if (( now - last_trigger >= COOLDOWN )) && ! viko_busy; then
         last_trigger=$now
@@ -116,7 +116,7 @@ PYEOF
         send_to_viko "Check and reply to unreplied messages from configured WhatsApp groups."
         log "triggered"
       elif viko_busy; then
-        log "Viko busy, will retry"
+        log "Viko busy, will retry next poll"
       fi
     fi
   fi
