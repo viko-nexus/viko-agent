@@ -48,5 +48,11 @@ while true; do
   if ! $TMUX has-session -t "$SESSION" 2>/dev/null; then
     log "session '$SESSION' not found — restarting"
     start_viko
+  elif ! pgrep -f "$WORKDIR/scripts/watcher.sh" >/dev/null 2>&1; then
+    # Session alive but watcher (message poller) died — WhatsApp auto-response
+    # silently stops. Relaunch just the watcher window; don't touch the Claude
+    # session / Baileys connection in window 0.
+    log "watcher not running — relaunching watcher window"
+    $TMUX new-window -t "$SESSION" -c "$WORKDIR" "zsh $WORKDIR/scripts/watcher.sh"
   fi
 done
