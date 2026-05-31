@@ -12,7 +12,9 @@ POLL=15                  # seconds between health checks
 
 mkdir -p "$WORKDIR/logs"
 
-log() { echo "[watchdog] $(date '+%Y-%m-%d %H:%M:%S') $*" | tee -a "$LOGFILE"; }
+# Just echo — launchd redirects stdout to LOGFILE (StandardOutPath). Using
+# `tee -a` here too would write every line twice (tee + launchd capture).
+log() { echo "[watchdog] $(date '+%Y-%m-%d %H:%M:%S') $*"; }
 
 trap 'log "watchdog received SIGTERM, exiting"; exit 0' SIGTERM SIGINT
 
