@@ -79,9 +79,9 @@ PYEOF
     continue
   fi
 
-  # Check if Claude is already busy
-  pane=$($TMUX capture-pane -t "$SESSION:0" -p | tail -5)
-  if echo "$pane" | grep -qE 'esc to interrupt|Lollygag|Enchanting|Gallivanting|Zesting|Working|Calling|thinking'; then
+  # Check if Claude is already busy (scan full visible pane, not just last lines)
+  pane=$($TMUX capture-pane -t "$SESSION:0" -p)
+  if echo "$pane" | grep -qE 'esc to interrupt|Lollygag|Enchanting|Gallivanting|Zesting|Working|Calling|thinking|Swirling|Brewing|Cogitat|Sautéed|Cooked|Baking|Steeping'; then
     log "Viko busy, will retry next poll"
     continue
   fi
