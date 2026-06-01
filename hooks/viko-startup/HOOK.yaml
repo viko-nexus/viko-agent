@@ -1,0 +1,4 @@
+name: viko-startup
+description: Kirim notifikasi ke WhatsApp saat Viko kembali online
+events:
+  - gateway:startup

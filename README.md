@@ -1,51 +1,69 @@
-# Viko Agent
+# viko-agent
 
-WhatsApp AI assistant and developer agent running on Claude Code. One Claude instance handles multiple WhatsApp groups, each mapped to a specific project with custom personality and context.
+Konfigurasi dan patch untuk **Viko** — AI developer assistant berbasis [Hermes Agent](https://hermes-agent.nousresearch.com) yang aktif di WhatsApp dan Google Chat.
 
-## Quick Start
+## Arsitektur
 
-```zsh
-./scripts/start.sh       # Launch Viko in tmux session
-./scripts/deploy.sh      # Deploy src/server.ts → plugin cache (after editing)
+```
+WhatsApp / Google Chat
+        ↓ mention "viko"
+Hermes Gateway (launchd service)
+        ↓ model: Gemini Flash (gratis) → fallback: Groq Llama 3.3
+SOUL.md → Viko personality + RBAC
+        ↓ viko exec: / viko task:
+claude --print (Claude Max subscription)
 ```
 
-## Projects
-
-| Project | Topic | Group JID |
-|---------|-------|-----------|
-| alpha | Project Alpha — topic A | 120363000000000001@g.us |
-| beta | Project Beta — topic B | 120363000000000002@g.us |
-| gamma | Project Gamma — topic C | (no group yet) |
-
-## Adding a New Project
-
-```zsh
-# 1. Create project folder + config
-mkdir -p projects/<name>
-# edit projects/<name>/config.md and projects/<name>/README.md
-
-# 2. Link to WhatsApp group
-./scripts/link-groups.sh <name> <jid>@g.us
-```
-
-Or use the Claude skill: `/manage-project`
-
-## Structure
+## Struktur Repo
 
 ```
 viko-agent/
-├── .claude/skills/      ← custom Claude skills
-├── projects/            ← per-project personality configs (symlinked to plugin)
-├── src/server.ts        ← MCP WhatsApp server source
-├── scripts/             ← deploy, start, manage
-└── tools/               ← manage-groups.py CLI
+├── patches/
+│   ├── whatsapp-bridge.js     ← patch group support di self-chat mode
+│   └── apply-run-py.py        ← patch notifikasi sistem ke Indonesian
+├── hooks/
+│   └── viko-startup/          ← notifikasi WA saat Viko online
+├── scripts/
+│   ├── hermes.sh              ← install / update Hermes
+│   └── post-update.sh         ← re-apply patches setelah hermes update
+└── projects/                  ← referensi config per project (archived)
 ```
 
-## Editing the MCP Server
+## Setup
 
-```zsh
-# 1. Edit src/server.ts
-# 2. Deploy to plugin cache
-./scripts/deploy.sh
-# 3. Restart Claude Code
+```bash
+# Install Hermes + desktop app
+bash scripts/hermes.sh
+
+# Setelah hermes update, re-apply patches
+bash scripts/post-update.sh
 ```
+
+## Config Utama
+
+| File | Lokasi | Isi |
+|------|--------|-----|
+| SOUL.md | `~/.hermes/SOUL.md` | Personality Viko + RBAC |
+| config.yaml | `~/.hermes/config.yaml` | Model, gateway, session settings |
+| .env | `~/.hermes/.env` | API keys, WA config |
+
+## Projects
+
+Setiap project punya `AGENTS.md` di folder project-nya (auto-load oleh Hermes desktop):
+
+| Project | Path | AGENTS.md |
+|---------|------|-----------|
+| ForecastInn | `~/Projects/forecastinn` | ✅ |
+| Luxso Dashboard | `~/Projects/forecastinn/clients/Luxso-executive-dashboard` | ✅ |
+| Mankop | `~/Projects/mankop` | ✅ |
+
+Di Hermes desktop: navigasi ke folder project → AGENTS.md auto-load sebagai konteks.
+
+## Patches
+
+Custom patches yang diterapkan ke Hermes installation:
+
+1. **whatsapp-bridge.js** — enable group messages di self-chat mode
+2. **apply-run-py.py** — translate system notifications ke Indonesian
+
+Jalankan `bash scripts/post-update.sh` setelah setiap `hermes update`.

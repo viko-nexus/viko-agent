@@ -1,99 +1,69 @@
-# Viko Agent
+# viko-agent
 
-Viko adalah WhatsApp AI assistant dan developer agent yang berjalan di atas Claude Code. Satu Claude instance menangani beberapa WhatsApp group sekaligus, masing-masing dipetakan ke project dengan konteks dan personality sendiri.
+Config dan patch untuk **Viko** — AI developer assistant berbasis Hermes Agent.
 
-## Struktur Project
+## Struktur Repo
 
 ```
 viko-agent/
-├── .claude/skills/          ← custom Claude skills (/manage-project, /viko-status)
-├── docs/superpowers/        ← design specs dan implementation plans
-├── projects/                ← per-project personality configs (gitignored, symlinked)
-│   ├── alpha/               ← Project Alpha (group JID: 120363000000000001@g.us)
-│   ├── beta/                ← Project Beta (group JID: 120363000000000002@g.us)
-│   └── gamma/               ← Project Gamma (belum ada group)
+├── patches/
+│   ├── whatsapp-bridge.js     ← patch group support (self-chat mode)
+│   └── apply-run-py.py        ← patch notifikasi sistem ke Indonesian
+├── hooks/
+│   └── viko-startup/          ← notifikasi WA saat Viko online
 ├── scripts/
-│   ├── setup.sh             ← setup otomatis di mesin baru (jalankan pertama kali)
-│   ├── setup/               ← sub-scripts: 01-deps, 02-plugin, 03-phone, 04-links
-│   ├── deploy.sh            ← copy src/server.ts → plugin cache lalu restart Claude Code
-│   ├── link-groups.sh       ← tambah symlink project baru ke WhatsApp group
-│   ├── start.sh             ← launch Viko di tmux session
-│   └── manage-groups.sh     ← CLI untuk list & manage WhatsApp groups
-├── src/
-│   └── server.ts            ← MCP WhatsApp server (source of truth)
-└── tools/
-    └── manage-groups.py     ← group management CLI tool
+│   ├── hermes.sh              ← install / update Hermes + desktop app
+│   └── post-update.sh         ← re-apply patches setelah hermes update
+└── projects/                  ← archived config lama (referensi saja)
 ```
 
-## Projects & Konteks
+## Config Hermes (di luar repo)
 
-| Project | Topic | Project Path | Group JID |
-|---------|-------|-------------|-----------|
-| alpha | Project Alpha — deskripsi singkat | ~/Projects/alpha | 120363000000000001@g.us |
-| beta | Project Beta — deskripsi singkat | ~/Projects/beta | 120363000000000002@g.us |
-| gamma | Project Gamma — deskripsi singkat | ~/Projects/gamma | (belum ada group) |
+| File | Path | Isi |
+|------|------|-----|
+| SOUL.md | `~/.hermes/SOUL.md` | Personality Viko + RBAC |
+| config.yaml | `~/.hermes/config.yaml` | Model, gateway, session |
+| .env | `~/.hermes/.env` | API keys, WA/GChat config |
+| hooks/ | `~/.hermes/hooks/` | Event hooks |
 
-## Workflow Penting
+## Projects (AGENTS.md per folder)
 
-### Edit MCP Server
-```zsh
-# 1. Edit src/server.ts
-# 2. Deploy ke plugin cache
-./scripts/deploy.sh
-# 3. Restart Claude Code (Cmd+Shift+P → Reload Window atau restart VS Code)
+| Project | Path |
+|---------|------|
+| ForecastInn | `~/Projects/forecastinn/AGENTS.md` |
+| Luxso Dashboard | `~/Projects/forecastinn/clients/Luxso-executive-dashboard/AGENTS.md` |
+| Mankop | `~/Projects/mankop/AGENTS.md` |
+
+## Workflow
+
+### Setup mesin baru
+```bash
+bash scripts/hermes.sh
 ```
 
-### Tambah Project Baru
-Gunakan skill: `/manage-project` — atau manual:
-```zsh
-mkdir -p projects/<nama>
-# buat projects/<nama>/config.md (personality Viko) dan README.md (metadata + JID)
-./scripts/link-groups.sh <nama> <jid>@g.us
+### Setelah hermes update
+```bash
+bash scripts/post-update.sh
 ```
 
-### Setup Mesin Baru
-```zsh
-./scripts/setup.sh   # interaktif, deteksi state otomatis, resumable
+### Tambah project baru
+```bash
+# Buat AGENTS.md di folder project
+cat > ~/Projects/<nama>/AGENTS.md << 'EOF'
+# Nama Project
+...
+EOF
 ```
 
-### Cek Status Semua Projects
-Gunakan skill: `/viko-status`
-
-### Browser Automation (untuk task web/testing)
-**Default: agent-browser** (`agent-browser` CLI via Bash)
-**Fallback: Playwright MCP** (hanya jika agent-browser gagal atau tidak support use case)
-
-```zsh
-# Contoh penggunaan agent-browser:
-agent-browser open <url>
-agent-browser snapshot -i          # lihat elemen interaktif
-agent-browser fill @e3 "value"
-agent-browser screenshot out.png
-agent-browser close
+### Restart gateway
+```bash
+launchctl stop ai.hermes.gateway && sleep 2 && launchctl start ai.hermes.gateway
 ```
 
-Sebelum task browser, load skill: `/agent-browser` untuk referensi lengkap.
-
-## Arsitektur
+## Model Stack
 
 ```
-WhatsApp (phone)
-    ↕ Baileys (linked device protocol)
-src/server.ts (MCP server)   ← di-deploy ke ~/.claude/plugins/cache/.../server.ts
-    ↕ stdio
-Claude Code process          ← dijalankan via scripts/start.sh (tmux session "viko-agent")
-    ↕ membaca
-~/.whatsapp-channel/groups/<jid>/config.md  ← symlink ke projects/*/config.md
+Primary:  Gemini 3 Flash Preview (Google OAuth, gratis)
+Fallback: Groq Llama 3.3 70B (gratis)
+Executor: claude --print (Max subscription, via terminal tool)
 ```
-
-Plugin WhatsApp routing pesan ke Claude berdasarkan group JID. Per-group personality dibaca dari `config.md` — diedit di `projects/*/config.md` (langsung aktif, tidak perlu restart).
-
-## State Files (di luar repo)
-
-| Path | Isi |
-|------|-----|
-| `~/.whatsapp-channel/.env` | Nomor WA (`WHATSAPP_PHONE_NUMBER`) |
-| `~/.whatsapp-channel/.baileys_auth/` | WA auth state (session) |
-| `~/.whatsapp-channel/groups/<jid>/` | Per-group config (symlink) + memory.md |
-| `~/.whatsapp-channel/inbox/` | Media yang diterima |
-| `logs/viko-agent.log` | Log output Claude process |
