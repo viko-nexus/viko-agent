@@ -53,9 +53,10 @@ Setiap project punya `AGENTS.md` di folder project-nya (auto-load oleh Hermes de
 
 | Project | Path | AGENTS.md |
 |---------|------|-----------|
-| ForecastInn | `~/Projects/forecastinn` | ✅ |
+| ForecastInn | `~/Projects/forecastinn/forecast-inn` | ✅ |
+| ForecastCRM | `~/Projects/forecastinn/forecast-crm` | ✅ |
 | Luxso Dashboard | `~/Projects/forecastinn/clients/Luxso-executive-dashboard` | ✅ |
-| Mankop | `~/Projects/mankop` | ✅ |
+| Mankop | `~/Projects/mankop/mankop-apps` | ✅ |
 
 Di Hermes desktop: navigasi ke folder project → AGENTS.md auto-load sebagai konteks.
 

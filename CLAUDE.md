@@ -30,9 +30,10 @@ viko-agent/
 
 | Project | Path |
 |---------|------|
-| ForecastInn | `~/Projects/forecastinn/AGENTS.md` |
+| ForecastInn | `~/Projects/forecastinn/forecast-inn/AGENTS.md` |
+| ForecastCRM | `~/Projects/forecastinn/forecast-crm/AGENTS.md` |
 | Luxso Dashboard | `~/Projects/forecastinn/clients/Luxso-executive-dashboard/AGENTS.md` |
-| Mankop | `~/Projects/mankop/AGENTS.md` |
+| Mankop | `~/Projects/mankop/mankop-apps/AGENTS.md` |
 
 ## Workflow
 
