@@ -1,72 +1,110 @@
 # Config
 
 Infrastructure configuration for the Viko agent stack.
-Docker Compose file is at the repo root: `../docker-compose.yml`
+All services run in Docker. Compose file: `../docker-compose.yml`
 
 ## Services
 
-| Service | Role | Status | Port |
-|---------|------|--------|------|
-| ChromaDB | Vector DB for persistent memory | Docker ✅ | 8000 |
-| 9router | LLM gateway with fallback routing | Docker ✅ | 8080 |
-| Hermes | AI orchestrator (single brain) | Native (launchctl) | — |
+| Service | Role | Port | Profile |
+|---------|------|------|---------|
+| ChromaDB | Vector DB for persistent memory | 8000 | default |
+| 9router | LLM gateway with provider fallback | 20128 | `gateway`, `full` |
+| Hermes | AI orchestrator (brain) | 9119 | `full` |
 
-> **Hermes note**: Hermes from NousResearch currently runs as a native macOS service
-> (`launchctl`). The Docker block in `docker-compose.yml` is commented out until an
-> official Docker image is available. Run `bash ../scripts/hermes.sh` to install/update.
-
-## Data (Bind Mounts)
-
-All persistent data is stored in `../data/` — on the laptop, not inside Docker.
-This folder is gitignored but persists across container restarts and re-creates.
-
-```
-data/
-├── chromadb/    ← ChromaDB vector store (Viko's memory)
-├── hermes/      ← Hermes session state (future Docker use)
-└── 9router/     ← 9router config and cache
-```
-
-## LLM Routing (9router)
-
-9router handles model selection and fallback:
-
-| Priority | Provider | Model |
-|----------|----------|-------|
-| Primary | Google | Gemini Flash |
-| Fallback | Groq | Llama 3.3 70B |
-
-Fallback triggers when: primary quota exhausted, rate limit hit, or timeout.
-
-## Quick Commands
+## Quick Start
 
 ```bash
-# Start all Docker services
-docker compose up -d
+# Copy secrets template and fill in keys
+cp .env.example .env
 
-# Stop all services
-docker compose down
+# Start everything
+docker compose --profile full up -d
+
+# Start only gateway (9router + ChromaDB, no Hermes)
+docker compose --profile gateway up -d
 
 # View logs
-docker compose logs -f chromadb
+docker compose logs -f hermes
 docker compose logs -f 9router
 
 # Restart a single service
-docker compose restart chromadb
+docker compose restart hermes
 
-# Hermes (native — not Docker)
-launchctl stop ai.hermes.gateway && sleep 2 && launchctl start ai.hermes.gateway
+# Rebuild Hermes image after code/patch changes
+docker compose build hermes && docker compose --profile full up -d hermes
 ```
 
-## Setup
+## Data (Bind Mounts)
 
-1. Copy `.env.example` to `.env` and fill in API keys
-2. Run `docker compose up -d`
-3. Verify: `curl http://localhost:8000/api/v1/heartbeat` (ChromaDB)
-4. Verify: `curl http://localhost:8080/health` (9router)
+All persistent state lives in `../data/` — gitignored, survives container restarts.
+
+```
+data/
+├── chromadb/        ← ChromaDB vector store (Viko's long-term memory)
+├── 9router/         ← 9router database (provider credentials, API keys, usage)
+│   └── db/data.sqlite
+└── hermes/          ← Hermes runtime state
+    ├── config.yaml  ← ⚠️  CRITICAL — see section below
+    ├── .env         ← Hermes-specific env (WhatsApp allowlist, etc.)
+    ├── sessions/    ← Active conversation sessions
+    └── platforms/
+        └── whatsapp/
+            └── session/creds.json  ← WhatsApp session (re-pair if deleted)
+```
+
+## Hermes config.yaml (Critical — Not in Git)
+
+`data/hermes/config.yaml` is gitignored but must be configured correctly.
+If `data/` is ever wiped, recreate this section:
+
+```yaml
+model:
+  default: anthropic/claude-sonnet-4-6
+  provider: openai        # Use OpenAI-compatible format (9router speaks OpenAI)
+  base_url: http://viko-9router:20128/v1
+providers:
+  openai:
+    api_key: <OPENAI_API_KEY from .env>   # 9router API key, not OpenAI's
+    base_url: http://viko-9router:20128/v1
+```
+
+**Why `provider: openai` with an Anthropic model?**
+9router exposes an OpenAI-compatible API. Hermes sends requests in OpenAI format
+to 9router, which then routes them to the real Anthropic API. The model prefix
+`anthropic/` tells 9router which backend provider to use.
+
+## LLM Routing (9router)
+
+9router routes by model name prefix:
+
+| Priority | Provider | Prefix | Backend |
+|----------|----------|--------|---------|
+| 1 | viko-anthropic | `anthropic/` | api.anthropic.com |
+| 2 | viko-groq | `groq/` | api.groq.com |
+
+Configured via 9router dashboard at `http://localhost:20128`.
+Provider API keys (Anthropic, Groq) are stored in `data/9router/db/data.sqlite` —
+configure once via dashboard, persists across restarts.
+
+## WhatsApp Setup
+
+WhatsApp credentials survive in `data/hermes/platforms/whatsapp/session/creds.json`.
+If lost, re-pair:
+
+```bash
+# Fix permissions first (only needed once after fresh build)
+docker exec -u root viko-hermes chown -R hermes:hermes /opt/hermes/scripts/whatsapp-bridge
+
+# Pair WhatsApp (interactive — must run in your terminal, not a script)
+docker exec -it -u hermes viko-hermes hermes whatsapp
+```
+
+Scan QR with the **bot's dedicated number** (not your personal number).
+Allowed users are configured in `data/hermes/.env` as `WHATSAPP_ALLOWED_USERS`.
 
 ## Security
 
-- All secrets stay in `.env` — never committed to git
-- `.gitignore` excludes `.env`, `*.env`, `data/`
-- ChromaDB runs on localhost only (no external exposure)
+- All secrets in `.env` — never committed to git
+- `data/` gitignored — contains credentials, session tokens, API keys
+- `.env.example` documents required variables without values
+- 9router API key (`OPENAI_API_KEY` in `.env`) is scoped to local 9router only
