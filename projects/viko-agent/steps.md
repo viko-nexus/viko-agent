@@ -69,7 +69,11 @@ Target: `soul/identity.md` — **requires Eksa's approval**
 1. Draft the identity change
 2. Send approval request to Eksa
 3. After approval: edit soul/identity.md
-4. If persona style changed: also update data/hermes/SOUL.md for sync
+4. Always sync data/hermes/SOUL.md immediately after:
+   - soul/identity.md is the canonical source (English, git-tracked)
+   - SOUL.md is the runtime file Hermes reads every message (Indonesian)
+   - Changes in soul/identity.md are NOT active until SOUL.md is updated
+   - Translate new sections to Indonesian when adding to SOUL.md
 5. Git commit + notify
 ```
 
