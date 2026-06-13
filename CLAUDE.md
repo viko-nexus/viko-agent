@@ -38,36 +38,37 @@ viko-agent/
 │       ├── steps.md       ← project-specific steps (Viko updates over time)
 │       └── plans/         ← approved implementation plans
 │
-├── memory/                ← Memory architecture docs (data lives in ./data/)
-│   └── README.md
-│
-├── config/                ← Infrastructure docs
-│   └── README.md
-│
 ├── patches/               ← Applied to Hermes at container build time
 │   ├── whatsapp-bridge.js
 │   ├── apply-run-py.py
 │   └── apply-agent-msgs.py
 │
-├── hooks/                 ← Hermes event hooks
+├── hooks/                 ← Hermes event hooks (mounted into /opt/data/hooks at runtime)
 │   └── viko-startup/      ← Send WA notification when Viko comes online
 │
-├── docker-compose.yml     ← Hermes + 9router + ChromaDB
+├── docker-compose.yml     ← Hermes + 9router
 ├── .env.example           ← Secrets template (copy to .env, never commit)
 └── data/                  ← Bind-mount targets — gitignored, persists on laptop
-    ├── chromadb/
-    ├── hermes/
+    ├── hermes/            ← HERMES_HOME: config.yaml, SOUL.md, state.db, Hindsight memory
     └── 9router/
 ```
 
 ## Viko Startup Sequence
 
 Hermes reads in this order on each session:
-1. `soul/identity.md`
-2. `rules/` — all files
-3. `skills/` — relevant to the current task
-4. `projects/<active>/context.md`
-5. Relevant memory from ChromaDB (`./data/chromadb`)
+1. `soul/identity.md` (via AGENTS.md)
+2. `rules/` — all files (via AGENTS.md)
+3. `skills/` — relevant to the current task (via AGENTS.md)
+4. `projects/<active>/context.md` (via AGENTS.md)
+5. Long-term memory from Hindsight (`data/hermes/hindsight/` — local embedded mode)
+
+## Memory
+
+Viko uses **Hindsight** (local embedded mode) for persistent memory across sessions:
+- No API key or external service required — runs as embedded daemon inside container
+- Stores knowledge graph with entity resolution and semantic search
+- Data persists in `data/hermes/` (gitignored, survives container restarts)
+- Activated via `memory.provider: hindsight` in `data/hermes/config.yaml`
 
 ## What Lives Where
 
@@ -78,19 +79,23 @@ Hermes reads in this order on each session:
 | Domain skills | `skills/` |
 | Project context and steps | `projects/<slug>/` |
 | Approved plans | `projects/<slug>/plans/` |
-| Memory data | `./data/chromadb` — gitignored |
+| Long-term memory (Hindsight) | `data/hermes/` — gitignored |
+| Event hooks | `hooks/` — mounted at runtime into `/opt/data/hooks/` |
 | Hermes patches | `patches/` — applied at Docker build |
-| App code | `~/Projects/<name>/` — outside this repo |
+| App code | `~/Projects/<name>/` — mounted read-write at same path |
 | Secrets | `.env` — never committed |
 
 ## Docker Operations
 
 ```bash
-# Start all services
-docker compose up -d
+# Build image (required after Dockerfile.hermes or patches/ changes)
+docker compose build hermes
 
-# Restart a service
-docker compose restart hermes
+# Start all services
+docker compose --profile full up -d
+
+# Restart hermes only (picks up config.yaml and hooks changes)
+docker compose --profile full up -d --force-recreate hermes
 
 # View logs
 docker compose logs -f hermes
@@ -103,6 +108,7 @@ docker compose down
 
 | Slug | Description | App Path |
 |------|-------------|----------|
+| `viko-agent` | Viko's own config repo | `~/Projects/viko-agent` |
 | `forecast-inn` | ForecastInn platform | `~/Projects/forecastinn/forecast-inn` |
 | `forecast-crm` | ForecastInn CRM | `~/Projects/forecastinn/forecast-crm` |
 | `luxso` | Luxso Executive Dashboard | `~/Projects/forecastinn/clients/Luxso-executive-dashboard` |
