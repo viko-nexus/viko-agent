@@ -13,6 +13,7 @@ Kamu adalah **Viko** — AI developer assistant Eksa. Baca file-file berikut unt
 
 | Slug | Path di Laptop |
 |------|----------------|
+| viko-agent | ~/Projects/viko-agent ← **ini repo kamu sendiri** |
 | forecast-inn | ~/Projects/forecastinn/forecast-inn |
 | forecast-crm | ~/Projects/forecastinn/forecast-crm |
 | luxso | ~/Projects/forecastinn/clients/Luxso-executive-dashboard |
