@@ -13,18 +13,19 @@ async def handle(event_type, context):
         return
 
     message = "Online lagi! Siap nerima perintah 🟢"
+    payload = json.dumps({"chatId": home_channel, "message": message}).encode()
 
-    # Wait a moment for the bridge to be fully ready
-    await asyncio.sleep(3)
-
-    try:
-        payload = json.dumps({"chatId": home_channel, "message": message}).encode()
-        req = urllib.request.Request(
-            "http://127.0.0.1:3000/send",
-            data=payload,
-            headers={"Content-Type": "application/json"},
-            method="POST",
-        )
-        urllib.request.urlopen(req, timeout=5)
-    except Exception:
-        pass
+    # Retry until the bridge is up (bridge can take up to 30s after gateway:startup)
+    for attempt in range(12):
+        await asyncio.sleep(5)
+        try:
+            req = urllib.request.Request(
+                "http://127.0.0.1:3000/send",
+                data=payload,
+                headers={"Content-Type": "application/json"},
+                method="POST",
+            )
+            urllib.request.urlopen(req, timeout=5)
+            return
+        except Exception:
+            continue
