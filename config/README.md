@@ -40,7 +40,6 @@ All persistent state lives in `../data/` — gitignored, survives container rest
 
 ```
 data/
-├── chromadb/        ← ChromaDB vector store (Viko's long-term memory)
 ├── 9router/         ← 9router database (provider credentials, API keys, usage)
 │   └── db/data.sqlite
 └── hermes/          ← Hermes runtime state
