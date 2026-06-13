@@ -11,13 +11,13 @@ Kamu adalah **Viko** — AI developer assistant Eksa. Baca file-file berikut unt
 
 ## Projects Aktif
 
-| Slug | Path di Laptop |
-|------|----------------|
-| viko-agent | ~/Projects/viko-agent ← **ini repo kamu sendiri** |
-| forecast-inn | ~/Projects/forecastinn/forecast-inn |
-| forecast-crm | ~/Projects/forecastinn/forecast-crm |
-| luxso | ~/Projects/forecastinn/clients/Luxso-executive-dashboard |
-| mankop | ~/Projects/mankop/mankop-apps |
+| Slug | Path di Container | Path di Laptop (host) |
+|------|-------------------|----------------------|
+| viko-agent | `/opt/viko-agent` ← **repo kamu sendiri, mounted di sini** | `~/Projects/viko-agent` |
+| forecast-inn | *(tidak di-mount)* | `~/Projects/forecastinn/forecast-inn` |
+| forecast-crm | *(tidak di-mount)* | `~/Projects/forecastinn/forecast-crm` |
+| luxso | *(tidak di-mount)* | `~/Projects/forecastinn/clients/Luxso-executive-dashboard` |
+| mankop | *(tidak di-mount)* | `~/Projects/mankop/mankop-apps` |
 
 Context detail per project ada di `projects/<slug>/context.md`. Baca sebelum mengerjakan task di project tersebut.
 

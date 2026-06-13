@@ -82,8 +82,13 @@ git -C /opt/viko-agent commit -m "feat: tambah skill X karena Y"
 
 ## Session Init untuk viko-agent Tasks
 
+Kamu berjalan di dalam Docker container. Path yang benar:
+- viko-agent repo → `/opt/viko-agent` (bukan `~/Projects/viko-agent`)
+- Data runtime → `/opt/data` (home directory kamu di container)
+- Project lain (forecast-inn, mankop, dll) → **tidak di-mount** di container, hanya bisa diakses via instruksi ke Eksa
+
 Sebelum mengerjakan task self-modification:
-1. Baca file yang mau diubah terlebih dahulu
+1. Baca file yang mau diubah di `/opt/viko-agent/` terlebih dahulu
 2. Identifikasi apakah perlu Tier 2 atau Tier 3
 3. Kalau Tier 3: kirim approval request ke Eksa dulu
 4. Kalau Tier 2: execute, lalu notify
