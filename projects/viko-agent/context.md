@@ -97,6 +97,8 @@ See `projects/viko-agent/steps.md` for step-by-step guides per change type.
 
 ## Notes
 
+- All `.md` files in this repo must be written in **English** — including any sections you add
+- `SOUL.md` is the exception: it stays in Indonesian since it defines how Viko speaks to Eksa
 - `data/hermes/` files other than `SOUL.md` and `config.yaml` should not be touched without Eksa
 - When in doubt about the tier: **ask first**
 - After editing Layer 2 files, inform Eksa that changes take effect in the next session
