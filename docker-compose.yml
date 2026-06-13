@@ -56,6 +56,9 @@ services:
     build:
       context: .
       dockerfile: Dockerfile.hermes
+      args:
+        HERMES_UID: ${HERMES_UID:-501}
+        HERMES_GID: ${HERMES_GID:-20}
     profiles: [full]
     depends_on:
       chromadb:
@@ -65,6 +68,8 @@ services:
     volumes:
       # HERMES_HOME inside container is /opt/data (set in Dockerfile)
       - ./data/hermes:/opt/data
+      # viko-agent repo mounted read-only — Hermes reads AGENTS.md from here
+      - ./:/opt/viko-agent:ro
     ports:
       - "9119:9119"
     environment:
@@ -76,6 +81,8 @@ services:
       OPENAI_API_KEY: ${OPENAI_API_KEY}
       # ChromaDB connection
       CHROMA_HOST: http://viko-chromadb:8000
+      # Load viko-agent context (AGENTS.md, rules/, projects/) into every session
+      TERMINAL_CWD: /opt/viko-agent
       # Dashboard (runs as s6 service alongside gateway)
       HERMES_DASHBOARD: "true"
       HERMES_DASHBOARD_INSECURE: "true"

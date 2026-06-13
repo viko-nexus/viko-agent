@@ -45,7 +45,12 @@ RUN set -eu; \
     rm /tmp/s6-*.tar.xz; \
     ln -sf /init /usr/bin/tini
 
-RUN useradd -u 10000 -m -d /opt/data hermes
+# Build with host UID/GID so stage2-hook.sh skips the slow chown at startup.
+# Pass --build-arg HERMES_UID=$(id -u) or rely on docker-compose args.
+ARG HERMES_UID=501
+ARG HERMES_GID=20
+RUN groupadd -o -g ${HERMES_GID} hermes-grp 2>/dev/null || true && \
+    useradd -u ${HERMES_UID} -o -m -d /opt/data hermes
 
 # ── uv + Node 22 from source stages ───────────────────────────────────────────
 COPY --chmod=0755 --from=uv_source /usr/local/bin/uv /usr/local/bin/uvx /usr/local/bin/
