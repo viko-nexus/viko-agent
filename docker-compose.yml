@@ -81,8 +81,6 @@ services:
       OPENAI_API_KEY: ${OPENAI_API_KEY}
       # ChromaDB connection
       CHROMA_HOST: http://viko-chromadb:8000
-      # Load viko-agent context (AGENTS.md, rules/, projects/) into every session
-      TERMINAL_CWD: /opt/viko-agent
       # Dashboard (runs as s6 service alongside gateway)
       HERMES_DASHBOARD: "true"
       HERMES_DASHBOARD_INSECURE: "true"
