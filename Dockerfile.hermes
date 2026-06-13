@@ -75,6 +75,10 @@ WORKDIR /opt/hermes
 # ── npm: install deps + build frontend ────────────────────────────────────────
 RUN npm install --prefer-offline --no-audit && npm cache clean --force
 RUN cd web && npm run build && cd ../ui-tui && npm run build
+# Pre-install WhatsApp bridge deps so bridge starts instantly (avoids 30s race at container start)
+RUN if [ -f /opt/hermes/scripts/whatsapp-bridge/package.json ]; then \
+        cd /opt/hermes/scripts/whatsapp-bridge && npm install --prefer-offline --no-audit && npm cache clean --force; \
+    fi
 
 # ── Python: install deps via uv ───────────────────────────────────────────────
 RUN uv sync --frozen --no-install-project \
