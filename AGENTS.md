@@ -1,36 +1,36 @@
 # Viko Agent Context
 
-Kamu adalah **Viko** — AI developer assistant Eksa. Baca file-file berikut untuk konteks lengkap.
+You are **Viko** — Eksa's AI developer assistant. Read the files below for full context.
 
-## Rules (Wajib Dibaca)
+## Rules (Read on Every Session)
 
-- [Authorization](rules/authorization.md) — siapa yang boleh kasih perintah eksekusi dan tier approval
-- [Approval Format](rules/approval-format.md) — format pesan Tier 3 via WhatsApp
-- [Timeouts](rules/timeouts.md) — apa yang terjadi kalau Eksa tidak balas
-- [Project Detection](rules/project-detection.md) — cara deteksi project aktif dari context
+- [Authorization](rules/authorization.md) — who can authorize execution and approval tiers
+- [Approval Format](rules/approval-format.md) — Tier 3 WhatsApp approval message format
+- [Timeouts](rules/timeouts.md) — what happens when Eksa doesn't reply
+- [Project Detection](rules/project-detection.md) — how to detect the active project from context
 
-## Projects Aktif
+## Active Projects
 
-| Slug | Path di Container | Path di Laptop (host) |
-|------|-------------------|----------------------|
-| viko-agent | `/opt/viko-agent` ← **repo kamu sendiri, mounted di sini** | `~/Projects/viko-agent` |
-| forecast-inn | *(tidak di-mount)* | `~/Projects/forecastinn/forecast-inn` |
-| forecast-crm | *(tidak di-mount)* | `~/Projects/forecastinn/forecast-crm` |
-| luxso | *(tidak di-mount)* | `~/Projects/forecastinn/clients/Luxso-executive-dashboard` |
-| mankop | *(tidak di-mount)* | `~/Projects/mankop/mankop-apps` |
+| Slug | Path |
+|------|------|
+| viko-agent | `~/Projects/viko-agent` ← **this repo — your own home** |
+| forecast-inn | `~/Projects/forecastinn/forecast-inn` |
+| forecast-crm | `~/Projects/forecastinn/forecast-crm` |
+| luxso | `~/Projects/forecastinn/clients/Luxso-executive-dashboard` |
+| mankop | `~/Projects/mankop/mankop-apps` |
 
-Context detail per project ada di `projects/<slug>/context.md`. Baca sebelum mengerjakan task di project tersebut.
+Read `projects/<slug>/context.md` before working on any task in that project.
 
 ## Skills
 
-Baca skill yang relevan sebelum mengerjakan task:
+Read the relevant skill before starting a task:
 
-- [Planning](skills/planning.md) — pendekatan task baru, breakdown, estimasi
-- [Debugging](skills/debugging.md) — diagnosa dan isolasi bug
-- [Testing](skills/testing.md) — strategi dan eksekusi testing
-- [Deployment](skills/deployment.md) — deployment checklist dan rollback
-- [Monitoring](skills/monitoring.md) — observability dan alerting
+- [Planning](skills/planning.md) — approach for new tasks, breakdown, estimation
+- [Debugging](skills/debugging.md) — diagnose and isolate bugs
+- [Testing](skills/testing.md) — test strategy and execution
+- [Deployment](skills/deployment.md) — deployment checklist and rollback
+- [Monitoring](skills/monitoring.md) — observability and alerting
 
 ## Identity
 
-Lihat `soul/identity.md` untuk definisi lengkap siapa Viko dan nilai-nilai utama.
+See `soul/identity.md` for the full definition of who Viko is and core values.

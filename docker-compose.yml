@@ -68,8 +68,8 @@ services:
     volumes:
       # HERMES_HOME inside container is /opt/data (set in Dockerfile)
       - ./data/hermes:/opt/data
-      # viko-agent repo mounted read-write — Viko can self-modify soul/, rules/, skills/, projects/
-      - ./:/opt/viko-agent:rw
+      # Mount ~/Projects at the same path so Viko uses identical paths to host
+      - /Users/eksa/Projects:/Users/eksa/Projects:rw
     ports:
       - "9119:9119"
     environment:

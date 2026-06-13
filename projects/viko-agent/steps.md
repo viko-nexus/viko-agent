@@ -1,140 +1,139 @@
 # viko-agent — Self-Modification Playbook
 
-Panduan step-by-step untuk setiap jenis perubahan. Selalu baca context.md dulu.
+Step-by-step guide for each type of change. Always read `context.md` first.
 
 ---
 
-## 1. Ubah Gaya Bicara / Persona (Tier 2)
+## 1. Change Persona / Communication Style (Tier 2)
 
-Target file: `data/hermes/SOUL.md` → langsung efektif
+Target: `data/hermes/SOUL.md` — takes effect immediately
 
 ```
-1. Baca /opt/data/SOUL.md
-2. Identifikasi bagian yang mau diubah
-3. Edit file langsung
-4. Kirim notif ke Eksa: "Done — updated SOUL.md: [apa yang diubah]"
-5. Perubahan efektif di pesan berikutnya (tidak perlu restart)
+1. Read ~/Projects/viko-agent/data/hermes/SOUL.md
+2. Identify the section to change
+3. Edit the file directly
+4. Notify Eksa: "Done — updated SOUL.md: [what changed]"
+5. Change is effective on the next message (no restart needed)
 ```
 
 ---
 
-## 2. Update / Tambah Skill (Tier 2)
+## 2. Update / Add a Skill (Tier 2)
 
-Target: `skills/<nama>.md` → efektif sesi berikutnya
+Target: `skills/<name>.md` — takes effect next session
 
 ```
-1. Baca skill yang relevan di /opt/viko-agent/skills/
-2. Edit atau buat file baru
-3. Kalau file baru: tambahkan entry di AGENTS.md (bagian ## Skills)
-4. Git commit (Tier 3 — minta approval atau inform Eksa)
-5. Kirim notif: "Done — updated skills/debugging.md: [apa yang diubah]"
+1. Read relevant skills in ~/Projects/viko-agent/skills/
+2. Edit existing file or create a new one
+3. If new file: add entry to AGENTS.md under ## Skills
+4. Git commit (Tier 3 — inform or get approval from Eksa)
+5. Notify: "Done — updated skills/debugging.md: [what changed]"
 ```
 
 ---
 
 ## 3. Update Project Context (Tier 2)
 
-Target: `projects/<slug>/context.md` atau `steps.md`
+Target: `projects/<slug>/context.md` or `steps.md`
 
 ```
-1. Baca file context yang mau diupdate
-2. Edit langsung — paths, team, notes, SOP
-3. Kirim notif: "Done — updated projects/forecast-inn/context.md: [apa yang diubah]"
-4. Info: "Perubahan efektif di sesi berikutnya"
-```
-
----
-
-## 4. Ubah Rules / Authorization (Tier 3)
-
-Target: `rules/*.md` — **wajib approval Eksa**
-
-```
-1. Draft perubahan yang diinginkan
-2. Kirim WA approval request ke Eksa (format sesuai rules/approval-format.md):
-   "⚙️ viko-agent · rules/authorization.md
-    Mau tambah rule: [deskripsi]
-    Alasan: [mengapa diperlukan]
-    ✅ Setuju / ❌ Tolak"
-3. Tunggu approval
-4. Setelah disetujui: edit file, git commit, notify
+1. Read the context file to update
+2. Edit directly — paths, team, notes, SOP
+3. Notify: "Done — updated projects/forecast-inn/context.md: [what changed]"
+4. Note: "Change takes effect next session"
 ```
 
 ---
 
-## 5. Ubah Identity Canon (Tier 3)
+## 4. Change Rules / Authorization (Tier 3)
 
-Target: `soul/identity.md` — **wajib approval Eksa**
+Target: `rules/*.md` — **requires Eksa's approval**
 
 ```
-1. Draft perubahan identitas
-2. Kirim approval request ke Eksa
-3. Setelah disetujui: edit soul/identity.md
-4. Update data/hermes/SOUL.md juga kalau perlu sinkronisasi
+1. Draft the desired change
+2. Send WA approval request to Eksa (see rules/approval-format.md):
+   "[Action] Update rules/authorization.md — [description of change]
+    [Risk]   Changes how Viko decides what needs approval
+    [Choice] Ya / Tidak / Tunda"
+3. Wait for approval
+4. After approval: edit file, git commit, notify
+```
+
+---
+
+## 5. Change Core Identity (Tier 3)
+
+Target: `soul/identity.md` — **requires Eksa's approval**
+
+```
+1. Draft the identity change
+2. Send approval request to Eksa
+3. After approval: edit soul/identity.md
+4. If persona style changed: also update data/hermes/SOUL.md for sync
 5. Git commit + notify
 ```
 
 ---
 
-## 6. Ubah Config (Model, Provider) (Tier 3)
+## 6. Change Config (Model, Provider) (Tier 3)
 
 Target: `data/hermes/config.yaml`
 
 ```
-1. Baca config saat ini: /opt/data/config.yaml
-2. Kirim approval request ke Eksa
-3. Setelah disetujui: edit config.yaml
-4. Restart gateway: s6-svc -t /run/service/gateway
-   atau: hermes restart (jika tersedia)
-5. Verify: cek log bahwa LLM provider aktif
+1. Read current config: ~/Projects/viko-agent/data/hermes/config.yaml
+2. Send approval request to Eksa
+3. After approval: edit config.yaml
+4. Restart gateway: /command/s6-svc -t /run/service/gateway-default
+5. Verify: check logs that LLM provider is active
 6. Notify: "Done — config.yaml updated, gateway restarted"
 ```
 
 ---
 
-## 7. Ubah Patch atau Dockerfile (Tier 3 + Rebuild)
+## 7. Change a Patch or Dockerfile (Tier 3 + Rebuild)
 
 Target: `patches/*.py`, `patches/*.js`, `Dockerfile.hermes`
 
 ```
-1. Identifikasi patch yang perlu diubah
-2. Kirim approval request ke Eksa — sertakan:
-   - File yang diubah
-   - Apa yang diubah dan kenapa
-   - Estimasi downtime (biasanya 5-10 menit rebuild)
-3. Setelah disetujui: edit file di /opt/viko-agent/patches/
-4. Inform Eksa untuk rebuild:
-   "Silakan run: docker compose build hermes && docker compose --profile full up -d"
-5. Setelah online kembali: verify perubahan berjalan
+1. Identify which patch needs changing
+2. Send approval request to Eksa — include:
+   - File to change
+   - What changes and why
+   - Estimated downtime (typically 5-10 min rebuild)
+3. After approval: edit file in ~/Projects/viko-agent/patches/
+4. Ask Eksa to rebuild:
+   "Please run: docker compose build hermes && docker compose --profile full up -d"
+5. After coming back online: verify the change works
 ```
 
 ---
 
-## 8. Tambah Project Baru (Tier 2)
+## 8. Add a New Project (Tier 2)
 
 ```
-1. Buat direktori: projects/<slug>/
-2. Buat context.md dengan format standar (lihat projects/forecast-inn/context.md)
-3. Buat steps.md kosong (bisa diisi bertahap)
-4. Tambahkan entry di AGENTS.md (## Projects Aktif table)
-5. Notify Eksa: "Done — added project context for [slug]"
+1. Create directory: projects/<slug>/
+2. Create context.md using standard format (see projects/forecast-inn/context.md)
+3. Create an empty steps.md (fill in as patterns are learned)
+4. Add entry to AGENTS.md (## Active Projects table)
+5. Add entry to rules/project-detection.md (## Available Projects table)
+6. Notify Eksa: "Done — added project context for [slug]"
 ```
 
 ---
 
 ## Rollback
 
-Kalau ada perubahan yang salah di Layer 2 (repo files):
+If a Layer 2 change (repo file) was wrong:
 
 ```bash
-# Lihat perubahan terakhir
-git -C /opt/viko-agent log --oneline -5
+# View recent changes
+git -C ~/Projects/viko-agent log --oneline -5
 
-# Revert file spesifik
-git -C /opt/viko-agent checkout HEAD -- rules/authorization.md
+# Revert a specific file
+git -C ~/Projects/viko-agent checkout HEAD -- rules/authorization.md
 
-# Revert commit terakhir (hati-hati)
-git -C /opt/viko-agent revert HEAD
+# Revert last commit (careful)
+git -C ~/Projects/viko-agent revert HEAD
 ```
 
-Untuk SOUL.md (Layer 1): baca isi dan edit manual, atau copy dari soul/identity.md.
+For SOUL.md (Layer 1): read the file and manually edit, or copy from `soul/identity.md`.

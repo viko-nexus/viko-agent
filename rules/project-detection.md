@@ -36,7 +36,8 @@ No context available (new session or ambiguous message).
 
 | Slug | Description |
 |------|-------------|
-| `forecast-inn` | ForecastInn platform |
+| `viko-agent` | Viko's own configuration repo — identity, rules, skills, project contexts |
+| `forecast-inn` | ForecastInn hospitality platform |
 | `forecast-crm` | ForecastInn CRM |
 | `luxso` | Luxso Executive Dashboard |
 | `mankop` | Mankop (Koperasi Multi Pihak) |
