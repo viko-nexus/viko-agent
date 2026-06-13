@@ -64,11 +64,11 @@ Hermes reads in this order on each session:
 
 ## Memory
 
-Viko uses **Hindsight** (local embedded mode) for persistent memory across sessions:
-- No API key or external service required — runs as embedded daemon inside container
-- Stores knowledge graph with entity resolution and semantic search
-- Data persists in `data/hermes/` (gitignored, survives container restarts)
-- Activated via `memory.provider: hindsight` in `data/hermes/config.yaml`
+Viko uses **Holographic** (pure local) for persistent memory across sessions:
+- No API key or external service — SQLite-backed, runs entirely inside container
+- Entity resolution, trust scoring, and HRR-based compositional retrieval
+- Data persists in `data/hermes/memory_store.db` (gitignored, survives restarts)
+- Activated via `memory.provider: holographic` in `data/hermes/config.yaml`
 
 ## What Lives Where
 

@@ -63,9 +63,7 @@ services:
       OPENAI_API_KEY: ${OPENAI_API_KEY}
       # WhatsApp home channel — Viko sends startup notifications here
       WHATSAPP_HOME_CHANNEL: "6287820001010@s.whatsapp.net"
-      # Hindsight memory — local embedded mode, no API key needed
-      HINDSIGHT_MODE: "local"
-      HINDSIGHT_BANK_ID: "viko"
+      # Holographic memory — pure local SQLite, no API key needed
       # Dashboard (runs as s6 service alongside gateway)
       HERMES_DASHBOARD: "true"
       HERMES_DASHBOARD_INSECURE: "true"
