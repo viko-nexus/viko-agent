@@ -2,24 +2,6 @@ name: viko
 
 services:
 
-  # ── ChromaDB — vector DB for Viko's persistent memory ──────────────────────
-  chromadb:
-    container_name: viko-chromadb
-    image: chromadb/chroma:latest
-    ports:
-      - "8000:8000"
-    volumes:
-      - ./data/chromadb:/chroma/chroma
-    environment:
-      IS_PERSISTENT: "TRUE"
-      ANONYMIZED_TELEMETRY: "FALSE"
-    restart: unless-stopped
-    healthcheck:
-      test: ["CMD-SHELL", "bash -c 'echo > /dev/tcp/127.0.0.1/8000'"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-
   # ── 9router — LLM gateway with fallback routing ─────────────────────────────
   # Provider API keys (Anthropic, Groq) are configured via dashboard, not env vars.
   # Dashboard: http://localhost:20128/dashboard
@@ -61,8 +43,6 @@ services:
         HERMES_GID: ${HERMES_GID:-20}
     profiles: [full]
     depends_on:
-      chromadb:
-        condition: service_healthy
       9router:
         condition: service_healthy
     volumes:
@@ -70,6 +50,8 @@ services:
       - ./data/hermes:/opt/data
       # Mount ~/Projects at the same path so Viko uses identical paths to host
       - /Users/eksa/Projects:/Users/eksa/Projects:rw
+      # Hooks from repo mounted into HERMES_HOME so Hermes loads them on startup
+      - ./hooks:/opt/data/hooks:ro
     ports:
       - "9119:9119"
     environment:
@@ -79,8 +61,11 @@ services:
       # 9router connection — populate OPENAI_API_KEY from 9router dashboard after setup
       OPENAI_BASE_URL: http://viko-9router:20128/v1
       OPENAI_API_KEY: ${OPENAI_API_KEY}
-      # ChromaDB connection
-      CHROMA_HOST: http://viko-chromadb:8000
+      # WhatsApp home channel — Viko sends startup notifications here
+      WHATSAPP_HOME_CHANNEL: "6287820001010@s.whatsapp.net"
+      # Hindsight memory — local embedded mode, no API key needed
+      HINDSIGHT_MODE: "local"
+      HINDSIGHT_BANK_ID: "viko"
       # Dashboard (runs as s6 service alongside gateway)
       HERMES_DASHBOARD: "true"
       HERMES_DASHBOARD_INSECURE: "true"
