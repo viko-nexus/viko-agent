@@ -1,15 +1,19 @@
-# Logs
-logs/
-*.log
-
-# Projects (local config, managed via symlinks)
-projects/
+# Data volumes (bind-mounted into Docker — never committed, persists on laptop)
+data/
 
 # macOS
 .DS_Store
 **/.DS_Store
 
-# Runtime / temp
+# Logs and temp
+logs/
+*.log
 *.tmp
+
+# Secrets
 .env
+*.env
+*-env-backup.txt
+
+# Node
 node_modules

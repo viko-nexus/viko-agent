@@ -1,70 +1,109 @@
 # viko-agent
 
-Config dan patch untuk **Viko** — AI developer assistant berbasis Hermes Agent.
+Configuration and infrastructure for **Viko** — AI developer assistant powered by
+Hermes (brain) and 9router (LLM gateway). All services run in Docker locally.
 
-## Struktur Repo
+## Repository Purpose
+
+This repo is Viko's "home" — it defines who Viko is, what Viko can do, and what Viko
+knows about each project. Read by the orchestrator (Hermes). Not app code.
+
+Exception: `patches/` and `hooks/` are operational — applied to Hermes at container
+build time or loaded as event hooks.
+
+## Repository Structure
 
 ```
 viko-agent/
-├── patches/
-│   ├── whatsapp-bridge.js     ← patch group support (self-chat mode)
-│   └── apply-run-py.py        ← patch notifikasi sistem ke Indonesian
-├── hooks/
-│   └── viko-startup/          ← notifikasi WA saat Viko online
-├── scripts/
-│   ├── hermes.sh              ← install / update Hermes + desktop app
-│   └── post-update.sh         ← re-apply patches setelah hermes update
-└── projects/                  ← archived config lama (referensi saja)
+│
+├── soul/                  ← Who Viko is (identity, values, communication style)
+│   └── identity.md
+│
+├── rules/                 ← How Viko behaves (authorization, approval, timeouts)
+│   ├── authorization.md
+│   ├── approval-format.md
+│   ├── timeouts.md
+│   └── project-detection.md
+│
+├── skills/                ← Domain knowledge per lifecycle stage
+│   ├── planning.md
+│   ├── debugging.md
+│   ├── deployment.md
+│   ├── testing.md
+│   └── monitoring.md
+│
+├── projects/              ← Per-project context (dossier, not app code)
+│   └── <slug>/
+│       ├── context.md     ← team, paths, stack, session init
+│       ├── steps.md       ← project-specific steps (Viko updates over time)
+│       └── plans/         ← approved implementation plans
+│
+├── memory/                ← Memory architecture docs (data lives in ./data/)
+│   └── README.md
+│
+├── config/                ← Infrastructure docs
+│   └── README.md
+│
+├── patches/               ← Applied to Hermes at container build time
+│   ├── whatsapp-bridge.js
+│   ├── apply-run-py.py
+│   └── apply-agent-msgs.py
+│
+├── hooks/                 ← Hermes event hooks
+│   └── viko-startup/      ← Send WA notification when Viko comes online
+│
+├── docker-compose.yml     ← Hermes + 9router + ChromaDB
+├── .env.example           ← Secrets template (copy to .env, never commit)
+└── data/                  ← Bind-mount targets — gitignored, persists on laptop
+    ├── chromadb/
+    ├── hermes/
+    └── 9router/
 ```
 
-## Config Hermes (di luar repo)
+## Viko Startup Sequence
 
-| File | Path | Isi |
-|------|------|-----|
-| SOUL.md | `~/.hermes/SOUL.md` | Personality Viko + RBAC |
-| config.yaml | `~/.hermes/config.yaml` | Model, gateway, session |
-| .env | `~/.hermes/.env` | API keys, WA/GChat config |
-| hooks/ | `~/.hermes/hooks/` | Event hooks |
+Hermes reads in this order on each session:
+1. `soul/identity.md`
+2. `rules/` — all files
+3. `skills/` — relevant to the current task
+4. `projects/<active>/context.md`
+5. Relevant memory from ChromaDB (`./data/chromadb`)
 
-## Projects (AGENTS.md per folder)
+## What Lives Where
 
-| Project | Path |
-|---------|------|
-| ForecastInn | `~/Projects/forecastinn/forecast-inn/AGENTS.md` |
-| ForecastCRM | `~/Projects/forecastinn/forecast-crm/AGENTS.md` |
-| Luxso Dashboard | `~/Projects/forecastinn/clients/Luxso-executive-dashboard/AGENTS.md` |
-| Mankop | `~/Projects/mankop/mankop-apps/AGENTS.md` |
+| Content | Location |
+|---------|----------|
+| Identity and values | `soul/` |
+| Behavior rules | `rules/` |
+| Domain skills | `skills/` |
+| Project context and steps | `projects/<slug>/` |
+| Approved plans | `projects/<slug>/plans/` |
+| Memory data | `./data/chromadb` — gitignored |
+| Hermes patches | `patches/` — applied at Docker build |
+| App code | `~/Projects/<name>/` — outside this repo |
+| Secrets | `.env` — never committed |
 
-## Workflow
+## Docker Operations
 
-### Setup mesin baru
 ```bash
-bash scripts/hermes.sh
+# Start all services
+docker compose up -d
+
+# Restart a service
+docker compose restart hermes
+
+# View logs
+docker compose logs -f hermes
+
+# Stop all
+docker compose down
 ```
 
-### Setelah hermes update
-```bash
-bash scripts/post-update.sh
-```
+## Projects
 
-### Tambah project baru
-```bash
-# Buat AGENTS.md di folder project
-cat > ~/Projects/<nama>/AGENTS.md << 'EOF'
-# Nama Project
-...
-EOF
-```
-
-### Restart gateway
-```bash
-launchctl stop ai.hermes.gateway && sleep 2 && launchctl start ai.hermes.gateway
-```
-
-## Model Stack
-
-```
-Primary:  Gemini 3 Flash Preview (Google OAuth, gratis)
-Fallback: Groq Llama 3.3 70B (gratis)
-Executor: claude --print (Max subscription, via terminal tool)
-```
+| Slug | Description | App Path |
+|------|-------------|----------|
+| `forecast-inn` | ForecastInn platform | `~/Projects/forecastinn/forecast-inn` |
+| `forecast-crm` | ForecastInn CRM | `~/Projects/forecastinn/forecast-crm` |
+| `luxso` | Luxso Executive Dashboard | `~/Projects/forecastinn/clients/Luxso-executive-dashboard` |
+| `mankop` | Mankop (Koperasi Multi Pihak) | `~/Projects/mankop/mankop-apps` |

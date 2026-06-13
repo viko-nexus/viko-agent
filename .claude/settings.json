@@ -1,11 +1,28 @@
 {
   "permissions": {
     "allow": [
-      "Bash(agent-browser:*)"
+      "Bash(agent-browser:*)",
+      "Bash(rm -f /Users/eksa/Projects/viko-agent/.claude/skills/viko-status.md)",
+      "Bash(rm -f /Users/eksa/Projects/viko-agent/.claude/skills/manage-project.md)",
+      "Bash(docker system *)",
+      "Bash(open -a Docker)",
+      "Bash(docker info *)",
+      "Bash(docker rmi *)",
+      "Bash(docker builder *)",
+      "Bash(sed -i 's|default: anthropic/claude-opus-4.6|default: anthropic/claude-sonnet-4-6|g; s|base_url: https://openrouter.ai/api/v1|base_url: http://viko-9router:20128/v1|g' /Users/eksa/Projects/viko-agent/data/hermes/config.yaml)",
+      "Bash(sed -n '1,5p' /Users/eksa/Projects/viko-agent/data/hermes/config.yaml)",
+      "Bash(sqlite3 /Users/eksa/Projects/viko-agent/data/9router/db/data.sqlite \".tables\")",
+      "Bash(sqlite3 /Users/eksa/Projects/viko-agent/data/9router/db/data.sqlite \"SELECT name, type FROM sqlite_master WHERE type='table';\")",
+      "Bash(sqlite3 /Users/eksa/Projects/viko-agent/data/9router/db/data.sqlite \"SELECT id, name, type, priority, enabled FROM providerConnections;\")",
+      "Bash(sqlite3 /Users/eksa/Projects/viko-agent/data/9router/db/data.sqlite \"SELECT id, model, providerId FROM providerNodes LIMIT 20;\")",
+      "Bash(sqlite3 /Users/eksa/Projects/viko-agent/data/9router/db/data.sqlite \"PRAGMA table_info\\(providerConnections\\);\")",
+      "Bash(sqlite3 /Users/eksa/Projects/viko-agent/data/9router/db/data.sqlite \"PRAGMA table_info\\(providerNodes\\);\")",
+      "Bash(sqlite3 /Users/eksa/Projects/viko-agent/data/9router/db/data.sqlite \"SELECT id, provider, name, priority, isActive FROM providerConnections;\")",
+      "Bash(sqlite3 /Users/eksa/Projects/viko-agent/data/9router/db/data.sqlite \"SELECT id, type, name, data FROM providerNodes;\")"
     ]
   },
   "enabledPlugins": {
-    "whatsapp-claude-channel@whatsapp-claude-plugin": false
+    "whatsapp-claude-channel@whatsapp-claude-plugin": true
   },
   "skipDangerousModePermissionPrompt": true
 }

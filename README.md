@@ -1,70 +1,149 @@
 # viko-agent
 
-Konfigurasi dan patch untuk **Viko** — AI developer assistant berbasis [Hermes Agent](https://hermes-agent.nousresearch.com) yang aktif di WhatsApp dan Google Chat.
+Configuration and infrastructure for **Viko** — a local AI developer assistant that handles
+the full development lifecycle: answering questions on WhatsApp, planning, coding, testing,
+deploying, and monitoring.
 
-## Arsitektur
+---
+
+## How It Works
 
 ```
 WhatsApp / Google Chat
-        ↓ mention "viko"
-Hermes Gateway (launchd service)
-        ↓ model: Gemini Flash (gratis) → fallback: Groq Llama 3.3
-SOUL.md → Viko personality + RBAC
-        ↓ viko exec: / viko task:
-claude --print (Claude Max subscription)
+        │
+        ▼
+    Hermes (brain)          ← reads soul/, rules/, skills/, projects/
+        │
+        ├── 9router ──────► Gemini Flash (primary)
+        │                   Groq Llama (fallback)
+        │
+        ├── ChromaDB ──────► persistent memory (decisions, errors, summaries)
+        │
+        └── tools ─────────► git, code editor, browser (Playwright), CI/CD
 ```
 
-## Struktur Repo
+**Lifecycle:** Message → Plan → Code → Test → Deploy → Monitor → Alert → Plan
+
+---
+
+## Stack
+
+| Component | Role | Image |
+|-----------|------|-------|
+| Hermes | AI orchestrator — single brain | `HERMES_IMAGE` (set in `.env`) |
+| 9router | LLM gateway with fallback | `NINEROUTER_IMAGE` (set in `.env`) |
+| ChromaDB | Vector DB for persistent memory | `chromadb/chroma:latest` |
+
+All services run in Docker locally. Data is stored in `./data/` on your laptop —
+never inside the container.
+
+---
+
+## Quick Start
+
+```bash
+# 1. Clone and enter the repo
+git clone <repo-url>
+cd viko-agent
+
+# 2. Set up environment
+cp .env.example .env
+# Edit .env — add API keys and Docker image names
+
+# 3. Start services
+docker compose up -d
+
+# 4. Verify
+curl http://localhost:8000/api/v1/heartbeat   # ChromaDB
+curl http://localhost:8080/health              # 9router
+```
+
+---
+
+## Repo Structure
 
 ```
 viko-agent/
-├── patches/
-│   ├── whatsapp-bridge.js     ← patch group support di self-chat mode
-│   └── apply-run-py.py        ← patch notifikasi sistem ke Indonesian
-├── hooks/
-│   └── viko-startup/          ← notifikasi WA saat Viko online
-├── scripts/
-│   ├── hermes.sh              ← install / update Hermes
-│   └── post-update.sh         ← re-apply patches setelah hermes update
-└── projects/                  ← referensi config per project (archived)
+│
+├── soul/                  ← Who Viko is (identity, values, communication style)
+├── rules/                 ← How Viko behaves (authorization, approvals, timeouts)
+├── skills/                ← Domain knowledge (planning, debugging, deploy, test, monitor)
+├── projects/              ← Per-project context — NOT the app code itself
+│   └── <project>/
+│       ├── context.md     ← team, stack, paths, session init
+│       ├── steps.md       ← project-specific dev steps (Viko updates over time)
+│       └── plans/         ← approved implementation plans
+├── memory/                ← Memory architecture docs (data lives in ./data/chromadb)
+├── config/                ← Infrastructure docs and service-specific configs
+├── patches/               ← Custom patches applied to Hermes at container build time
+├── hooks/                 ← Hermes event hooks (e.g. startup notification)
+├── docker-compose.yml
+├── .env.example
+└── LICENSE
 ```
 
-## Setup
+> **Key distinction:** `projects/<name>/` contains Viko's *knowledge about* a project
+> (context, steps, plans). The actual app code lives elsewhere on your machine.
 
-```bash
-# Install Hermes + desktop app
-bash scripts/hermes.sh
+---
 
-# Setelah hermes update, re-apply patches
-bash scripts/post-update.sh
+## Adding a New Project
+
+1. Create the project folder and files:
+   ```bash
+   mkdir -p projects/<slug>/plans
+   touch projects/<slug>/context.md
+   touch projects/<slug>/steps.md
+   touch projects/<slug>/plans/.gitkeep
+   ```
+
+2. Fill in `context.md` — minimum required:
+   - Project overview and goal
+   - App root path on your machine
+   - Team members and roles
+   - Session init instructions (what Viko reads first)
+
+3. Add the project slug to `rules/project-detection.md`.
+
+4. Create `AGENTS.md` (or `CLAUDE.md`) inside the actual app folder for the executor.
+
+---
+
+## Authorization Model
+
+Viko operates on three tiers — see `rules/authorization.md` for full details.
+
+| Tier | Examples | Action |
+|------|----------|--------|
+| Free | Read logs, draft plans, send info | Execute, no notification |
+| Report | Create branch, install packages, write files | Execute, then notify |
+| Ask | Deploy, push, delete data | Send WA approval, wait |
+
+All approvals go to Eksa via WhatsApp in the format:
+```
+[Action] what Viko wants to do
+[Risk]   consequence if something goes wrong
+[Choice] Ya / Tidak / Tunda
 ```
 
-## Config Utama
+---
 
-| File | Lokasi | Isi |
-|------|--------|-----|
-| SOUL.md | `~/.hermes/SOUL.md` | Personality Viko + RBAC |
-| config.yaml | `~/.hermes/config.yaml` | Model, gateway, session settings |
-| .env | `~/.hermes/.env` | API keys, WA config |
+## Data Persistence
 
-## Projects
+All Docker volume data is stored as bind mounts in `./data/` — on your laptop:
 
-Setiap project punya `AGENTS.md` di folder project-nya (auto-load oleh Hermes desktop):
+```
+data/
+├── chromadb/    ← Viko's memory (decisions, errors, project summaries)
+├── hermes/      ← Hermes session state
+└── 9router/     ← Gateway cache and config
+```
 
-| Project | Path | AGENTS.md |
-|---------|------|-----------|
-| ForecastInn | `~/Projects/forecastinn/forecast-inn` | ✅ |
-| ForecastCRM | `~/Projects/forecastinn/forecast-crm` | ✅ |
-| Luxso Dashboard | `~/Projects/forecastinn/clients/Luxso-executive-dashboard` | ✅ |
-| Mankop | `~/Projects/mankop/mankop-apps` | ✅ |
+This folder is gitignored. It survives container restarts and `docker compose down`.
+Only `docker compose down -v` or manual deletion removes it.
 
-Di Hermes desktop: navigasi ke folder project → AGENTS.md auto-load sebagai konteks.
+---
 
-## Patches
+## License
 
-Custom patches yang diterapkan ke Hermes installation:
-
-1. **whatsapp-bridge.js** — enable group messages di self-chat mode
-2. **apply-run-py.py** — translate system notifications ke Indonesian
-
-Jalankan `bash scripts/post-update.sh` setelah setiap `hermes update`.
+Non-commercial use only. See [LICENSE](LICENSE).

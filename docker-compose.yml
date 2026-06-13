@@ -1,0 +1,91 @@
+name: viko
+
+services:
+
+  # ── ChromaDB — vector DB for Viko's persistent memory ──────────────────────
+  chromadb:
+    container_name: viko-chromadb
+    image: chromadb/chroma:latest
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./data/chromadb:/chroma/chroma
+    environment:
+      IS_PERSISTENT: "TRUE"
+      ANONYMIZED_TELEMETRY: "FALSE"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c 'echo > /dev/tcp/127.0.0.1/8000'"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # ── 9router — LLM gateway with fallback routing ─────────────────────────────
+  # Provider API keys (Anthropic, Groq) are configured via dashboard, not env vars.
+  # Dashboard: http://localhost:20128/dashboard
+  # Start with: docker compose --profile gateway up -d
+  9router:
+    container_name: viko-9router
+    image: decolua/9router:latest
+    profiles: [gateway, full]
+    ports:
+      - "20128:20128"
+    volumes:
+      - ./data/9router:/app/data
+    environment:
+      DATA_DIR: /app/data
+      PORT: "20128"
+      NODE_ENV: production
+      BASE_URL: http://localhost:20128
+      JWT_SECRET: ${NINEROUTER_JWT_SECRET}
+      INITIAL_PASSWORD: ${NINEROUTER_INITIAL_PASSWORD}
+      API_KEY_SECRET: ${NINEROUTER_API_KEY_SECRET}
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "node -e \"require('http').get('http://localhost:20128/',r=>process.exit(r.statusCode<500?0:1)).on('error',()=>process.exit(1))\""]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # ── Hermes — AI orchestrator (single brain) ─────────────────────────────────
+  # Built from Dockerfile.hermes (no official image).
+  # Run: docker compose build hermes
+  # Then: docker compose --profile full up -d
+  hermes:
+    container_name: viko-hermes
+    build:
+      context: .
+      dockerfile: Dockerfile.hermes
+    profiles: [full]
+    depends_on:
+      chromadb:
+        condition: service_healthy
+      9router:
+        condition: service_healthy
+    volumes:
+      # HERMES_HOME inside container is /opt/data (set in Dockerfile)
+      - ./data/hermes:/opt/data
+    ports:
+      - "9119:9119"
+    environment:
+      # Remap container's hermes user to host user so bind-mount files are owned correctly
+      HERMES_UID: ${HERMES_UID:-501}
+      HERMES_GID: ${HERMES_GID:-20}
+      # 9router connection — populate OPENAI_API_KEY from 9router dashboard after setup
+      OPENAI_BASE_URL: http://viko-9router:20128/v1
+      OPENAI_API_KEY: ${OPENAI_API_KEY}
+      # ChromaDB connection
+      CHROMA_HOST: http://viko-chromadb:8000
+      # Dashboard (runs as s6 service alongside gateway)
+      HERMES_DASHBOARD: "true"
+      HERMES_DASHBOARD_INSECURE: "true"
+      HERMES_DASHBOARD_HOST: "0.0.0.0"
+      HERMES_DASHBOARD_PORT: "9119"
+    command: ["gateway", "run"]
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c 'echo > /dev/tcp/127.0.0.1/9119'"]
+      interval: 30s
+      timeout: 15s
+      retries: 5
+      start_period: 60s
