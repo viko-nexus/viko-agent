@@ -50,6 +50,8 @@ services:
       - ./data/hermes:/opt/data
       # Mount ~/Projects at the same path so Viko uses identical paths to host
       - /Users/eksa/Projects:/Users/eksa/Projects:rw
+      # Mount SSH keys so Viko can SSH to production servers
+      - /Users/eksa/.ssh:/opt/data/.ssh:ro
       # Hooks from repo mounted into HERMES_HOME so Hermes loads them on startup
       - ./hooks:/opt/data/hooks:ro
     ports:
