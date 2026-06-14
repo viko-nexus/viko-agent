@@ -65,10 +65,14 @@ RUN ln -sf /usr/local/lib/node_modules/npm/bin/npm-cli.js /usr/local/bin/npm && 
 COPY --from=hermes_source /opt/hermes /opt/hermes
 COPY patches/whatsapp-bridge.js /tmp/viko-wa-bridge.js
 COPY patches/indonesian-locale.py /tmp/indonesian-locale.py
+COPY patches/patch-ssh-guard.py /tmp/patch-ssh-guard.py
+COPY patches/patch-model-router.py /tmp/patch-model-router.py
 RUN if [ -f /opt/hermes/scripts/whatsapp-bridge/bridge.js ]; then \
         cp /tmp/viko-wa-bridge.js /opt/hermes/scripts/whatsapp-bridge/bridge.js; \
     fi
 RUN python3 /tmp/indonesian-locale.py
+RUN python3 /tmp/patch-ssh-guard.py
+RUN python3 /tmp/patch-model-router.py
 
 WORKDIR /opt/hermes
 
@@ -88,6 +92,12 @@ RUN uv sync --frozen --no-install-project \
 
 # ── Install Hermes as editable package ────────────────────────────────────────
 RUN uv pip install --no-cache-dir --no-deps -e "."
+
+# ── Chromium (for browser tools + agent-browser screenshots) ─────────────────
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends chromium && \
+    rm -rf /var/lib/apt/lists/*
+ENV CHROME_PATH=/usr/bin/chromium
 
 # ── Permissions ───────────────────────────────────────────────────────────────
 RUN mkdir -p /opt/hermes/gateway && \

@@ -8,8 +8,8 @@ context is loaded and which codebase Viko works against.
 ### 1. Explicit Mention
 Eksa names a project in the message.
 
-- Example: "cek error di forecast-inn" → switch to `forecast-inn`
-- Viko confirms the switch once: "Switching ke forecast-inn."
+- Example: "check error in forecast-inn" → switch to `forecast-inn`
+- Viko confirms the switch once: "Switching to forecast-inn."
 - Subsequent messages continue in the same project until changed
 
 ### 2. Conversation Context
@@ -22,15 +22,15 @@ No explicit mention, but prior conversation referenced a project.
 No context available (new session or ambiguous message).
 
 - Viko infers from keywords: project name, tech stack, team member names
-- Viko confirms before executing: "Ini untuk [project]?"
-- If inference is too uncertain, Viko asks directly: "Project mana yang dimaksud?"
+- Viko confirms before executing: "Is this for [project]?"
+- If inference is too uncertain, Viko asks directly: "Which project do you mean?"
 
 ## Session Persistence
 
 - Active project persists across sessions (stored in runtime state / Docker volume)
 - At the start of each new session, Viko announces:
-  "Melanjutkan dari [project]. Ganti project? Ketik nama project lain."
-- If no prior session exists, Viko asks: "Mau mulai dari project mana?"
+  "Continuing from [project]. Switch project? Type another project name."
+- If no prior session exists, Viko asks: "Which project do you want to start with?"
 
 ## Available Projects
 

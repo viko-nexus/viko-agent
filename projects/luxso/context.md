@@ -9,12 +9,12 @@ occupancy analytics.
 
 | Resource | Path |
 |----------|------|
-| App root | `/Users/eksa/Projects/forecastinn/clients/Luxso-executive-dashboard` |
+| App root | `~/Projects/forecastinn/clients/Luxso-executive-dashboard` |
 | Docs | `docs/` |
 | Plans | `docs/superpowers/plans/` |
 | Integration docs | `docs/integration/` |
 | Backend handlers | `server/internal/handlers/` |
-| AGENTS.md | `/Users/eksa/Projects/forecastinn/clients/Luxso-executive-dashboard/AGENTS.md` |
+| AGENTS.md | `~/Projects/forecastinn/clients/Luxso-executive-dashboard/AGENTS.md` |
 
 ## Stack
 
@@ -45,6 +45,29 @@ On first message, read these in order before replying:
 | Business data (P&L, revenue, occupancy) | `docs/data/` |
 | Architecture / integration | `docs/integration/data-model.md`, `sync-strategy.md` |
 | Bugs / QA | `server/internal/handlers/` |
+
+## Production Server Access
+
+Use the MCP tool — do not use raw SSH commands:
+
+```
+ssh_exec(project="luxso", command="...")
+```
+
+Examples:
+- `ssh_exec(project="luxso", command="docker ps")`
+- `ssh_exec(project="luxso", command="ls ~/luxso/")`
+
+| Parameter | Value |
+|-----------|-------|
+| Server | `luxso-prod` (217.216.108.88, same VPS as forecastinn) |
+| User | `deploy` |
+| App dir | `~/luxso/` on server |
+
+## Database
+
+Luxso shares the `forecastinn-postgres` PostgreSQL cluster (same VPS). Database: `luxso`, owned by role `forecastinn_client`.
+Access via forecastinn SSH: `ssh_exec(project="forecastinn", command="docker exec forecastinn-postgres psql -U forecastinn_client -d luxso -c '...'")`
 
 ## Notes
 

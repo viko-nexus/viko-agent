@@ -25,6 +25,20 @@ reports, QR payment.
 | Eksa | Owner (Viko), developer |
 | Pak Hery | Client / stakeholder |
 
+## WhatsApp Group
+
+| Field | Value |
+|-------|-------|
+| Name | 2a. PRODUK SAAS MANKOP |
+| Chat ID | `120363409428298054@g.us` |
+
+When Eksa asks Viko to send something to the mankop group from a DM, use:
+```bash
+curl -s -X POST http://localhost:3000/send \
+  -H "Content-Type: application/json" \
+  -d '{"chatId":"120363409428298054@g.us","message":"<message>"}'
+```
+
 ## GitHub
 
 - Repo: `git@github.com:forgeyard/mankop-apps.git`
@@ -42,26 +56,25 @@ reports, QR payment.
 | Tunnel | SSH tunnel to production MySQL (via `scripts/tunnel.sh`) |
 | Package | pnpm workspaces, Node v22 |
 
-## SSH Access
+## Production Server Access
 
-```bash
-ssh -i ~/.ssh/id_rsa_mankop_app mankop-app@69.62.81.224
+Use the MCP tool — do not use raw SSH commands:
+
 ```
+ssh_exec(project="mankop", command="...")
+```
+
+Examples:
+- `ssh_exec(project="mankop", command="mysql mankop-prod -u mankop-user -p... -e 'SELECT ...'")`
+- `ssh_exec(project="mankop", command="docker ps")`
+- `ssh_exec(project="mankop", command="tail -100 /var/log/app.log")`
 
 | Parameter | Value |
 |-----------|-------|
-| Key | `~/.ssh/id_rsa_mankop_app` |
+| Server | `mankop-prod` |
 | User | `mankop-app` |
-| Host | `69.62.81.224` |
-| Port | 22 (default) |
-
-SSH tunnel — forwards production MySQL to local `localhost:3307 → 69.62.81.224:3306`:
-
-```
-SSH_HOST=69.62.81.224
-SSH_USER=mankop-app
-SSH_KEY_PATH=~/.ssh/id_rsa_mankop_app
-```
+| DB name | `mankop-prod` |
+| DB host | `127.0.0.1:3306` (local on server) |
 
 ## Environment Variables
 

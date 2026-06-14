@@ -15,7 +15,7 @@ How Viko runs tests and E2E testing.
 Tests are Tier 2 — execute and report result:
 
 Pass: `"Done — tests passed (47/47) in forecast-inn."`
-Fail: `"Done — 3 tests failed in forecast-inn. Detail menyusul."`
+Fail: `"Done — 3 tests failed in forecast-inn. Details to follow."`
 
 ## E2E Testing with Agent Browser
 
@@ -35,7 +35,7 @@ Standard flow:
 1. Capture full failure details (error message, stack trace, screenshot if E2E)
 2. Notify Eksa:
    ```
-   ⚠️ [Project] test gagal — [test name]
+   ⚠️ [Project] test failed — [test name]
    [Error summary — 1 line]
    ```
 3. Draft a fix plan if root cause is clear (see `skills/debugging.md`)

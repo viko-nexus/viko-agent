@@ -23,9 +23,9 @@ When an error is detected in logs:
 1. Classify severity (see table above)
 2. For **critical** — send Tier 1 notification immediately:
    ```
-   ⚠️ [Project] error di [component]
+   ⚠️ [Project] error in [component]
    [Error summary — 1 line]
-   Saya investigasi sekarang.
+   Investigating now.
    ```
 3. Read error context and relevant source files
 4. Identify root cause
@@ -39,7 +39,7 @@ When a pipeline fails:
 2. Identify the failing step and reason
 3. Notify Eksa:
    ```
-   ❌ [Project] CI gagal — [step]: [reason]
+   ❌ [Project] CI failed — [step]: [reason]
    ```
 4. Draft fix if cause is clear
 5. Wait for Eksa's direction before applying

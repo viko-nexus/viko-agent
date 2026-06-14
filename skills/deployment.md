@@ -29,13 +29,13 @@ Before sending the approval request, verify:
 
 Success:
 ```
-✅ [Project] deployed ke [env] — selesai
+✅ [Project] deployed to [env] — done
 ```
 
 Failure:
 ```
-❌ [Project] deploy gagal — [error summary]
-Rollback? Ya / Tidak
+❌ [Project] deploy failed — [error summary]
+Rollback? Yes / No
 ```
 
 ## Rollback

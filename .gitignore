@@ -1,6 +1,9 @@
 # Data volumes (bind-mounted into Docker — never committed, persists on laptop)
 data/
 
+# Claude Code local state (may contain command history with absolute paths)
+.claude/
+
 # macOS
 .DS_Store
 **/.DS_Store
@@ -14,6 +17,16 @@ logs/
 .env
 *.env
 *-env-backup.txt
+
+# Project context — contains client info, server details, internal paths
+# Tracked intentionally: projects/ is Viko's knowledge base (version-controlled)
+# Exception: auto-generated or runtime-only files
+projects/*/config.md
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
 
 # Node
 node_modules

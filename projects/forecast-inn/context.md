@@ -8,9 +8,9 @@ ForecastInn — hospitality management platform.
 
 | Resource | Path |
 |----------|------|
-| App root | `/Users/eksa/Projects/forecastinn/forecast-inn` |
-| Docs | `/Users/eksa/Projects/forecastinn/forecast-inn/docs/` |
-| AGENTS.md | `/Users/eksa/Projects/forecastinn/forecast-inn/AGENTS.md` |
+| App root | `~/Projects/forecastinn/forecast-inn` |
+| Docs | `~/Projects/forecastinn/forecast-inn/docs/` |
+| AGENTS.md | `~/Projects/forecastinn/forecast-inn/AGENTS.md` |
 
 ## Team
 
@@ -32,6 +32,40 @@ Before answering any technical question:
 
 - Respond when "viko" is mentioned in the ForecastInn group chat
 - Anyone can ask questions — only Eksa can authorize execution
+
+## Production Server Access
+
+Use the MCP tool — do not use raw SSH commands:
+
+```
+ssh_exec(project="forecastinn", command="...")
+```
+
+Examples:
+- `ssh_exec(project="forecastinn", command="docker ps")`
+- `ssh_exec(project="forecastinn", command="ls ~/forecastinn/")`
+- `ssh_exec(project="forecastinn", command="docker exec forecastinn-postgres psql -U forecastinn_user -d forecastinn_prod -c 'SELECT ...'")` 
+
+| Parameter | Value |
+|-----------|-------|
+| Server | `forecastinn-prod` (217.216.108.88) |
+| User | `deploy` |
+| App dir | `~/forecastinn/` on server |
+
+## Database
+
+PostgreSQL 16 (pgvector) runs in Docker as `forecastinn-postgres` on port 5432.
+Access via: `docker exec forecastinn-postgres psql -U forecastinn_user -d <db> -c "..."`
+
+| Database | Purpose |
+|----------|---------|
+| `forecastinn_prod` | Main production database |
+| `forecastinn_crm` | CRM module |
+| `forecastinn_stg` | Staging environment |
+| `forecastinn_n8n` | n8n automation (forecastinn-automate) |
+| `forecastinn_metabase` | Metabase analytics |
+
+Also running: Redis, MinIO, pgbouncer, n8n, Metabase, Grafana, Prometheus.
 
 ## Notes
 

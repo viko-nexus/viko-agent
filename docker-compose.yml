@@ -29,6 +29,22 @@ services:
       timeout: 10s
       retries: 3
 
+  # ── 9router init — creates combos after fresh install or data wipe ───────────
+  # Runs once per `docker compose up`, exits immediately after.
+  # Safe to re-run — idempotent. Waits for 9router to be healthy first.
+  9router-init:
+    container_name: viko-9router-init
+    image: python:3.11-slim
+    profiles: [gateway, full]
+    depends_on:
+      9router:
+        condition: service_healthy
+    volumes:
+      - ./data/9router:/app/data
+      - ./scripts:/scripts
+    command: python3 /scripts/init-9router.py /app/data/db/data.sqlite
+    restart: "no"
+
   # ── Hermes — AI orchestrator (single brain) ─────────────────────────────────
   # Built from Dockerfile.hermes (no official image).
   # Run: docker compose build hermes
@@ -49,9 +65,12 @@ services:
       # HERMES_HOME inside container is /opt/data (set in Dockerfile)
       - ./data/hermes:/opt/data
       # Mount ~/Projects at the same path so Viko uses identical paths to host
-      - /Users/eksa/Projects:/Users/eksa/Projects:rw
-      # Mount SSH keys so Viko can SSH to production servers
-      - /Users/eksa/.ssh:/opt/data/.ssh:ro
+      - ${HOME}/Projects:${HOME}/Projects:rw
+      # SSH keys mounted to both locations:
+      # - /opt/data/.ssh      → passwd home (SSH binary expands ~ from here for IdentityFile)
+      # - /opt/data/home/.ssh → subprocess HOME (Hermes sets HOME=/opt/data/home for all subprocesses)
+      - ${HOME}/.ssh:/opt/data/.ssh:ro
+      - ${HOME}/.ssh:/opt/data/home/.ssh:ro
       # Hooks from repo mounted into HERMES_HOME so Hermes loads them on startup
       - ./hooks:/opt/data/hooks:ro
     ports:
@@ -63,8 +82,11 @@ services:
       # 9router connection — populate OPENAI_API_KEY from 9router dashboard after setup
       OPENAI_BASE_URL: http://viko-9router:20128/v1
       OPENAI_API_KEY: ${OPENAI_API_KEY}
-      # WhatsApp home channel — Viko sends startup notifications here
-      WHATSAPP_HOME_CHANNEL: "6287820001010@s.whatsapp.net"
+      # WhatsApp home channel — Viko sends startup notifications here (set in .env)
+      WHATSAPP_HOME_CHANNEL: ${WHATSAPP_HOME_CHANNEL}
+      # 9Router media API (image gen, TTS, STT) — same URL and key as OPENAI_*
+      NINEROUTER_URL: http://viko-9router:20128
+      NINEROUTER_KEY: ${OPENAI_API_KEY}
       # Holographic memory — pure local SQLite, no API key needed
       # Dashboard (runs as s6 service alongside gateway)
       HERMES_DASHBOARD: "true"

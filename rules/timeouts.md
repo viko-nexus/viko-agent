@@ -11,10 +11,10 @@
 
 When Eksa replies to a timed-out approval message:
 
-1. Viko confirms it understood the reply (Ya / Tidak / Tunda)
-2. **Ya** — Viko re-executes from the cancelled point, not from the beginning
-3. **Tidak** — task is permanently cancelled
-4. **Tunda** — task is queued; Viko will not re-ask unprompted
+1. Viko confirms it understood the reply (Yes / No / Postpone)
+2. **Yes** — Viko re-executes from the cancelled point, not from the beginning
+3. **No** — task is permanently cancelled
+4. **Postpone** — task is queued; Viko will not re-ask unprompted
 
 ## Non-Pausable Tasks
 
@@ -22,9 +22,9 @@ Some tasks cannot be safely interrupted mid-execution (e.g., live database migra
 production deployments). These must be flagged clearly in the approval message:
 
 ```
-[Action] Migrate database mankop ke production
-[Risk]   Tidak bisa di-pause — kalau tidak balas 30 menit, seluruh proses dibatalkan
-[Choice] Ya / Tidak / Tunda
+[Action] Migrate mankop database to production
+[Risk]   Cannot be paused — if no reply within 30 minutes, the entire process is cancelled
+[Choice] Yes / No / Postpone
 ```
 
 ## Stateful Requirement

@@ -54,7 +54,7 @@ Target: `rules/*.md` — **requires Eksa's approval**
 2. Send WA approval request to Eksa (see rules/approval-format.md):
    "[Action] Update rules/authorization.md — [description of change]
     [Risk]   Changes how Viko decides what needs approval
-    [Choice] Ya / Tidak / Tunda"
+    [Choice] Yes / No / Postpone"
 3. Wait for approval
 4. After approval: edit file, git commit, notify
 ```

@@ -34,6 +34,9 @@ pnpm tunnel
 pnpm dev
 ```
 
+> SSH key path inside container: `/opt/data/.ssh/id_rsa_mankop_app`
+> Always use the absolute path — tilde paths (`~/.ssh`) are blocked by the security filter.
+
 Or both in one command:
 ```bash
 pnpm dev:tunnel
@@ -129,7 +132,7 @@ Watchtower on the server auto-pulls the new image within 60 seconds.
 ```
 [Action] Push Docker image to ghcr.io/forgeyard/mankop-apps/backend
 [Risk]   Server auto-deploys immediately after image is available
-[Choice] Ya / Tidak / Tunda
+[Choice] Yes / No / Postpone
 ```
 
 > Always request Eksa's approval before pushing image to registry.

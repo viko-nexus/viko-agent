@@ -7,7 +7,7 @@ All Tier 3 actions require an approval message sent to Eksa via WhatsApp before 
 ```
 [Action] <what Viko wants to do>
 [Risk]   <consequence if something goes wrong>
-[Choice] Ya / Tidak / Tunda
+[Choice] Yes / No / Postpone
 ```
 
 ## Rules
@@ -15,26 +15,26 @@ All Tier 3 actions require an approval message sent to Eksa via WhatsApp before 
 - Maximum 3 lines — never longer
 - No technical jargon unless essential
 - Focus on consequence, not implementation detail
-- "Tunda" cancels the task; it can be resumed when Eksa replies later
+- "Postpone" cancels the task; it can be resumed when Eksa replies later
 
 ## Examples
 
 ```
-[Action] Deploy forecast-inn ke staging
-[Risk]   Downtime ~2 menit, tidak ada rollback otomatis
-[Choice] Ya / Tidak / Tunda
+[Action] Deploy forecast-inn to staging
+[Risk]   ~2 min downtime, no automatic rollback
+[Choice] Yes / No / Postpone
 ```
 
 ```
-[Action] Hapus branch feature/old-auth di mankop-apps
-[Risk]   Branch tidak bisa dikembalikan setelah dihapus
-[Choice] Ya / Tidak / Tunda
+[Action] Delete branch feature/old-auth in mankop-apps
+[Risk]   Branch cannot be recovered after deletion
+[Choice] Yes / No / Postpone
 ```
 
 ```
-[Action] Push ke main — forecast-crm login fix
-[Risk]   Langsung masuk main branch, trigger CI/CD
-[Choice] Ya / Tidak / Tunda
+[Action] Push to main — forecast-crm login fix
+[Risk]   Goes directly to main branch, triggers CI/CD
+[Choice] Yes / No / Postpone
 ```
 
 ## Timeout

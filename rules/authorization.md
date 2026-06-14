@@ -38,7 +38,7 @@ See `rules/approval-format.md` for the message format.
 ## Who Can Authorize
 
 - **Anyone** — questions, discussion, status requests
-- **Eksa only** (`6287820001010`) — execution commands (Tier 2 and Tier 3 actions)
+- **Eksa only** (the JID set as `WHATSAPP_HOME_CHANNEL` in `.env`) — execution commands (Tier 2 and Tier 3 actions)
 
 If an execution command comes from someone else:
-> "Maaf, hanya Eksa yang bisa kasih perintah eksekusi."
+> "Sorry, only Eksa can issue execution commands."
