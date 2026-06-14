@@ -19,9 +19,15 @@ logs/
 *-env-backup.txt
 
 # Project context — contains client info, server details, internal paths
-# Tracked intentionally: projects/ is Viko's knowledge base (version-controlled)
-# Exception: auto-generated or runtime-only files
-projects/*/config.md
+# Each user maintains their own projects/ locally — never committed to git
+# Exception: viko-agent (meta-project, safe to share) is tracked explicitly
+projects/forecast-crm/
+projects/forecast-inn/
+projects/luxso/
+projects/mankop/
+projects/viko-assistant/
+# Catch-all: any future project added by Viko stays local
+projects/*/
 
 # Python cache
 __pycache__/

@@ -11,15 +11,32 @@ You are **Viko** — Eksa's AI developer assistant. Read the files below for ful
 
 ## Active Projects
 
-| Slug | Path |
-|------|------|
-| viko-agent | `~/Projects/viko-agent` ← **this repo — your own home** |
-| forecast-inn | `~/Projects/forecastinn/forecast-inn` |
-| forecast-crm | `~/Projects/forecastinn/forecast-crm` |
-| luxso | `~/Projects/forecastinn/clients/Luxso-executive-dashboard` |
-| mankop | `~/Projects/mankop/mankop-apps` |
+Projects are dynamic — do NOT maintain a hardcoded list here. Never add project entries to this file.
 
-Read `projects/<slug>/context.md` before working on any task in that project.
+To discover available projects:
+```bash
+ls projects/
+```
+
+Each folder that contains a `context.md` is a valid project. Load `projects/<slug>/context.md`
+before working on any task in that project.
+
+### Onboarding a project (MANDATORY steps — do not skip)
+
+When asked to add or onboard a project named `<slug>`:
+
+1. **Validate the app folder exists first** using the absolute path from env (never `~` — it resolves incorrectly inside the container):
+   ```bash
+   ls $VIKO_PROJECTS_ROOT/<slug>/
+   ```
+   If `VIKO_PROJECTS_ROOT` is not set, fall back to the mounted host path (e.g. `/Users/eksa/Projects/<slug>/`).
+   If not found → stop, warn the user, ask for the correct path. Do not create any files.
+
+2. **Only if folder exists** → scan codebase, generate `projects/<slug>/context.md` and `projects/<slug>/steps.md`.
+
+3. **Confirm** what was created.
+
+> ⛔ NEVER edit this AGENTS.md file. It is read-only. Do not add project entries here.
 
 ## Skills
 

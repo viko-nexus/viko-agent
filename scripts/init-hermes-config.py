@@ -56,6 +56,11 @@ def _get(key: str, default: str = "") -> str:
 NINEROUTER_API_KEY = _get("OPENAI_API_KEY")
 NINEROUTER_URL = _get("OPENAI_BASE_URL", "http://viko-9router:20128/v1")
 
+# Repo root is two levels up from this script (scripts/init-hermes-config.py → repo/)
+VIKO_AGENT_ROOT = str(Path(__file__).parent.parent.resolve())
+# Projects root: where all app projects live (must be inside ~/Projects — see docker-compose mounts)
+VIKO_PROJECTS_ROOT = _get("VIKO_PROJECTS_ROOT", str(Path.home() / "Projects"))
+
 DESIRED = {
     # Primary model — viko-combo routes to best available via fallback
     "model": {
@@ -73,7 +78,45 @@ DESIRED = {
     "web": {
         "extract_backend": "https://r.jina.ai/",
     },
-    # Vision: use Claude Sonnet via 9router for image analysis
+    # WhatsApp: require @mention in groups, ignore unknown DMs, inject project context
+    "whatsapp": {
+        "require_mention": True,
+        "unauthorized_dm_behavior": "ignore",
+        "channel_prompts": {
+            # 2a. PRODUK SAAS MANKOP group
+            "120363409428298054@g.us": (
+                "You are in the Mankop project group (2a. PRODUK SAAS MANKOP). "
+                "Active project: mankop. Load mankop project context before responding. "
+                "Anyone in this group can ask questions — only Eksa can authorize execution."
+            ),
+        },
+    },
+    # Display: language + runtime footer (model, context %)
+    "display": {
+        "language": "id",
+        "runtime_footer": {
+            "enabled": False,
+            "fields": ["model", "context_pct"],
+        },
+    },
+    # Skills: expose viko-agent skills as slash commands, review AI-created skills
+    # Path is derived from this script's location — works for any user/machine
+    "skills": {
+        "external_dirs": [f"{VIKO_AGENT_ROOT}/skills"],
+        "guard_agent_created": True,
+    },
+    # Terminal starts in projects root so Viko can cd into any project
+    "terminal": {
+        "cwd": VIKO_PROJECTS_ROOT,
+    },
+    # Timezone for correct cron scheduling
+    "timezone": "Asia/Makassar",
+    # Kanban: manual control (no auto-decompose), one task at a time
+    "kanban": {
+        "auto_decompose": False,
+        "max_in_progress_per_profile": 1,
+    },
+    # Auxiliary models: vision via Sonnet, compression via Haiku (cheaper)
     "auxiliary": {
         "vision": {
             "provider": "openai",
@@ -84,22 +127,14 @@ DESIRED = {
             "extra_body": {},
             "download_timeout": 30,
         },
-    },
-    # WhatsApp: require @mention in groups, inject project context per channel
-    "whatsapp": {
-        "require_mention": True,
-        "channel_prompts": {
-            # 2a. PRODUK SAAS MANKOP group
-            "120363409428298054@g.us": (
-                "You are in the Mankop project group (2a. PRODUK SAAS MANKOP). "
-                "Active project: mankop. Load mankop project context before responding. "
-                "Anyone in this group can ask questions — only Eksa can authorize execution."
-            ),
+        "compression": {
+            "provider": "openai",
+            "model": "cc/claude-haiku-4-5-20251001",
+            "base_url": NINEROUTER_URL,
+            "api_key": NINEROUTER_API_KEY,
+            "timeout": 120,
+            "extra_body": {},
         },
-    },
-    # Language for Hermes UI
-    "display": {
-        "language": "id",
     },
 }
 
