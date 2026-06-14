@@ -9,7 +9,7 @@ This repo is Viko's "home" — it defines who Viko is, what Viko can do, and wha
 knows about each project. Read by the orchestrator (Hermes). Not app code.
 
 Exception: `patches/` and `hooks/` are operational — applied to Hermes at container
-build time or loaded as event hooks.
+build time or loaded as event hooks. `scripts/` contains setup automation.
 
 ## Repository Structure
 
@@ -30,9 +30,13 @@ viko-agent/
 │   ├── debugging.md
 │   ├── deployment.md
 │   ├── testing.md
-│   └── monitoring.md
+│   ├── monitoring.md
+│   ├── self-monitoring.md
+│   ├── web-research.md
+│   └── media.md
 │
 ├── projects/              ← Per-project context (dossier, not app code)
+│   │                        gitignored except projects/viko-agent/
 │   └── <slug>/
 │       ├── context.md     ← team, paths, stack, session init
 │       ├── steps.md       ← project-specific steps (Viko updates over time)
@@ -41,26 +45,38 @@ viko-agent/
 ├── patches/               ← Applied to Hermes at container build time
 │   ├── whatsapp-bridge.js
 │   ├── apply-run-py.py
-│   └── apply-agent-msgs.py
+│   ├── apply-agent-msgs.py
+│   ├── patch-ssh-guard.py
+│   └── patch-model-router.py
 │
 ├── hooks/                 ← Hermes event hooks (mounted into /opt/data/hooks at runtime)
 │   └── viko-startup/      ← Send WA notification when Viko comes online
 │
-├── docker-compose.yml     ← Hermes + 9router
+├── scripts/               ← Setup and restore automation
+│   ├── init-9router.py    ← Idempotent combo setup for 9router
+│   └── init-hermes-config.py  ← Idempotent config restore for Hermes
+│
+├── docs/                  ← Setup and operational documentation
+│   ├── 9router/setup.md
+│   └── hermes/setup.md
+│
+├── docker-compose.yml     ← Hermes + 9router + 9router-init
+├── Dockerfile.hermes      ← Hermes image with patches applied
 ├── .env.example           ← Secrets template (copy to .env, never commit)
 └── data/                  ← Bind-mount targets — gitignored, persists on laptop
-    ├── hermes/            ← HERMES_HOME: config.yaml, SOUL.md, state.db, Hindsight memory
+    ├── hermes/            ← HERMES_HOME: config.yaml, SOUL.md, state.db, memory
     └── 9router/
 ```
 
 ## Viko Startup Sequence
 
 Hermes reads in this order on each session:
-1. `soul/identity.md` (via AGENTS.md)
-2. `rules/` — all files (via AGENTS.md)
-3. `skills/` — relevant to the current task (via AGENTS.md)
-4. `projects/<active>/context.md` (via AGENTS.md)
-5. Long-term memory from Hindsight (`data/hermes/hindsight/` — local embedded mode)
+1. `AGENTS.md` — entry point: loads identity, rules, and skill references
+2. `soul/identity.md` — who Viko is
+3. `rules/` — all files (authorization, approval, timeouts, project detection)
+4. `skills/` — relevant to the current task (exposed as slash commands via `skills.external_dirs`)
+5. `projects/<active>/context.md` — discovered dynamically via `ls projects/`
+6. Long-term memory from Holographic (`data/hermes/memory_store.db`)
 
 ## Memory
 
@@ -70,19 +86,49 @@ Viko uses **Holographic** (pure local) for persistent memory across sessions:
 - Data persists in `data/hermes/memory_store.db` (gitignored, survives restarts)
 - Activated via `memory.provider: holographic` in `data/hermes/config.yaml`
 
+## Model Routing
+
+Each message is automatically routed to the right model before the LLM is called:
+
+| Trigger | Combo | Primary Model |
+|---------|-------|---------------|
+| Code keywords (`debug`, `fix`, `api`, `deploy`, …) | `viko-code` | Claude Sonnet |
+| Everything else | `viko-chat` | Claude Haiku |
+| Manual `/model` override | preserved until `/new` or `/reset` | — |
+
+Each combo has Groq fallback: `sonnet/haiku → groq/llama-3.3 → groq/maverick`.
+Implemented in `patches/patch-model-router.py`.
+
+## Projects
+
+Projects are **dynamic and local** — not committed to git (except `projects/viko-agent/`).
+
+- Each user maintains their own `projects/` directory locally
+- Viko discovers available projects by running `ls projects/`
+- To onboard an existing project: tell Viko "add project <name> to viko"
+  Viko will validate the folder exists, scan the codebase, and generate `context.md`
+
+App code lives outside this repo, mounted at the same path inside Docker:
+```yaml
+volumes:
+  - ${HOME}/Projects:${HOME}/Projects:rw
+```
+
+Set `VIKO_PROJECTS_ROOT` in `.env` to tell Viko where your projects root is.
+
 ## What Lives Where
 
 | Content | Location |
 |---------|----------|
 | Identity and values | `soul/` |
 | Behavior rules | `rules/` |
-| Domain skills | `skills/` |
-| Project context and steps | `projects/<slug>/` |
-| Approved plans | `projects/<slug>/plans/` |
-| Long-term memory (Hindsight) | `data/hermes/` — gitignored |
+| Domain skills | `skills/` — exposed as `/skill-name` slash commands |
+| Project context and steps | `projects/<slug>/` — gitignored, local only |
+| Long-term memory | `data/hermes/memory_store.db` — gitignored |
 | Event hooks | `hooks/` — mounted at runtime into `/opt/data/hooks/` |
-| Hermes patches | `patches/` — applied at Docker build |
-| App code | `~/Projects/<name>/` — mounted read-write at same path |
+| Hermes patches | `patches/` — applied at `docker compose build hermes` |
+| Setup scripts | `scripts/` — run manually or via docker-compose service |
+| App code | `$VIKO_PROJECTS_ROOT/<name>/` — mounted read-write at same path |
 | Secrets | `.env` — never committed |
 
 ## Docker Operations
@@ -104,12 +150,25 @@ docker compose logs -f hermes
 docker compose down
 ```
 
-## Projects
+## After a Reset
 
-| Slug | Description | App Path |
-|------|-------------|----------|
-| `viko-agent` | Viko's own config repo | `~/Projects/viko-agent` |
-| `forecast-inn` | ForecastInn platform | `~/Projects/forecastinn/forecast-inn` |
-| `forecast-crm` | ForecastInn CRM | `~/Projects/forecastinn/forecast-crm` |
-| `luxso` | Luxso Executive Dashboard | `~/Projects/forecastinn/clients/Luxso-executive-dashboard` |
-| `mankop` | Mankop (Koperasi Multi Pihak) | `~/Projects/mankop/mankop-apps` |
+See `config/README.md` for full recovery steps.
+Quick reference:
+
+```bash
+# 9router combos — auto-restored on next docker compose up
+# Hermes config — restore manually:
+python3 scripts/init-hermes-config.py
+docker compose --profile full up -d --force-recreate hermes
+```
+
+## Environment Variables
+
+See `.env.example` for the full list. Key variables:
+
+| Variable | Purpose |
+|----------|---------|
+| `OPENAI_API_KEY` | 9router API key for Hermes |
+| `OPENAI_BASE_URL` | 9router URL (default: `http://viko-9router:20128/v1`) |
+| `WHATSAPP_HOME_CHANNEL` | JID Viko sends startup notifications to |
+| `VIKO_PROJECTS_ROOT` | Root folder for all your app projects (e.g. `~/Projects`) |

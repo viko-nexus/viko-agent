@@ -16,7 +16,7 @@ combo per message via the **model-router patch** (`patches/patch-model-router.py
 **Routing logic**: keywords like `debug`, `fix`, `code`, `analisa`, `deploy`, `api`
 → `viko-code` (sonnet). Everything else → `viko-chat` (haiku).
 
-Round Robin is **OFF** on all combos — fallback/sequential mode.
+Round Robin is **OFF** on all combos — sequential fallback mode.
 
 ## Auto-Initialization
 
@@ -45,18 +45,19 @@ Re-create it at: **Endpoint → API Keys → Create Key**.
 
 ## Caveman Compression (Token Saver)
 
-To enable ~65% fewer output tokens:
-1. Open `http://localhost:20128` → **Endpoint**
-2. Toggle **"Compress LLM output (Caveman)"** → ON
+Reduces output tokens by ~65%. Enable manually after setup:
 
-Not automated — enable manually after setup.
+1. Open `http://localhost:20128` → **Endpoint**
+2. Toggle **"Compress LLM output (Caveman)"** → ON, set to **Full** mode
+
+Not automated — must be re-enabled after a data wipe.
 
 ## Key Endpoints
 
 | Path | What |
 |------|------|
 | `/v1/chat/completions` | Main LLM (OpenAI-compatible) |
-| `/v1/models` | List available models |
+| `/v1/models` | List available models and combos |
 | `/v1/images/generations` | Image generation |
 | `/v1/audio/speech` | Text-to-speech |
 | `/v1/audio/transcriptions` | Speech-to-text |

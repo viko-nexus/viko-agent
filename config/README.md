@@ -14,22 +14,23 @@ All services run in Docker. Compose file: `../docker-compose.yml`
 ## Quick Start
 
 ```bash
-# Copy secrets template and fill in keys
+# 1. Copy secrets template and fill in values
 cp .env.example .env
 
-# Build Hermes image (required once, and after patch changes)
+# 2. Build Hermes image (required once, and after patch changes)
 docker compose build hermes
 
-# Start everything
+# 3. Start everything
 docker compose --profile full up -d
 # → 9router starts → 9router-init creates combos → Hermes starts
+
+# 4. Apply critical Hermes config settings
+python3 scripts/init-hermes-config.py
+docker compose --profile full up -d --force-recreate hermes
 
 # View logs
 docker compose logs -f hermes
 docker compose logs -f 9router
-
-# Rebuild + restart Hermes after patch changes
-docker compose build hermes && docker compose --profile full up -d --force-recreate hermes
 ```
 
 ## After a Reset (data/ wiped)
@@ -40,16 +41,24 @@ API keys must be re-added manually via dashboard:
 ```
 http://localhost:20128 → Providers → Claude Code (OAuth) + Groq
 ```
+Re-enable Caveman compression: **Endpoint → Compress LLM output → ON (Full)**.
 
 ### Hermes config reset
 ```bash
 # 1. Start Hermes once (creates fresh config.yaml)
 docker compose --profile full up -d
 
-# 2. Apply critical settings
+# 2. Apply critical settings (model routing, timezone, skills, WhatsApp, etc.)
 python3 scripts/init-hermes-config.py
 
-# 3. Restart
+# 3. Restart to apply
+docker compose --profile full up -d --force-recreate hermes
+```
+
+### Hermes image rebuild
+Required after changes to `Dockerfile.hermes` or any file in `patches/`:
+```bash
+docker compose build hermes
 docker compose --profile full up -d --force-recreate hermes
 ```
 
@@ -58,6 +67,7 @@ docker compose --profile full up -d --force-recreate hermes
 docker exec -u root viko-hermes chown -R hermes:hermes /opt/hermes/scripts/whatsapp-bridge
 docker exec -it -u hermes viko-hermes hermes whatsapp
 ```
+Scan QR with the bot's dedicated number.
 
 ## Full Documentation
 
@@ -80,7 +90,7 @@ data/
     ├── SOUL.md               ← runtime persona (not in git — see soul/identity.md)
     ├── cron/jobs.json        ← cron job definitions
     ├── scripts/              ← cron helper scripts (e.g., cleanup-media.sh)
-    ├── memory_store.db       ← Holographic memory (SQLite)
+    ├── memory_store.db       ← Holographic memory (SQLite, local only)
     └── platforms/
         └── whatsapp/
             └── session/creds.json  ← WhatsApp session (re-pair if deleted)
@@ -90,5 +100,6 @@ data/
 
 - All secrets in `.env` — never committed to git
 - `data/` gitignored — contains credentials, session tokens, API keys
-- `.env.example` documents required variables without values
-- 9router API key (`OPENAI_API_KEY` in `.env`) is scoped to local 9router only
+- `projects/` gitignored (except `projects/viko-agent/`) — contains private client info
+- `.env.example` documents all required variables without values
+- `VIKO_PROJECTS_ROOT` in `.env` defines the local projects path — not hardcoded anywhere

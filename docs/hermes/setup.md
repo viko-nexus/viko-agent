@@ -24,11 +24,20 @@ docker compose --profile full up -d --force-recreate hermes
 |---------|-----|-------|-----|
 | `model.default` | — | `viko-combo` | Routes through 9router combo |
 | `model.provider` | — | `openai` | 9router is OpenAI-compatible |
-| `web.extract_backend` | — | `https://r.jina.ai/` | Free URL fetcher (no API key) |
-| `auxiliary.vision.model` | — | `cc/claude-sonnet-4-6` | Dedicated vision model |
+| `web.extract_backend` | — | `https://r.jina.ai/` | Free URL fetcher, no API key needed |
+| `auxiliary.vision.model` | — | `cc/claude-sonnet-4-6` | Dedicated vision model via 9router |
+| `auxiliary.compression.model` | — | `cc/claude-haiku-4-5-20251001` | Cheaper context compression |
+| `terminal.cwd` | — | `$VIKO_PROJECTS_ROOT` | Terminal starts in projects root |
+| `timezone` | — | `Asia/Makassar` | Correct local time for cron (WITA, UTC+8) |
+| `skills.external_dirs` | — | `[<repo>/skills]` | Exposes skills as `/skill-name` slash commands |
+| `skills.guard_agent_created` | — | `true` | Review before saving AI-generated skills |
 | `whatsapp.require_mention` | — | `true` | Silent in groups unless @mentioned |
-| `whatsapp.channel_prompts` | `120363409428298054@g.us` | Mankop group context | Auto-loads project context |
+| `whatsapp.unauthorized_dm_behavior` | — | `ignore` | Ignore DMs from unknown numbers |
+| `whatsapp.channel_prompts` | per group ID | project context prompt | Auto-loads project on group message |
+| `kanban.auto_decompose` | — | `false` | Manual task control, no auto-split |
+| `kanban.max_in_progress_per_profile` | — | `1` | One active task at a time |
 | `display.language` | — | `id` | Indonesian UI labels |
+| `display.runtime_footer.enabled` | — | `false` | Footer disabled (was: model + context %) |
 
 ## Patches (Applied at Build Time)
 
@@ -38,9 +47,10 @@ They persist across restarts — only need rebuild to update.
 | Patch | What |
 |-------|------|
 | `whatsapp-bridge.js` | WhatsApp integration bridge |
-| `indonesian-locale.py` | Translates system notifications to Indonesian |
-| `patch-ssh-guard.py` | SSH security hardening |
-| `patch-model-router.py` | Routes messages to viko-chat or viko-code based on content |
+| `apply-run-py.py` | Applies run.py modifications (base patch) |
+| `apply-agent-msgs.py` | Agent message handling improvements |
+| `patch-ssh-guard.py` | Narrows SSH threat pattern — allows legitimate SSH, blocks key exfiltration |
+| `patch-model-router.py` | Routes messages to `viko-chat` or `viko-code` based on content keywords |
 
 ## Model Routing (patch-model-router.py)
 
@@ -62,22 +72,42 @@ Message → keyword check → select combo → LLM called
 Manual `/model` switches are preserved — the patch only fires when no
 user-initiated override is active. Resets on `/new` or `/reset`.
 
+## Skills as Slash Commands
+
+With `skills.external_dirs` pointing to `<repo>/skills`, Viko exposes each skill
+file as a slash command in WhatsApp:
+
+| Slash Command | File |
+|---------------|------|
+| `/debugging` | `skills/debugging.md` |
+| `/deployment` | `skills/deployment.md` |
+| `/planning` | `skills/planning.md` |
+| `/testing` | `skills/testing.md` |
+| `/monitoring` | `skills/monitoring.md` |
+| `/self-monitoring` | `skills/self-monitoring.md` |
+| `/web-research` | `skills/web-research.md` |
+
 ## Cron Jobs
 
 Cron definitions: `data/hermes/cron/jobs.json`
 
 | Job | Schedule | Type |
 |-----|----------|------|
-| `viko-self-monitor-01` | Every 2 hours | LLM agent (reads logs, sends WA if errors) |
-| `cleanup-media-files-01` | Daily 3am | No-agent script (deletes media >30 days) |
+| `viko-self-monitor-01` | Every 2 hours | LLM agent (reads logs, sends WA if errors found) |
+| `cleanup-media-files-01` | Daily 3am WITA | No-agent script (deletes media >30 days) |
 
 Cleanup script: `data/hermes/scripts/cleanup-media.sh`
 
 ## WhatsApp Groups
 
-| Group | Chat ID | Project |
-|-------|---------|---------|
-| 2a. PRODUK SAAS MANKOP | `120363409428298054@g.us` | mankop |
+Group-specific prompts are configured in `whatsapp.channel_prompts` (in `config.yaml`
+and restored by `init-hermes-config.py`). Each group ID maps to a context injection
+that tells Viko which project is active in that group.
+
+To add a new group:
+1. Get the group's chat ID (send a message to Viko in the group, check logs)
+2. Add to `init-hermes-config.py` under `DESIRED["whatsapp"]["channel_prompts"]`
+3. Run `python3 scripts/init-hermes-config.py` and restart Hermes
 
 ## Re-pair WhatsApp
 
