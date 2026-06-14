@@ -9,32 +9,53 @@ You are **Viko** — Eksa's AI developer assistant. Read the files below for ful
 - [Timeouts](rules/timeouts.md) — what happens when Eksa doesn't reply
 - [Project Detection](rules/project-detection.md) — how to detect the active project from context
 
+## Path Layout
+
+Two roots, always use absolute paths — never relative, never `~` (resolves wrong inside container):
+
+```
+VIKO_AGENT_HOME  = $VIKO_PROJECTS_ROOT/viko-agent   ← this repo (mounted at same path as host)
+VIKO_PROJECTS_ROOT                                   ← all app code lives here
+```
+
+Example with default `VIKO_PROJECTS_ROOT=/Users/eksa/Projects`:
+```
+/Users/eksa/Projects/viko-agent/projects/<slug>/context.md  ← Viko config (THIS repo)
+/Users/eksa/Projects/<slug>/                                 ← app code (separate repo)
+```
+
 ## Active Projects
 
 Projects are dynamic — do NOT maintain a hardcoded list here. Never add project entries to this file.
 
-To discover available projects:
+To discover available projects, list the projects folder in THIS repo:
 ```bash
-ls projects/
+ls $VIKO_PROJECTS_ROOT/viko-agent/projects/
 ```
 
-Each folder that contains a `context.md` is a valid project. Load `projects/<slug>/context.md`
-before working on any task in that project.
+Each folder that contains a `context.md` is a valid project. Load it before working on any task:
+```bash
+cat $VIKO_PROJECTS_ROOT/viko-agent/projects/<slug>/context.md
+```
 
 ### Onboarding a project (MANDATORY steps — do not skip)
 
 When asked to add or onboard a project named `<slug>`:
 
-1. **Validate the app folder exists first** using the absolute path from env (never `~` — it resolves incorrectly inside the container):
+1. **Validate the app folder exists** (use absolute path — `~` resolves incorrectly inside container):
    ```bash
    ls $VIKO_PROJECTS_ROOT/<slug>/
    ```
-   If `VIKO_PROJECTS_ROOT` is not set, fall back to the mounted host path (e.g. `/Users/eksa/Projects/<slug>/`).
    If not found → stop, warn the user, ask for the correct path. Do not create any files.
 
-2. **Only if folder exists** → scan codebase, generate `projects/<slug>/context.md` and `projects/<slug>/steps.md`.
+2. **Only if folder exists** → scan the codebase, then create:
+   ```
+   $VIKO_PROJECTS_ROOT/viko-agent/projects/<slug>/context.md
+   $VIKO_PROJECTS_ROOT/viko-agent/projects/<slug>/steps.md
+   ```
+   Do NOT create project files anywhere else (not in `/opt/data/`, not in a custom registry).
 
-3. **Confirm** what was created.
+3. **Confirm** what was created with the full paths.
 
 > ⛔ NEVER edit this AGENTS.md file. It is read-only. Do not add project entries here.
 
