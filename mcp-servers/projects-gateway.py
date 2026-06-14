@@ -68,7 +68,7 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
 
     try:
         result = subprocess.run(
-            ["ssh", "-o", "StrictHostKeyChecking=no", "-o", "ConnectTimeout=15", ssh_host, command],
+            ["ssh", "-F", "/opt/data/.ssh/config", "-o", "ConnectTimeout=15", ssh_host, command],
             capture_output=True,
             text=True,
             timeout=60,

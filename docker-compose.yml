@@ -66,11 +66,11 @@ services:
       - ./data/hermes:/opt/data
       # Mount ~/Projects at the same path so Viko uses identical paths to host
       - ${HOME}/Projects:${HOME}/Projects:rw
-      # SSH keys mounted to both locations:
-      # - /opt/data/.ssh      → passwd home (SSH binary expands ~ from here for IdentityFile)
-      # - /opt/data/home/.ssh → subprocess HOME (Hermes sets HOME=/opt/data/home for all subprocesses)
-      - ${HOME}/.ssh:/opt/data/.ssh:ro
-      - ${HOME}/.ssh:/opt/data/home/.ssh:ro
+      # Dedicated Viko SSH key (id_viko) — separate from personal keys.
+      # Config specifies viko-exec user + StrictHostKeyChecking yes for all prod hosts.
+      # Mounted to both SSH lookup locations inside the container.
+      - ${HOME}/.viko/ssh:/opt/data/.ssh:ro
+      - ${HOME}/.viko/ssh:/opt/data/home/.ssh:ro
       # Hooks from repo mounted into HERMES_HOME so Hermes loads them on startup
       - ./hooks:/opt/data/hooks:ro
       # MCP servers from repo — mounted read-only, registered in config.yaml
