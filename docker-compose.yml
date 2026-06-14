@@ -73,6 +73,8 @@ services:
       - ${HOME}/.ssh:/opt/data/home/.ssh:ro
       # Hooks from repo mounted into HERMES_HOME so Hermes loads them on startup
       - ./hooks:/opt/data/hooks:ro
+      # MCP servers from repo — mounted read-only, registered in config.yaml
+      - ./mcp-servers:/opt/viko/mcp-servers:ro
     ports:
       - "9119:9119"
     environment:
@@ -92,6 +94,10 @@ services:
       # Projects root — same absolute path as host (bind-mounted at identical path)
       # Used by Viko to locate app code and write project context files
       VIKO_PROJECTS_ROOT: ${VIKO_PROJECTS_ROOT}
+      # Fix: macOS Docker Desktop VirtioFS throws EIO when Python reads system CA certs.
+      # Use certifi bundle (inside image layers, not VirtioFS) to bypass the issue.
+      SSL_CERT_FILE: /opt/hermes/.venv/lib/python3.13/site-packages/certifi/cacert.pem
+      REQUESTS_CA_BUNDLE: /opt/hermes/.venv/lib/python3.13/site-packages/certifi/cacert.pem
       # Holographic memory — pure local SQLite, no API key needed
       # Dashboard (runs as s6 service alongside gateway)
       HERMES_DASHBOARD: "true"

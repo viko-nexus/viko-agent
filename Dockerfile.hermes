@@ -93,6 +93,9 @@ RUN uv sync --frozen --no-install-project \
 # ── Install Hermes as editable package ────────────────────────────────────────
 RUN uv pip install --no-cache-dir --no-deps -e "."
 
+# ── Extra tools: chart generation + web search ────────────────────────────────
+RUN uv pip install --no-cache-dir matplotlib duckduckgo-search
+
 # ── Chromium (for browser tools + agent-browser screenshots) ─────────────────
 RUN apt-get update && \
     apt-get install -y --no-install-recommends chromium && \
@@ -121,6 +124,10 @@ RUN mkdir -p /etc/cont-init.d /etc/s6-overlay/s6-rc.d && \
 RUN mkdir -p /opt/hermes/bin && \
     cp /opt/hermes/docker/hermes-exec-shim.sh /opt/hermes/bin/hermes && \
     chmod +x /opt/hermes/bin/hermes
+
+# ── viko helper: send latest browser recording as WA video ────────────────────
+COPY scripts/viko-send-video.sh /opt/hermes/bin/viko-send-video
+RUN chmod +x /opt/hermes/bin/viko-send-video
 
 # ── Runtime environment ───────────────────────────────────────────────────────
 ENV HERMES_WEB_DIST=/opt/hermes/hermes_cli/web_dist

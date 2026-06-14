@@ -599,6 +599,14 @@ app.post('/send-media', async (req, res) => {
     return res.status(400).json({ error: 'chatId and filePath are required' });
   }
 
+  // Block GIF files — use send_browser_video MCP tool instead
+  if (filePath.toLowerCase().endsWith('.gif')) {
+    return res.status(415).json({
+      error: 'GIF not supported for video delivery. Use the send_browser_video MCP tool to send browser recordings as MP4.',
+      hint: 'send_browser_video(chat_id, caption) — finds latest webm recording and converts to mp4 automatically.'
+    });
+  }
+
   try {
     if (!existsSync(filePath)) {
       return res.status(404).json({ error: `File not found: ${filePath}` });

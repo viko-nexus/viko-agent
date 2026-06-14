@@ -42,6 +42,7 @@ INJECT_CODE = (
     '                "tes","skrip","optimasi","performa","arsitektur","desain",\n'
     '                "algoritma","logika","migrasi","skema","komponen","endpoint",\n'
     '                "tiket","kanban","approve","kerjakan","selesaikan","tutup tiket",\n'
+    '                "browser","screenshot","rekam","rekaman","video","capture","record",\n'
     '            ]\n'
     '            _vr_is_code = any(kw in _vr_text for kw in _vr_code_kws)\n'
     '            _vr_model = "viko-code" if _vr_is_code else "viko-chat"\n'

@@ -159,6 +159,120 @@ curl -s -X POST http://localhost:3000/send-media \
 
 ---
 
+---
+
+## Browser Video Capture
+
+Viko can record browser sessions as video and send them to WhatsApp.
+
+**How it works:** Recording starts automatically when `browser_navigate` is called.
+Session saved as `.webm` in `/opt/data/browser_recordings/`. Convert to `.mp4` before sending.
+
+### Full flow
+
+```bash
+# Step 1: Do your browser work (recording starts automatically)
+# Use browser_navigate, browser_click, browser_type, browser_scroll, etc.
+
+# Step 2: Find the latest recording after the session ends
+LATEST=$(ls -t /opt/data/browser_recordings/session_*.webm 2>/dev/null | head -1)
+
+if [ -z "$LATEST" ]; then
+  echo "No recording found"
+  exit 1
+fi
+
+echo "Recording: $LATEST"
+
+# Step 3: Convert webm → mp4 (WhatsApp needs mp4)
+OUTPUT="/tmp/capture_$(date +%Y%m%d_%H%M%S).mp4"
+ffmpeg -y -i "$LATEST" -c:v libx264 -preset fast -crf 28 -c:a aac "$OUTPUT"
+
+echo "Converted: $OUTPUT"
+
+# Step 4: Send to WhatsApp
+curl -s -X POST http://localhost:3000/send-media \
+  -H "Content-Type: application/json" \
+  -d "{
+    \"chatId\": \"<chatId>\",
+    \"filePath\": \"$OUTPUT\",
+    \"mediaType\": \"video\",
+    \"caption\": \"Recording: <description>\"
+  }"
+```
+
+### Tips
+
+- **Long recordings**: WhatsApp limit ~64MB. If too big, trim with ffmpeg:
+  ```bash
+  ffmpeg -y -i "$LATEST" -t 60 -c:v libx264 -crf 28 -c:a aac /tmp/trimmed.mp4
+  ```
+- **Recordings auto-deleted after 72 hours** — send to WA promptly
+- **Recording path**: `/opt/data/browser_recordings/session_YYYYMMDD_HHMMSS_<taskid>.webm`
+
+---
+
+---
+
+## Chart Generation (matplotlib)
+
+Generate charts from data and send to WhatsApp as image.
+
+### Full flow
+
+```python
+# /tmp/chart.py
+import matplotlib
+matplotlib.use('Agg')  # headless, no display needed
+import matplotlib.pyplot as plt
+import matplotlib.ticker as mticker
+
+fig, ax = plt.subplots(figsize=(10, 5))
+
+# Example: line chart
+labels = ['00:00', '06:00', '12:00', '18:00', '23:00']
+values = [20, 45, 78, 55, 30]
+
+ax.plot(labels, values, marker='o', linewidth=2, color='#2196F3')
+ax.fill_between(range(len(labels)), values, alpha=0.15, color='#2196F3')
+ax.set_title('CPU Usage — Today', fontsize=14, fontweight='bold')
+ax.set_ylabel('Usage (%)')
+ax.set_ylim(0, 100)
+ax.grid(axis='y', alpha=0.3)
+ax.set_xticks(range(len(labels)))
+ax.set_xticklabels(labels)
+
+plt.tight_layout()
+plt.savefig('/tmp/chart.png', dpi=150, bbox_inches='tight')
+plt.close()
+print('Chart saved')
+```
+
+```bash
+# Run and send
+python3 /tmp/chart.py
+curl -s -X POST http://localhost:3000/send-media \
+  -H "Content-Type: application/json" \
+  -d '{"chatId":"<chatId>","filePath":"/tmp/chart.png","mediaType":"image","caption":"CPU Usage Today"}'
+```
+
+### Chart types
+
+| Type | ax method |
+|------|-----------|
+| Line | `ax.plot(x, y)` |
+| Bar | `ax.bar(x, y)` |
+| Horizontal bar | `ax.barh(x, y)` |
+| Pie | `ax.pie(values, labels=labels)` |
+| Area | `ax.fill_between(x, y)` |
+
+### Tips
+- Dark theme: `plt.style.use('dark_background')`
+- Multiple series: call `ax.plot(...)` / `ax.bar(...)` multiple times + `ax.legend()`
+- Format Y-axis Rupiah: `ax.yaxis.set_major_formatter(mticker.FuncFormatter(lambda x, _: f'Rp{x:,.0f}'))`
+
+---
+
 ## Rules
 
 - Always check `$NINEROUTER_URL/v1/models/<type>` before calling — models vary by config
