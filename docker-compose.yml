@@ -11,7 +11,7 @@ services:
     image: decolua/9router:latest
     profiles: [gateway, full]
     ports:
-      - "20128:20128"
+      - "127.0.0.1:20128:20128"
     volumes:
       - ./data/9router:/app/data
     environment:
@@ -64,8 +64,8 @@ services:
     volumes:
       # HERMES_HOME inside container is /opt/data (set in Dockerfile)
       - ./data/hermes:/opt/data
-      # Mount ~/Projects at the same path so Viko uses identical paths to host
-      - ${HOME}/Projects:${HOME}/Projects:rw
+      # Mount projects root at the same path so Viko uses identical paths to host
+      - ${VIKO_PROJECTS_ROOT}:${VIKO_PROJECTS_ROOT}:rw
       # Dedicated Viko SSH key (id_viko) — separate from personal keys.
       # Config specifies viko-exec user + StrictHostKeyChecking yes for all prod hosts.
       # Mounted to both SSH lookup locations inside the container.
@@ -75,8 +75,10 @@ services:
       - ./hooks:/opt/data/hooks:ro
       # MCP servers from repo — mounted read-only, registered in config.yaml
       - ./mcp-servers:/opt/viko/mcp-servers:ro
+      # Skills dir — fixed container path so external_dirs works on any host
+      - ./skills:/opt/viko/skills:ro
     ports:
-      - "9119:9119"
+      - "127.0.0.1:9119:9119"
     environment:
       # Remap container's hermes user to host user so bind-mount files are owned correctly
       HERMES_UID: ${HERMES_UID:-501}
@@ -102,7 +104,7 @@ services:
       # Dashboard (runs as s6 service alongside gateway)
       HERMES_DASHBOARD: "true"
       HERMES_DASHBOARD_INSECURE: "true"
-      HERMES_DASHBOARD_HOST: "0.0.0.0"
+      HERMES_DASHBOARD_HOST: "127.0.0.1"
       HERMES_DASHBOARD_PORT: "9119"
     command: ["gateway", "run"]
     restart: unless-stopped
