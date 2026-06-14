@@ -1,0 +1,4 @@
+name: viko-quick-ack
+description: Kirim ack cepat ke WA sebelum Viko mulai proses task kompleks
+events:
+  - agent:start

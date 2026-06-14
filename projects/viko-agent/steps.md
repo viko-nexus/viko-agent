@@ -71,9 +71,9 @@ Target: `soul/identity.md` — **requires Eksa's approval**
 3. After approval: edit soul/identity.md
 4. Always sync data/hermes/SOUL.md immediately after:
    - soul/identity.md is the canonical source (English, git-tracked)
-   - SOUL.md is the runtime file Hermes reads every message (Indonesian)
+   - SOUL.md is the runtime file Hermes reads every message (also English)
    - Changes in soul/identity.md are NOT active until SOUL.md is updated
-   - Translate new sections to Indonesian when adding to SOUL.md
+   - Keep SOUL.md in English; the language instruction inside the file tells Viko to respond in Indonesian
 5. Git commit + notify
 ```
 

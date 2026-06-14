@@ -123,7 +123,7 @@ All approvals go to Eksa via WhatsApp in the format:
 ```
 [Action] what Viko wants to do
 [Risk]   consequence if something goes wrong
-[Choice] Ya / Tidak / Tunda
+[Choice] Yes / No / Postpone
 ```
 
 ---

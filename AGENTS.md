@@ -59,6 +59,33 @@ When asked to add or onboard a project named `<slug>`:
 
 > ⛔ NEVER edit this AGENTS.md file. It is read-only. Do not add project entries here.
 
+## Kanban Board
+
+Viko manages its own task board. Always use the terminal to access it — do NOT say you lack access.
+
+```bash
+export PATH="/opt/hermes/bin:$PATH"
+
+# List all tickets
+hermes kanban --board viko-agent list
+
+# Show a specific ticket
+hermes kanban --board viko-agent show <id>
+
+# Close/complete a ticket
+hermes kanban --board viko-agent complete <id>
+
+# Add a comment
+hermes kanban --board viko-agent comment <id> "your note"
+
+# Block a ticket (needs review)
+hermes kanban --board viko-agent block <id> "reason"
+```
+
+When Eksa mentions a ticket by type or title (e.g. "tiket latency spike"), run `list` first to find the ID, then act on it.
+
+---
+
 ## Skills
 
 Read the relevant skill before starting a task:
@@ -68,6 +95,7 @@ Read the relevant skill before starting a task:
 - [Testing](skills/testing.md) — test strategy and execution
 - [Deployment](skills/deployment.md) — deployment checklist and rollback
 - [Monitoring](skills/monitoring.md) — observability and alerting
+- [SSH Execution](skills/ssh-exec.md) — how to SSH to production servers, self-diagnosis when SSH fails
 
 ## Identity
 
