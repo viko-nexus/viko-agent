@@ -1,0 +1,41 @@
+name: Deploy to VPS
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: production
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+
+      - name: Deploy to forecastinn
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USER }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          script: |
+            set -e
+            cd ~/viko-agent
+
+            # Pull latest changes
+            git pull
+
+            # Rebuild image only if Dockerfile or patches changed
+            if git diff --name-only HEAD~1 HEAD | grep -qE '^(Dockerfile\.hermes|patches/)'; then
+              echo "Dockerfile/patches changed — rebuilding image..."
+              docker compose build hermes
+              docker compose --profile full up -d --force-recreate hermes
+            else
+              echo "No image rebuild needed — restarting hermes..."
+              docker compose --profile full up -d --force-recreate hermes
+            fi
+
+            docker ps --filter name=viko --format 'table {{.Names}}\t{{.Status}}'
