@@ -102,6 +102,18 @@ RUN apt-get update && \
     rm -rf /var/lib/apt/lists/*
 ENV CHROME_PATH=/usr/bin/chromium
 
+# ── agent-browser: token-efficient browser automation via accessibility tree ──
+RUN set -eu; \
+    case "${TARGETARCH:-amd64}" in \
+        amd64) ab_arch=linux-x64 ;; \
+        arm64) ab_arch=linux-arm64 ;; \
+        *) echo "Unsupported TARGETARCH: ${TARGETARCH}" >&2; exit 1 ;; \
+    esac; \
+    curl -fsSL --retry 3 \
+        "https://github.com/vercel-labs/agent-browser/releases/download/v0.27.3/agent-browser-${ab_arch}" \
+        -o /usr/local/bin/agent-browser && \
+    chmod +x /usr/local/bin/agent-browser
+
 # ── Permissions ───────────────────────────────────────────────────────────────
 RUN mkdir -p /opt/hermes/gateway && \
     chmod -R a+rX /opt/hermes && \
