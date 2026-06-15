@@ -22,7 +22,7 @@ jobs:
           key: ${{ secrets.VPS_SSH_KEY }}
           script: |
             set -e
-            cd ~/viko-agent
+            cd ~/projects/viko-agent
 
             # Pull latest changes
             git pull
