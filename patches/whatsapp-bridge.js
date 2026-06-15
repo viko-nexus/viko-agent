@@ -408,6 +408,36 @@ async function startSocket() {
         }
       }
 
+      // Extract image from quoted/forwarded message so Viko can see it
+      if (contextInfo?.quotedMessage?.imageMessage) {
+        const quotedImgMsg = contextInfo.quotedMessage.imageMessage;
+        try {
+          const fakeMsg = {
+            key: {
+              remoteJid: quotedRemoteJid || chatId,
+              id: quotedMessageId,
+              participant: quotedParticipant || undefined,
+              fromMe: false,
+            },
+            message: contextInfo.quotedMessage,
+          };
+          const buf = await downloadMediaMessage(fakeMsg, 'buffer', {}, { logger, reuploadRequest: sock.updateMediaMessage });
+          const mime = quotedImgMsg.mimetype || 'image/jpeg';
+          const extMap = { 'image/jpeg': '.jpg', 'image/png': '.png', 'image/webp': '.webp', 'image/gif': '.gif' };
+          const ext = extMap[mime] || '.jpg';
+          mkdirSync(IMAGE_CACHE_DIR, { recursive: true });
+          const filePath = path.join(IMAGE_CACHE_DIR, `quoted_${randomBytes(6).toString('hex')}${ext}`);
+          writeFileSync(filePath, buf);
+          mediaUrls.push(filePath);
+          if (!hasMedia) {
+            hasMedia = true;
+            mediaType = 'image';
+          }
+        } catch (err) {
+          console.error('[bridge] Failed to download quoted image:', err.message);
+        }
+      }
+
       // For media without caption, use a placeholder so the API message is never empty
       if (hasMedia && !body) {
         body = `[${mediaType} received]`;
