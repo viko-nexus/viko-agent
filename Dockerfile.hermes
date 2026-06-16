@@ -112,6 +112,7 @@ COPY patches/whatsapp-bridge.js /tmp/viko-wa-bridge.js
 COPY patches/indonesian-locale.py /tmp/indonesian-locale.py
 COPY patches/patch-ssh-guard.py /tmp/patch-ssh-guard.py
 COPY patches/patch-model-router.py /tmp/patch-model-router.py
+COPY patches/isolation-guard.py /opt/hermes/docker/viko-isolation-guard.py
 RUN if [ -f /opt/hermes/scripts/whatsapp-bridge/bridge.js ]; then \
         cp /tmp/viko-wa-bridge.js /opt/hermes/scripts/whatsapp-bridge/bridge.js; \
     fi
@@ -135,7 +136,10 @@ RUN mkdir -p /etc/cont-init.d /etc/s6-overlay/s6-rc.d && \
     cp /opt/hermes/docker/cont-init.d/02-reconcile-profiles /etc/cont-init.d/ && \
     chmod +x /etc/cont-init.d/015-supervise-perms \
               /etc/cont-init.d/02-reconcile-profiles && \
-    cp -r /opt/hermes/docker/s6-rc.d/. /etc/s6-overlay/s6-rc.d/
+    cp -r /opt/hermes/docker/s6-rc.d/. /etc/s6-overlay/s6-rc.d/ && \
+    printf '#!/command/with-contenv sh\nexec python3 /opt/hermes/docker/viko-isolation-guard.py\n' \
+        > /etc/cont-init.d/03-viko-isolation-guard && \
+    chmod +x /etc/cont-init.d/03-viko-isolation-guard
 
 # ── Exec shim (privilege-drop for docker exec) ────────────────────────────────
 RUN mkdir -p /opt/hermes/bin && \

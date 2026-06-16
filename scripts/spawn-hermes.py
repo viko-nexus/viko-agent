@@ -397,6 +397,9 @@ def spawn_container(slug: str, port: int, data_dir: Path, env: dict, proj_ssh_di
         "-e", f"NINEROUTER_KEY={ninerouter_key}",
         "-e", f"VIKO_PROJECTS_ROOT={projects_root}",
         "-e", f"VIKO_PROJECT_SLUG={slug}",
+        # Boot isolation guard: warn (log+tombstone) | enforce (inert on fail) | off.
+        # Default warn — flip to enforce in .env once proven across real boots.
+        "-e", f"VIKO_ISOLATION_GUARD={env.get('VIKO_ISOLATION_GUARD', 'warn')}",
         "-e", f"SSL_CERT_FILE=/opt/hermes/.venv/lib/python3.13/site-packages/certifi/cacert.pem",
         "-e", f"REQUESTS_CA_BUNDLE=/opt/hermes/.venv/lib/python3.13/site-packages/certifi/cacert.pem",
         "-e", f"HERMES_DASHBOARD=true",
