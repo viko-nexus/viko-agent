@@ -188,7 +188,7 @@ def create_hermes_data_dir(slug: str, port: int, group_jid: str, env: dict) -> P
     (data_dir / ".env").write_text(
         f"WHATSAPP_MODE=bot\n"
         f"WHATSAPP_RELAY_MODE=true\n"
-        f"WHATSAPP_RELAY_TARGET=http://viko-hermes-admin:3000\n"
+        f"WHATSAPP_RELAY_TARGET=http://viko-hermes:3000\n"
         f"WHATSAPP_PORT_FILTER={port}\n"
         f"WHATSAPP_ENABLED=true\n"
         f"WHATSAPP_HOME_CHANNEL={env.get('WHATSAPP_HOME_CHANNEL', '')}\n"
@@ -239,6 +239,7 @@ def spawn_container(slug: str, port: int, data_dir: Path, env: dict) -> str:
         "-e", f"NINEROUTER_URL=http://viko-9router:20128",
         "-e", f"NINEROUTER_KEY={ninerouter_key}",
         "-e", f"VIKO_PROJECTS_ROOT={projects_root}",
+        "-e", f"VIKO_PROJECT_SLUG={slug}",
         "-e", f"SSL_CERT_FILE=/opt/hermes/.venv/lib/python3.13/site-packages/certifi/cacert.pem",
         "-e", f"REQUESTS_CA_BUNDLE=/opt/hermes/.venv/lib/python3.13/site-packages/certifi/cacert.pem",
         "-e", f"HERMES_DASHBOARD=true",

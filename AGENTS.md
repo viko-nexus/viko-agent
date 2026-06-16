@@ -28,11 +28,17 @@ Example with default `VIKO_PROJECTS_ROOT=/Users/eksa/Projects`:
 
 Projects are dynamic — do NOT maintain a hardcoded list here. Never add project entries to this file.
 
-To discover available projects, list the projects folder in THIS repo:
+**If `VIKO_PROJECT_SLUG` env var is set** (project-specific container), load ONLY that project:
+```bash
+cat $VIKO_PROJECTS_ROOT/viko-agent/projects/$VIKO_PROJECT_SLUG/context.md
+```
+Do NOT load or reference other projects. If asked about another project, respond:
+"Itu bukan project saya. Tanya Viko di group yang sesuai."
+
+**If `VIKO_PROJECT_SLUG` is not set** (admin container), discover all projects:
 ```bash
 ls $VIKO_PROJECTS_ROOT/viko-agent/projects/
 ```
-
 Each folder that contains a `context.md` is a valid project. Load it before working on any task:
 ```bash
 cat $VIKO_PROJECTS_ROOT/viko-agent/projects/<slug>/context.md
