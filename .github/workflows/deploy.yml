@@ -25,8 +25,9 @@ jobs:
             set -e
             cd ~/projects/viko-agent
 
-            # Pull latest changes
-            git pull
+            # Always mirror repo exactly — discard any local edits on VPS
+            git fetch origin main
+            git reset --hard origin/main
 
             # Rebuild image only if Dockerfile or patches changed
             if git diff --name-only HEAD~1 HEAD | grep -qE '^(Dockerfile\.hermes|patches/)'; then
