@@ -49,10 +49,10 @@ def update_ssh_config(slug: str, vps_host: str, ssh_dir: Path, vps_user: str = "
         f"\nHost {slug}-vps\n"
         f"    HostName {vps_host}\n"
         f"    User {vps_user}\n"
-        f"    IdentityFile ~/.viko/ssh/id_viko\n"
+        f"    IdentityFile /opt/data/.ssh/id_viko\n"
         f"    IdentitiesOnly yes\n"
         f"    StrictHostKeyChecking accept-new\n"
-        f"    UserKnownHostsFile ~/.viko/ssh/known_hosts\n"
+        f"    UserKnownHostsFile /opt/data/.ssh/known_hosts\n"
     )
 
     config_path.write_text(updated)

@@ -1,72 +1,39 @@
 # Skill: GitNexus Codebase Indexing
 
-## When to Use
+⚠️ **Status**: `hermes gitnexus` subcommand is NOT available in the current Hermes version.
+Do NOT attempt to run `hermes gitnexus index` — it will fail with "binary not found."
 
-Use GitNexus when Eksa asks to:
-- Index or re-index a project codebase
-- Build or refresh the knowledge graph for a project
-- Run daily/scheduled codebase indexing (from cron)
+## What to Do Instead
 
-## How GitNexus Works
-
-GitNexus builds a symbol-level knowledge graph from source code.
-It clones/pulls the repo, parses all files, and stores a graph in `/opt/data/gitnexus/`.
-This lets Hermes answer deep questions about code structure without reading every file.
-
-## Running GitNexus
+For codebase exploration, use the terminal directly:
 
 ```bash
-export PATH="/opt/hermes/bin:$PATH"
+# List project structure
+find $VIKO_PROJECTS_ROOT/<slug>/ -type f -name "*.ts" -o -name "*.py" -o -name "*.go" | head -50
 
-# Index a single project (by GitHub URL or local path)
-hermes gitnexus index <repo_url_or_local_path>
+# Count files by type
+find $VIKO_PROJECTS_ROOT/<slug>/ -type f | sed 's/.*\.//' | sort | uniq -c | sort -rn | head -20
 
-# Check index status
-hermes gitnexus status
+# Search for a symbol or function
+grep -r "functionName" $VIKO_PROJECTS_ROOT/<slug>/src/ --include="*.ts" -l
 
-# List indexed repos
-hermes gitnexus list
+# Recent changes
+git -C $VIKO_PROJECTS_ROOT/<slug>/ log --oneline -20
 ```
 
-## Indexing All Projects (Cron / General)
+## When GitNexus Becomes Available
+
+If a future Hermes version adds `hermes gitnexus`, the commands will be:
 
 ```bash
 export PATH="/opt/hermes/bin:$PATH"
-
-# Step 1: discover available projects
-ls $VIKO_PROJECTS_ROOT/viko-agent/projects/
-
-# Step 2: for each project with a local code folder, run index
-# Local path: $VIKO_PROJECTS_ROOT/<slug>/
-# Example: $VIKO_PROJECTS_ROOT/mankop/
-
-hermes gitnexus index $VIKO_PROJECTS_ROOT/mankop/
-hermes gitnexus index $VIKO_PROJECTS_ROOT/forecastinn/
-hermes gitnexus index $VIKO_PROJECTS_ROOT/luxso/
-hermes gitnexus index $VIKO_PROJECTS_ROOT/forecastcrm/
+hermes gitnexus index $VIKO_PROJECTS_ROOT/<slug>/
+hermes gitnexus status
+hermes gitnexus list
 ```
 
 ## Important Notes
 
-- **Terminal timeout is 600s** — git clone + npm install can take several minutes
-- **Do NOT serve the web UI** during cron runs — indexing only
-- **Report to WA** after each project: name, symbols indexed, time taken, or error
-- If a project folder doesn't exist, skip it and note it in the report — do not stop
-
-## Error Handling
-
-| Error | Action |
-|-------|--------|
-| Folder not found | Skip project, note in summary |
-| Timeout during clone | Retry once; if fails again, skip |
-| Index already up to date | Note "no changes" and move on |
-
-## Expected Output (WA Report)
-
-```
-GitNexus indexing selesai:
-- mankop: 1.240 symbols, 42s
-- forecastinn: 890 symbols, 31s
-- luxso: folder tidak ditemukan, skip
-- forecastcrm: no changes
-```
+- **Do NOT run gitnexus cron jobs** — the command doesn't exist yet
+- If asked to "index the codebase," use grep/find instead and report what was found
+- If asked to "run gitnexus," respond: "GitNexus belum tersedia di versi Hermes saat ini. Saya bisa lakukan eksplorasi codebase manual dengan grep/find — mau?"
