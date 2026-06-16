@@ -28,7 +28,7 @@ from pathlib import Path
 REPO_DIR = Path(__file__).parent.parent.resolve()
 ROUTING_FILE = REPO_DIR / "data" / "bridge" / "routing.json"
 MIN_PORT = 8101
-HERMES_IMAGE = "viko-viko-hermes"
+HERMES_IMAGE = "viko-hermes"
 
 
 def _read_env() -> dict:
