@@ -61,22 +61,13 @@ RUN ln -sf /usr/local/lib/node_modules/npm/bin/npm-cli.js /usr/local/bin/npm && 
     ln -sf /usr/local/lib/node_modules/npm/bin/npx-cli.js /usr/local/bin/npx && \
     ln -sf /usr/local/lib/node_modules/corepack/dist/corepack.js /usr/local/bin/corepack
 
-# ── Hermes source + viko patch ─────────────────────────────────────────────────
+# ── Hermes source ─────────────────────────────────────────────────────────────
 COPY --from=hermes_source /opt/hermes /opt/hermes
-COPY patches/whatsapp-bridge.js /tmp/viko-wa-bridge.js
-COPY patches/indonesian-locale.py /tmp/indonesian-locale.py
-COPY patches/patch-ssh-guard.py /tmp/patch-ssh-guard.py
-COPY patches/patch-model-router.py /tmp/patch-model-router.py
-RUN if [ -f /opt/hermes/scripts/whatsapp-bridge/bridge.js ]; then \
-        cp /tmp/viko-wa-bridge.js /opt/hermes/scripts/whatsapp-bridge/bridge.js; \
-    fi
-RUN python3 /tmp/indonesian-locale.py
-RUN python3 /tmp/patch-ssh-guard.py
-RUN python3 /tmp/patch-model-router.py
 
 WORKDIR /opt/hermes
 
 # ── npm: install deps + build frontend ────────────────────────────────────────
+# Cached unless package.json / package-lock.json changes
 RUN npm install --prefer-offline --no-audit && npm cache clean --force
 RUN cd web && npm run build && cd ../ui-tui && npm run build
 # Pre-install WhatsApp bridge deps so bridge starts instantly (avoids 30s race at container start)
@@ -85,6 +76,7 @@ RUN if [ -f /opt/hermes/scripts/whatsapp-bridge/package.json ]; then \
     fi
 
 # ── Python: install deps via uv ───────────────────────────────────────────────
+# Cached unless pyproject.toml / uv.lock changes
 RUN uv sync --frozen --no-install-project \
     --extra all --extra messaging \
     --extra anthropic --extra bedrock --extra azure-identity \
@@ -114,7 +106,20 @@ RUN set -eu; \
         -o /usr/local/bin/agent-browser && \
     chmod +x /usr/local/bin/agent-browser
 
-# ── Permissions ───────────────────────────────────────────────────────────────
+# ── Viko patches — LAST so patch changes don't bust npm/uv/apt cache ──────────
+# Changing any file in patches/ only rebuilds from here onwards (~2-3 min)
+COPY patches/whatsapp-bridge.js /tmp/viko-wa-bridge.js
+COPY patches/indonesian-locale.py /tmp/indonesian-locale.py
+COPY patches/patch-ssh-guard.py /tmp/patch-ssh-guard.py
+COPY patches/patch-model-router.py /tmp/patch-model-router.py
+RUN if [ -f /opt/hermes/scripts/whatsapp-bridge/bridge.js ]; then \
+        cp /tmp/viko-wa-bridge.js /opt/hermes/scripts/whatsapp-bridge/bridge.js; \
+    fi
+RUN python3 /tmp/indonesian-locale.py
+RUN python3 /tmp/patch-ssh-guard.py
+RUN python3 /tmp/patch-model-router.py
+
+# ── Permissions — after patches so patched files get correct ownership ─────────
 RUN mkdir -p /opt/hermes/gateway && \
     chmod -R a+rX /opt/hermes && \
     chown -R hermes:hermes /opt/hermes/.venv /opt/hermes/ui-tui \
