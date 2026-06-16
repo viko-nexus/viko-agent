@@ -43,9 +43,10 @@ Kirim ke group WA:
 ## Phase 2 — Test + clone + spawn (setelah Eksa reply "done")
 
 ```bash
-# Test SSH connections
-ssh viko-vps ssh -o BatchMode=yes -o ConnectTimeout=10 <slug>-github echo OK
-ssh viko-vps ssh -o BatchMode=yes -o ConnectTimeout=10 <slug>-vps echo OK  # skip if no vps
+# Test SSH connections — SELALU pakai alias, bukan raw IP
+# (alias ada di ~/.viko/ssh/config, dibuat oleh setup-keys.py)
+ssh viko-vps ssh -i ~/.viko/ssh/<slug>-deploy -o BatchMode=yes -o ConnectTimeout=10 <slug>-github echo OK
+ssh viko-vps ssh -i ~/.viko/ssh/<slug>-deploy -o BatchMode=yes -o ConnectTimeout=10 <slug>-vps echo OK  # skip if no vps
 
 # Run full onboarding (clone + context stubs + spawn Hermes instance)
 ssh viko-vps python3 ~/projects/viko-agent/scripts/add-project.py \
