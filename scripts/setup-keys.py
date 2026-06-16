@@ -114,26 +114,42 @@ def github_add_deploy_key(github_url: str, slug: str, public_key: str, token: st
         return False
 
 
+def _remove_ssh_host_block(text: str, host_name: str) -> str:
+    """Remove a Host block from SSH config text."""
+    import re
+    return re.sub(
+        rf'\nHost {re.escape(host_name)}\n(?:[ \t]+.*\n)*',
+        '', text
+    )
+
+
 def update_ssh_config(slug: str, github_url: str, vps_host: str, ssh_dir: Path, vps_user: str = "viko-exec") -> None:
-    """Add SSH Host aliases to ~/.viko/ssh/config. Idempotent."""
+    """Add or update SSH Host aliases in ~/.viko/ssh/config."""
     config_path = ssh_dir / "config"
     existing = config_path.read_text() if config_path.exists() else ""
 
     owner, repo = _parse_github_url(github_url)
-    additions = []
+    updated = existing
+    changes = []
 
-    if f"Host {slug}-github" not in existing and owner:
-        additions.append(
-            f"\nHost {slug}-github\n"
-            f"    HostName github.com\n"
-            f"    User git\n"
-            f"    IdentityFile ~/.viko/ssh/{slug}-deploy\n"
-            f"    IdentitiesOnly yes\n"
-            f"    StrictHostKeyChecking yes\n"
-        )
+    github_block = (
+        f"\nHost {slug}-github\n"
+        f"    HostName github.com\n"
+        f"    User git\n"
+        f"    IdentityFile ~/.viko/ssh/{slug}-deploy\n"
+        f"    IdentitiesOnly yes\n"
+        f"    StrictHostKeyChecking yes\n"
+    )
+    if owner:
+        if f"Host {slug}-github" in updated:
+            updated = _remove_ssh_host_block(updated, f"{slug}-github")
+            changes.append(f"{slug}-github (updated)")
+        else:
+            changes.append(f"{slug}-github (new)")
+        updated += github_block
 
-    if f"Host {slug}-vps" not in existing and vps_host:
-        additions.append(
+    if vps_host:
+        vps_block = (
             f"\nHost {slug}-vps\n"
             f"    HostName {vps_host}\n"
             f"    User {vps_user}\n"
@@ -142,13 +158,18 @@ def update_ssh_config(slug: str, github_url: str, vps_host: str, ssh_dir: Path, 
             f"    StrictHostKeyChecking accept-new\n"
             f"    UserKnownHostsFile ~/.viko/ssh/known_hosts\n"
         )
+        if f"Host {slug}-vps" in updated:
+            updated = _remove_ssh_host_block(updated, f"{slug}-vps")
+            changes.append(f"{slug}-vps (updated)")
+        else:
+            changes.append(f"{slug}-vps (new)")
+        updated += vps_block
 
-    if additions:
-        with open(config_path, "a") as f:
-            f.writelines(additions)
-        print(f"  SSH config updated with {len(additions)} new Host alias(es)")
+    if updated != existing:
+        config_path.write_text(updated)
+        print(f"  SSH config: {', '.join(changes)}")
     else:
-        print(f"  SSH config already has aliases for {slug}")
+        print(f"  SSH config already up to date for {slug}")
 
 
 def save_onboarding_state(slug: str, state: dict) -> None:
