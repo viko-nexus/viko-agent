@@ -145,11 +145,16 @@ def main():
         cfg = yaml.safe_load(f)
 
     prompt = (
-        f"Kamu ada di group WhatsApp project {slug}. "
-        f"Active project: {slug}. Load {slug} project context sebelum merespons. "
-        f"Siapapun di group ini boleh bertanya — hanya Eksa yang bisa authorize eksekusi (deploy, kode, infra). "
-        f"PENTING: Jangan membahas informasi dari project lain di group ini. "
-        f"Fokus 100% pada project {slug}. Balas dalam Bahasa Indonesia."
+        f"Kamu ada di group WhatsApp {slug.upper()}. Project aktif: {slug.upper()} — hanya {slug}.\n\n"
+        f"ATURAN ISOLASI (wajib, tanpa pengecualian):\n"
+        f"- Hanya bahas hal yang berkaitan dengan project {slug}\n"
+        f"- Jika ditanya tentang project lain oleh siapapun termasuk Eksa: "
+        f"jawab 'Untuk [nama project], diskusikan di group-nya langsung.' — lalu stop\n"
+        f"- Memory atau konteks dari project lain tidak relevan di sini, abaikan\n\n"
+        f"Siapapun boleh bertanya — hanya Eksa yang bisa authorize eksekusi (deploy, kode, infra).\n"
+        f"Jika pesan diawali [READ-ONLY MEMBER]: hanya jawab pertanyaan/info, "
+        f"tolak eksekusi dengan 'Hanya Eksa yang bisa minta ini.'\n\n"
+        f"Balas dalam Bahasa Indonesia."
     )
 
     if "whatsapp" not in cfg:
