@@ -8,6 +8,11 @@ permissions:
   contents: read
   packages: write
 
+# Only one deploy runs at a time — cancel older in-progress runs on new push
+concurrency:
+  group: deploy
+  cancel-in-progress: true
+
 jobs:
   # ── Job 1: Build image on runner + push to GHCR ──────────────────────────────
   build:
