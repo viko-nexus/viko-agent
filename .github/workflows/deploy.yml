@@ -12,7 +12,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
         with:
-          fetch-depth: 2
+          fetch-depth: 10
 
       - name: Deploy to trahku
         uses: appleboy/ssh-action@v1
@@ -29,8 +29,9 @@ jobs:
             git fetch origin main
             git reset --hard origin/main
 
-            # Rebuild image only if Dockerfile or patches changed
-            if git diff --name-only HEAD~1 HEAD | grep -qE '^(Dockerfile\.hermes|patches/)'; then
+            # Rebuild image if Dockerfile or patches changed in last 10 commits
+            # (window covers cases where CI failed mid-run and skipped a rebuild)
+            if git log --name-only --pretty=format: HEAD~10..HEAD 2>/dev/null | grep -qE '^(Dockerfile\.hermes|patches/)'; then
               echo "Dockerfile/patches changed — rebuilding image..."
               docker compose build hermes
               docker compose --profile full up -d --force-recreate hermes
