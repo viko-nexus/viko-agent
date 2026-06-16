@@ -83,6 +83,7 @@ def main():
     parser.add_argument("group_jid", help="WhatsApp group JID")
     parser.add_argument("github_url", help="GitHub repo URL")
     parser.add_argument("--vps-host", default="", help="VPS hostname or IP for this project")
+    parser.add_argument("--vps-user", default="viko-exec", help="SSH username on the project VPS")
     parser.add_argument("--members", default="", help="Comma-separated phone numbers for DM access")
     args = parser.parse_args(args_in)
 
@@ -90,6 +91,7 @@ def main():
     group_jid = args.group_jid.strip()
     github_url = args.github_url.strip()
     vps_host = args.vps_host.strip()
+    vps_user = args.vps_user.strip()
     member_phones = [p.strip().lstrip("+") for p in args.members.split(",") if p.strip()]
 
     # Resolve VIKO_PROJECTS_ROOT
@@ -157,6 +159,8 @@ def main():
     spawn_cmd = [sys.executable, str(REPO_DIR / "scripts" / "spawn-hermes.py"), slug, group_jid]
     if vps_host:
         spawn_cmd += ["--vps-host", vps_host]
+    if vps_user and vps_user != "viko-exec":
+        spawn_cmd += ["--vps-user", vps_user]
     result = subprocess.run(spawn_cmd, capture_output=True, text=True)
     print(result.stdout)
     if result.returncode != 0:

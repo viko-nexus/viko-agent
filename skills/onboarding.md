@@ -8,6 +8,7 @@ Tanya jika belum ada:
 - slug: nama project (lowercase, e.g. forecastinn)
 - github_url: full URL (e.g. github.com/eksa/forecastinn)
 - vps_host: IP atau domain VPS project (optional)
+- vps_user: SSH username di VPS project (optional, default: viko-exec)
 - member_phones: nomor yang boleh DM Viko (optional, comma-separated)
 
 ## Dapatkan group JID saat ini
@@ -29,7 +30,7 @@ else:
 
 ```bash
 ssh viko-vps GITHUB_TOKEN=$GITHUB_TOKEN python3 ~/projects/viko-agent/scripts/setup-keys.py \
-  <slug> <github_url> [vps_host]
+  <slug> <github_url> [vps_host] [vps_user]
 ```
 
 Baca output. Cek marker PHASE1_COMPLETE.
@@ -48,7 +49,7 @@ ssh viko-vps ssh -o BatchMode=yes -o ConnectTimeout=10 <slug>-vps echo OK  # ski
 
 # Run full onboarding (clone + context stubs + spawn Hermes instance)
 ssh viko-vps python3 ~/projects/viko-agent/scripts/add-project.py \
-  <slug> <group_jid> <github_url> [--vps-host <vps_host>] [--members "<phones>"]
+  <slug> <group_jid> <github_url> [--vps-host <vps_host>] [--vps-user <vps_user>] [--members "<phones>"]
 ```
 
 Baca output. Cek SPAWN_COMPLETE.

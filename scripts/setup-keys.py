@@ -114,7 +114,7 @@ def github_add_deploy_key(github_url: str, slug: str, public_key: str, token: st
         return False
 
 
-def update_ssh_config(slug: str, github_url: str, vps_host: str, ssh_dir: Path) -> None:
+def update_ssh_config(slug: str, github_url: str, vps_host: str, ssh_dir: Path, vps_user: str = "viko-exec") -> None:
     """Add SSH Host aliases to ~/.viko/ssh/config. Idempotent."""
     config_path = ssh_dir / "config"
     existing = config_path.read_text() if config_path.exists() else ""
@@ -136,7 +136,7 @@ def update_ssh_config(slug: str, github_url: str, vps_host: str, ssh_dir: Path) 
         additions.append(
             f"\nHost {slug}-vps\n"
             f"    HostName {vps_host}\n"
-            f"    User viko-exec\n"
+            f"    User {vps_user}\n"
             f"    IdentityFile ~/.viko/ssh/{slug}-deploy\n"
             f"    IdentitiesOnly yes\n"
             f"    StrictHostKeyChecking accept-new\n"
@@ -165,6 +165,7 @@ def main():
     slug = sys.argv[1].lower().strip()
     github_url = sys.argv[2].strip()
     vps_host = sys.argv[3].strip() if len(sys.argv) > 3 else ""
+    vps_user = sys.argv[4].strip() if len(sys.argv) > 4 else "viko-exec"
     github_token = os.environ.get("GITHUB_TOKEN", "")
 
     ssh_dir = _get_ssh_dir()
@@ -187,13 +188,14 @@ def main():
         print(f"  ✗ GITHUB_TOKEN not set — will show manual instructions")
 
     print(f"\n[3/3] SSH config...")
-    update_ssh_config(slug, github_url, vps_host, ssh_dir)
+    update_ssh_config(slug, github_url, vps_host, ssh_dir, vps_user)
 
     # Save state for Phase 2
     save_onboarding_state(slug, {
         "slug": slug,
         "github_url": github_url,
         "vps_host": vps_host,
+        "vps_user": vps_user,
         "public_key": public_key,
         "github_deploy_key_added": github_ok,
         "phase": 1,
