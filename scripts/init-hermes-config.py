@@ -85,12 +85,34 @@ DESIRED = {
         "channel_prompts": {
             # 2a. PRODUK SAAS MANKOP group
             "120363409428298054@g.us": (
-                "You are in the Mankop project group (2a. PRODUK SAAS MANKOP). "
-                "Active project: mankop. Load mankop project context before responding. "
-                "Anyone in this group can ask questions — only Eksa can authorize execution."
+                "Kamu ada di group WhatsApp Mankop (2a. PRODUK SAAS MANKOP). "
+                "Active project: mankop. Load mankop project context sebelum merespons. "
+                "Siapapun di group ini boleh bertanya — hanya Eksa yang bisa authorize eksekusi. "
+                "PENTING: Jangan membahas informasi dari project lain di group ini. "
+                "Balas dalam Bahasa Indonesia."
+            ),
+            # 2a. Produk SAAS siprodev.com group
+            "120363407940533307@g.us": (
+                "Kamu ada di group WhatsApp Siprodev (2a. Produk SAAS siprodev.com). "
+                "Active project: siprodev. Load siprodev project context sebelum merespons. "
+                "Siapapun di group ini boleh bertanya — hanya Eksa yang bisa authorize eksekusi. "
+                "PENTING: Jangan membahas informasi dari project lain di group ini. "
+                "Balas dalam Bahasa Indonesia."
             ),
         },
     },
+    # Pre-approved commands — no approval prompt needed for these operations
+    "command_allowlist": [
+        "script execution via -e/-c flag",
+        "script execution via heredoc",
+        "docker restart/stop/kill (container lifecycle)",
+        "hermes kanban",
+        "execute_code",
+        "overwrite system file via redirection",
+        "git clone to VIKO_PROJECTS_ROOT (project onboarding)",
+        "python3 scripts/add-project.py (project onboarding)",
+        "ssh viko-vps docker compose (remote hermes restart)",
+    ],
     # Display: language + runtime footer (model, context %)
     "display": {
         "language": "id",

@@ -51,6 +51,11 @@ const AUDIO_CACHE_DIR = path.join(process.env.HOME || '~', '.hermes', 'audio_cac
 const PAIR_ONLY = args.includes('--pair-only');
 const WHATSAPP_MODE = getArg('mode', process.env.WHATSAPP_MODE || 'self-chat'); // "bot" or "self-chat"
 const ALLOWED_USERS = parseAllowedUsers(process.env.WHATSAPP_ALLOWED_USERS || '');
+// Groups listed here bypass the per-user allowlist — all members can trigger the bot.
+// Populated by add-project.py when a project is onboarded.
+const TRUSTED_GROUPS = new Set(
+    (process.env.WHATSAPP_TRUSTED_GROUPS || '').split(',').map(s => s.trim()).filter(Boolean)
+);
 // Allow group messages in self-chat mode (filtered by Python gateway via REQUIRE_MENTION)
 const SELF_CHAT_ALLOW_GROUPS = ['1','true','yes','on'].includes((process.env.WHATSAPP_SELF_CHAT_ALLOW_GROUPS || '').toLowerCase());
 const DEFAULT_REPLY_PREFIX = '⚕ *Hermes Agent*\n────────────\n';
@@ -313,7 +318,8 @@ async function startSocket() {
           // Group message with SELF_CHAT_ALLOW_GROUPS: skip allowlist check,
           // let Python gateway handle group_policy + mention filtering
         } else {
-          if (!matchesAllowedUser(senderId, ALLOWED_USERS, SESSION_DIR)) {
+          const isTrustedGroup = isGroup && TRUSTED_GROUPS.has(chatId);
+          if (!isTrustedGroup && !matchesAllowedUser(senderId, ALLOWED_USERS, SESSION_DIR)) {
             try {
               console.log(JSON.stringify({
                 event: 'ignored',
@@ -773,6 +779,9 @@ if (PAIR_ONLY) {
       console.log(`🔒 No WHATSAPP_ALLOWED_USERS set — incoming messages are rejected.`);
       console.log(`   Set WHATSAPP_ALLOWED_USERS=<phone> to authorize specific users,`);
       console.log(`   or WHATSAPP_ALLOWED_USERS=* for an explicit open bot.`);
+    }
+    if (TRUSTED_GROUPS.size > 0) {
+      console.log(`🔓 Trusted groups (all members allowed): ${Array.from(TRUSTED_GROUPS).join(', ')}`);
     }
     console.log();
     startSocket();
