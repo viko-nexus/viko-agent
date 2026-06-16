@@ -110,6 +110,13 @@ def _build_project_config(slug: str, group_jid: str, env: dict) -> dict:
         "display": {
             "language": "id",
             "runtime_footer": {"enabled": False, "fields": ["model", "context_pct"]},
+            "platforms": {
+                "whatsapp": {
+                    "tool_progress": "off",
+                    "interim_assistant_messages": False,
+                    "streaming": False,
+                }
+            },
         },
         "auxiliary": {
             "vision": {

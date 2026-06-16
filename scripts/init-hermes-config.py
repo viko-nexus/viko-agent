@@ -142,6 +142,13 @@ DESIRED = {
             "enabled": False,
             "fields": ["model", "context_pct"],
         },
+        "platforms": {
+            "whatsapp": {
+                "tool_progress": "off",
+                "interim_assistant_messages": False,
+                "streaming": False,
+            }
+        },
     },
     # Skills: expose viko-agent skills as slash commands, review AI-created skills
     # Path is derived from this script's location — works for any user/machine
