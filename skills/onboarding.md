@@ -5,11 +5,16 @@ Jalankan ini saat Eksa minta "viko onboard project X" dari dalam group WA projec
 ## Pra-syarat — kumpulkan info dari Eksa
 
 Tanya jika belum ada:
-- slug: nama project (lowercase, e.g. forecastinn)
-- github_url: full URL (e.g. github.com/eksa/forecastinn)
+- slug: nama project (lowercase, e.g. mankop)
+- github_url: full URL (e.g. github.com/forgeyard/mankop-apps)
 - vps_host: IP atau domain VPS project (optional)
 - vps_user: SSH username di VPS project (optional, default: viko-exec)
 - member_phones: nomor yang boleh DM Viko (optional, comma-separated)
+
+Pastikan Eksa sudah menambahkan `id_viko.pub` ke VPS user sebelum lanjut:
+```
+VIKO_SSH_PUB dari .env — atau: cat /home/viko/.viko/ssh/id_viko.pub di trahku
+```
 
 ## Dapatkan group JID saat ini
 
@@ -26,33 +31,32 @@ else:
 "
 ```
 
-## Phase 1 — Generate keys + GitHub deploy key
+## Phase 1 — Update SSH config (opsional, hanya jika ada VPS)
 
 ⚠️ WAJIB: jalankan via `ssh viko-vps` — JANGAN dari terminal container langsung.
-(SSH dir di dalam container adalah read-only, script akan gagal jika dijalankan di sana.)
 
 ```bash
-ssh viko-vps GITHUB_TOKEN=$GITHUB_TOKEN python3 ~/projects/viko-agent/scripts/setup-keys.py \
+ssh viko-vps python3 ~/projects/viko-agent/scripts/setup-keys.py \
   <slug> <github_url> [vps_host] [vps_user]
 ```
 
-Baca output. Cek marker PHASE1_COMPLETE.
+Script akan:
+- Menambahkan `{slug}-vps` alias ke ~/.viko/ssh/config pakai `id_viko`
+- Print `id_viko.pub` sebagai reminder kalau belum dipasang di VPS
+- TIDAK generate keypair baru (satu key untuk semua project)
+- TIDAK butuh GitHub deploy key (clone via HTTPS + GITHUB_TOKEN)
 
-Kirim ke group WA:
-- Jika GitHub key otomatis: "✓ GitHub deploy key ditambahkan otomatis"
-- Jika ada VPS: tampilkan public key + instruksi 1 baris untuk Eksa
-- Minta Eksa reply "done" setelah VPS key dipasang
+Jika tidak ada VPS: skip Phase 1, langsung ke Phase 2.
 
-## Phase 2 — Test + clone + spawn (setelah Eksa reply "done")
+## Phase 2 — Clone + spawn (setelah key terpasang di VPS)
 
 ⚠️ WAJIB: semua perintah di bawah via `ssh viko-vps` — JANGAN dari terminal container.
 
 ```bash
-# Test SSH connections — pakai alias, bukan raw IP
-ssh viko-vps ssh -F ~/.viko/ssh/config -o BatchMode=yes -o ConnectTimeout=10 <slug>-github echo OK
-ssh viko-vps ssh -F ~/.viko/ssh/config -o BatchMode=yes -o ConnectTimeout=10 <slug>-vps echo OK  # skip if no vps
+# Test SSH ke VPS (skip jika tidak ada VPS)
+ssh viko-vps ssh -F ~/.viko/ssh/config -o BatchMode=yes -o ConnectTimeout=10 <slug>-vps echo OK
 
-# Run full onboarding (clone + context stubs + spawn Hermes instance)
+# Run full onboarding (clone via HTTPS + token, context stubs, spawn Hermes)
 ssh viko-vps python3 ~/projects/viko-agent/scripts/add-project.py \
   <slug> <group_jid> <github_url> [--vps-host <vps_host>] [--vps-user <vps_user>] [--members "<phones>"]
 ```
@@ -67,13 +71,12 @@ Setelah spawn selesai, fetch nama semua participant dari group:
 curl -s http://localhost:3000/group/<group_jid>/participants
 ```
 
-Gunakan field `name` (WA profile name) untuk identifikasi member di context.md dan summary.
-Jika `name` null → tampilkan phone saja, nama akan diketahui saat mereka kirim pesan pertama.
+Gunakan field `name` (WA profile name) untuk identifikasi member di context.md.
+Jika `name` null → tampilkan phone saja, nama diketahui saat mereka kirim pesan pertama.
 
 ## Scan codebase + update context.md
 
 ```bash
-# Deteksi stack
 ssh viko-vps ls ~/projects/<slug>/
 ssh viko-vps cat ~/projects/<slug>/package.json 2>/dev/null | python3 -c "import sys,json; d=json.load(sys.stdin); print('NestJS' if 'nest' in str(d) else 'Node.js')"
 ssh viko-vps cat ~/projects/<slug>/go.mod 2>/dev/null | head -3
@@ -85,7 +88,7 @@ Tulis hasil ke projects/<slug>/context.md via edit.
 
 Setelah spawn selesai, kirim ringkasan:
 - ✓ Project <slug> onboarded
-- Stack yang terdeteksi  
+- Stack yang terdeteksi
 - Instance Hermes-<slug> berjalan terpisah (memory isolated)
 - Siapa yang bisa tanya (semua) vs authorize (Eksa only)
 
@@ -95,27 +98,16 @@ KIRIM KONFIRMASI SEBELUM apapun yang mungkin memutus sesi.
 
 Ketika Eksa minta "viko allow @X bisa DM":
 
-Cara 1 — via @mention (phone dari [Mentioned: 628xxx] di body pesan):
 ```bash
 ssh viko-vps python3 ~/projects/viko-agent/scripts/allow-member.py 628xxx
 ssh viko-vps "cd ~/projects/viko-agent && docker compose --profile full up -d --force-recreate hermes"
 ```
 
-Cara 2 — dari pesan X di group (phone dari sender JID):
-```bash
-ssh viko-vps python3 ~/projects/viko-agent/scripts/allow-member.py 628xxx
-```
-
-Cara 3 — phone disebut langsung oleh Eksa:
-```bash
-ssh viko-vps python3 ~/projects/viko-agent/scripts/allow-member.py 628xxx
-```
-
 ## Catatan
 
-- setup-keys.py idempotent — aman dijalankan ulang
-- spawn-hermes.py idempotent — skip jika group JID sudah ada di routing.json  
+- GitHub clone: selalu via HTTPS + GITHUB_TOKEN, tidak butuh deploy key per repo
+- VPS SSH: selalu pakai id_viko — Eksa tinggal add id_viko.pub ke VPS user baru
+- setup-keys.py idempotent — aman dijalankan ulang (update SSH config alias saja)
 - add-project.py idempotent — clone jadi pull jika repo sudah ada
 - Routing.json hot-reload: bridge detect perubahan dalam <1 detik, tidak perlu restart
 - Memory isolation: setiap project Hermes punya memory_store.db sendiri
-- Untuk private GitHub repo: GITHUB_TOKEN dengan scope repo sudah cukup (personal + org)

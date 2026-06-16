@@ -68,6 +68,26 @@ def _get_env_val(path: Path, key: str) -> str:
     return ""
 
 
+def _to_https_url(github_url: str, token: str) -> str:
+    """Convert any GitHub URL (SSH or HTTPS) to HTTPS, optionally with token."""
+    import re
+    # git@github.com:org/repo.git → https://github.com/org/repo.git
+    ssh_match = re.match(r'git@github\.com:([\w.\-]+/[\w.\-]+?)(?:\.git)?$', github_url)
+    if ssh_match:
+        path = ssh_match.group(1)
+    else:
+        # Already HTTPS — strip existing credentials
+        https_match = re.match(r'https://(?:[^@]+@)?github\.com/([\w.\-]+/[\w.\-]+?)(?:\.git)?$', github_url)
+        path = https_match.group(1) if https_match else None
+
+    if not path:
+        return github_url  # unrecognized format, return as-is
+
+    if token:
+        return f"https://{token}@github.com/{path}.git"
+    return f"https://github.com/{path}.git"
+
+
 def main():
     # Handle backward compat: if 4th positional arg exists and doesn't start with --,
     # inject it as --members before argparse sees the args.
@@ -108,8 +128,11 @@ def main():
     if member_phones:
         print(f"  DM access : {', '.join(member_phones)}")
 
-    # ── 1. Clone or pull repo ─────────────────────────────────────────────────
+    # ── 1. Clone or pull repo via HTTPS + GITHUB_TOKEN ───────────────────────
     print("\n[1/4] Repository...")
+    github_token = _get_env_val(REPO_DIR / ".env", "GITHUB_TOKEN") or os.environ.get("GITHUB_TOKEN", "")
+    clone_url = _to_https_url(github_url, github_token)
+
     if (project_dir / ".git").exists():
         result = subprocess.run(
             ["git", "-C", str(project_dir), "pull", "--ff-only"],
@@ -119,12 +142,16 @@ def main():
     else:
         project_dir.parent.mkdir(parents=True, exist_ok=True)
         result = subprocess.run(
-            ["git", "clone", "--depth=1", github_url, str(project_dir)],
+            ["git", "clone", "--depth=1", clone_url, str(project_dir)],
             capture_output=True, text=True
         )
         if result.returncode != 0:
             print(f"      ERROR: {result.stderr.strip()}")
             sys.exit(1)
+        # Set remote back to clean HTTPS URL (without token in URL)
+        clean_url = _to_https_url(github_url, "")
+        subprocess.run(["git", "-C", str(project_dir), "remote", "set-url", "origin", clean_url],
+                       capture_output=True)
         print(f"      Cloned to {project_dir}")
 
     # ── 2. Create context.md and steps.md stubs ───────────────────────────────
