@@ -28,6 +28,9 @@ else:
 
 ## Phase 1 — Generate keys + GitHub deploy key
 
+⚠️ WAJIB: jalankan via `ssh viko-vps` — JANGAN dari terminal container langsung.
+(SSH dir di dalam container adalah read-only, script akan gagal jika dijalankan di sana.)
+
 ```bash
 ssh viko-vps GITHUB_TOKEN=$GITHUB_TOKEN python3 ~/projects/viko-agent/scripts/setup-keys.py \
   <slug> <github_url> [vps_host] [vps_user]
@@ -42,11 +45,12 @@ Kirim ke group WA:
 
 ## Phase 2 — Test + clone + spawn (setelah Eksa reply "done")
 
+⚠️ WAJIB: semua perintah di bawah via `ssh viko-vps` — JANGAN dari terminal container.
+
 ```bash
-# Test SSH connections — SELALU pakai alias, bukan raw IP
-# (alias ada di ~/.viko/ssh/config, dibuat oleh setup-keys.py)
-ssh viko-vps ssh -i ~/.viko/ssh/<slug>-deploy -o BatchMode=yes -o ConnectTimeout=10 <slug>-github echo OK
-ssh viko-vps ssh -i ~/.viko/ssh/<slug>-deploy -o BatchMode=yes -o ConnectTimeout=10 <slug>-vps echo OK  # skip if no vps
+# Test SSH connections — pakai alias, bukan raw IP
+ssh viko-vps ssh -F ~/.viko/ssh/config -o BatchMode=yes -o ConnectTimeout=10 <slug>-github echo OK
+ssh viko-vps ssh -F ~/.viko/ssh/config -o BatchMode=yes -o ConnectTimeout=10 <slug>-vps echo OK  # skip if no vps
 
 # Run full onboarding (clone + context stubs + spawn Hermes instance)
 ssh viko-vps python3 ~/projects/viko-agent/scripts/add-project.py \

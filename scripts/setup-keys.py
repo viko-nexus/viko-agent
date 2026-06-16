@@ -183,6 +183,14 @@ def main():
         print(__doc__)
         sys.exit(1)
 
+    # Guard: must run on host, not inside container (SSH dir would be read-only)
+    ssh_dir_check = Path(os.environ.get("HOME", "/root")) / ".viko" / "ssh"
+    if not ssh_dir_check.exists():
+        print("ERROR: ~/.viko/ssh/ not found.")
+        print("This script must run on the VPS host via: ssh viko-vps python3 ~/projects/viko-agent/scripts/setup-keys.py ...")
+        print("Do NOT run from inside the Hermes container — SSH dir is read-only there.")
+        sys.exit(1)
+
     slug = sys.argv[1].lower().strip()
     github_url = sys.argv[2].strip()
     vps_host = sys.argv[3].strip() if len(sys.argv) > 3 else ""
