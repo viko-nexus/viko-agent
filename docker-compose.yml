@@ -104,6 +104,12 @@ services:
       # Use certifi bundle (inside image layers, not VirtioFS) to bypass the issue.
       SSL_CERT_FILE: /opt/hermes/.venv/lib/python3.13/site-packages/certifi/cacert.pem
       REQUESTS_CA_BUNDLE: /opt/hermes/.venv/lib/python3.13/site-packages/certifi/cacert.pem
+      # Routing table path — explicit so the bridge doesn't fall back to its
+      # $HOME-relative default ($HOME=/root in-container ≠ /home/viko). The file
+      # is bind-mounted at /opt/data/bridge below. Without this, routingEntries=0
+      # and every group message falls through to admin instead of the per-project
+      # container — the actual cause of the cross-project "leak".
+      ROUTING_FILE: /opt/data/bridge/routing.json
       # Bridge binds on all interfaces so per-project Hermes containers can reach it
       BRIDGE_BIND: "0.0.0.0"
       # Hostname used by relay clients as the Host header when connecting over Docker network

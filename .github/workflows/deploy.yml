@@ -24,12 +24,23 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          fetch-depth: 10
+          fetch-depth: 0   # full history so we can diff exactly this push's range
 
       - name: Check if image rebuild needed
         id: changed
         run: |
-          if git log --name-only --pretty=format: -10 | grep -qE '^(Dockerfile\.hermes|patches/)'; then
+          # Rebuild ONLY when THIS push touched Dockerfile.hermes or patches/.
+          # (Old bug: `git log -10` re-triggered an 8GB rebuild+pull for unrelated
+          #  pushes because old patches/ commits stayed inside the 10-commit window.)
+          BEFORE='${{ github.event.before }}'
+          SHA='${{ github.sha }}'
+          if [ -z "$BEFORE" ] || [ "$BEFORE" = "0000000000000000000000000000000000000000" ]; then
+            CHANGED=$(git show --name-only --pretty=format: "$SHA")   # manual dispatch / first push
+          else
+            CHANGED=$(git diff --name-only "$BEFORE" "$SHA")
+          fi
+          echo "Changed files in this push:"; echo "$CHANGED"
+          if echo "$CHANGED" | grep -qE '^(Dockerfile\.hermes|patches/)'; then
             echo "result=true" >> $GITHUB_OUTPUT
           else
             echo "result=false" >> $GITHUB_OUTPUT
@@ -51,6 +62,10 @@ jobs:
           file: Dockerfile.hermes
           push: true
           tags: ghcr.io/${{ github.repository_owner }}/viko-hermes:latest
+          # Registry layer cache: rebuilt images keep unchanged layer digests, so the
+          # VPS pull only fetches changed layers (not the full ~8GB) on legit rebuilds.
+          cache-from: type=registry,ref=ghcr.io/${{ github.repository_owner }}/viko-hermes:buildcache
+          cache-to: type=registry,ref=ghcr.io/${{ github.repository_owner }}/viko-hermes:buildcache,mode=max
           # UID/GID 1000 = viko user on trahku. Other VPSes: container auto-chowns at first start.
           build-args: |
             HERMES_UID=1000
@@ -73,7 +88,7 @@ jobs:
           username: ${{ secrets.VPS_USER }}
           key: ${{ secrets.VPS_SSH_KEY }}
           envs: GHCR_TOKEN,GHCR_ACTOR,REBUILT
-          command_timeout: 15m
+          command_timeout: 25m
           script: |
             set -e
             cd ~/projects/viko-agent
