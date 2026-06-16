@@ -446,6 +446,25 @@ async function startSocket() {
         }
       }
 
+      // Extract text from quoted/replied message so Viko knows what's being replied to
+      if (hasQuotedMessage && contextInfo?.quotedMessage) {
+        const qm = contextInfo.quotedMessage;
+        const quotedText =
+            qm.conversation ||
+            qm.extendedTextMessage?.text ||
+            qm.imageMessage?.caption ||
+            qm.videoMessage?.caption ||
+            qm.documentMessage?.caption ||
+            (qm.audioMessage  ? '[pesan suara]'                                   : null) ||
+            (qm.imageMessage  ? '[gambar]'                                        : null) ||
+            (qm.videoMessage  ? '[video]'                                         : null) ||
+            (qm.documentMessage ? `[dokumen: ${qm.documentMessage.fileName || 'file'}]` : null);
+        if (quotedText) {
+          const quotedFrom = quotedParticipant ? quotedParticipant.split('@')[0] : 'unknown';
+          body = `[Reply to: "${quotedText}" — from ${quotedFrom}]\n${body}`;
+        }
+      }
+
       // For media without caption, use a placeholder so the API message is never empty
       if (hasMedia && !body) {
         body = `[${mediaType} received]`;
