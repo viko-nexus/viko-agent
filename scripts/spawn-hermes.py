@@ -59,6 +59,35 @@ def save_routing(routing: dict) -> None:
     tmp.rename(ROUTING_FILE)
 
 
+def _container_running(name: str) -> bool:
+    """Return True if container exists and is running."""
+    r = subprocess.run(
+        ["docker", "inspect", "-f", "{{.State.Running}}", name],
+        capture_output=True, text=True
+    )
+    return r.returncode == 0 and r.stdout.strip() == "true"
+
+
+def _container_exists(name: str) -> bool:
+    """Return True if container exists (running or stopped)."""
+    r = subprocess.run(
+        ["docker", "inspect", "-f", "{{.Id}}", name],
+        capture_output=True, text=True
+    )
+    return r.returncode == 0
+
+
+def _wait_healthy(name: str, timeout: int = 90) -> None:
+    """Wait until container is running. Raises RuntimeError on timeout."""
+    import time
+    deadline = time.time() + timeout
+    while time.time() < deadline:
+        if _container_running(name):
+            return
+        time.sleep(2)
+    raise RuntimeError(f"Container {name} did not start within {timeout}s")
+
+
 def next_port(routing: dict) -> int:
     used = set(int(v) for v in routing.values() if str(v).isdigit())
     port = MIN_PORT
@@ -245,7 +274,23 @@ def main():
 
     if group_jid in routing:
         port = int(routing[group_jid])
-        print(f"✓ {slug} already routed to port {port} — no changes needed.")
+        container_name = f"viko-hermes-{slug}"
+        if _container_exists(container_name):
+            print(f"\n=== Updating Hermes-{slug} (port {port}) ===")
+            subprocess.run(["docker", "restart", container_name], check=True, capture_output=True)
+            print(f"  ✓ Container restarted")
+            _wait_healthy(container_name)
+            print(f"  ✓ Container healthy")
+        else:
+            # In routing but container missing — re-spawn
+            print(f"\n=== Re-spawning Hermes-{slug} (port {port}, container missing) ===")
+            data_dir = create_hermes_data_dir(slug, port, group_jid, env)
+            spawn_container(slug, port, data_dir, env)
+            _wait_healthy(container_name)
+            print(f"  ✓ Container re-spawned and healthy")
+        print(f"\nHermes-{slug} running on port {port}")
+        print(f"Dashboard: http://localhost:{port + 900 - 1}")
+        print(f"SPAWN_COMPLETE port={port}")
         return
 
     port = next_port(routing)
