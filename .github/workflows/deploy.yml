@@ -4,23 +4,70 @@ on:
   push:
     branches: [main]
 
+permissions:
+  contents: read
+  packages: write
+
 jobs:
-  deploy:
+  # ── Job 1: Build image on runner + push to GHCR ──────────────────────────────
+  build:
     runs-on: ubuntu-latest
+    outputs:
+      rebuilt: ${{ steps.changed.outputs.result }}
 
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
         with:
           fetch-depth: 10
 
+      - name: Check if image rebuild needed
+        id: changed
+        run: |
+          if git log --name-only --pretty=format: HEAD~10..HEAD | grep -qE '^(Dockerfile\.hermes|patches/)'; then
+            echo "result=true" >> $GITHUB_OUTPUT
+          else
+            echo "result=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Login to GHCR
+        if: steps.changed.outputs.result == 'true'
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push to GHCR
+        if: steps.changed.outputs.result == 'true'
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: Dockerfile.hermes
+          push: true
+          tags: ghcr.io/${{ github.repository_owner }}/viko-hermes:latest
+          # UID/GID 1000 = viko user on trahku. Other VPSes: container auto-chowns at first start.
+          build-args: |
+            HERMES_UID=1000
+            HERMES_GID=1000
+
+  # ── Job 2: Deploy to VPS — pull image + restart ───────────────────────────────
+  deploy:
+    runs-on: ubuntu-latest
+    needs: build
+
+    steps:
       - name: Deploy to trahku
         uses: appleboy/ssh-action@v1
+        env:
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GHCR_ACTOR: ${{ github.actor }}
+          REBUILT: ${{ needs.build.outputs.rebuilt }}
         with:
           host: ${{ secrets.VPS_HOST }}
           username: ${{ secrets.VPS_USER }}
           key: ${{ secrets.VPS_SSH_KEY }}
-          command_timeout: 90m
+          envs: GHCR_TOKEN,GHCR_ACTOR,REBUILT
+          command_timeout: 15m
           script: |
             set -e
             cd ~/projects/viko-agent
@@ -32,15 +79,14 @@ jobs:
             # Remove stale/orphaned containers that could block compose up
             docker rm -f viko-hermes 2>/dev/null || true
 
-            # Rebuild image if Dockerfile or patches changed in last 10 commits
-            # (window covers cases where CI failed mid-run and skipped a rebuild)
-            if git log --name-only --pretty=format: HEAD~10..HEAD 2>/dev/null | grep -qE '^(Dockerfile\.hermes|patches/)'; then
-              echo "Dockerfile/patches changed — rebuilding image..."
-              DOCKER_BUILDKIT=1 docker compose build hermes
-              docker compose --profile full up -d --force-recreate hermes
-            else
-              echo "No image rebuild needed — restarting hermes..."
-              docker compose --profile full up -d --force-recreate hermes
+            # Pull from GHCR only when image was rebuilt this run
+            if [ "$REBUILT" = "true" ]; then
+              echo "Pulling latest image from GHCR..."
+              echo "$GHCR_TOKEN" | docker login ghcr.io -u "$GHCR_ACTOR" --password-stdin
+              docker pull ghcr.io/eksant/viko-hermes:latest
+              docker tag ghcr.io/eksant/viko-hermes:latest viko-hermes:latest
+              docker logout ghcr.io
             fi
 
+            docker compose --profile full up -d --force-recreate hermes
             docker ps --filter name=viko --format 'table {{.Names}}\t{{.Status}}'

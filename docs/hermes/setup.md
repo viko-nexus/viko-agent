@@ -2,6 +2,32 @@
 
 AI orchestrator (brain) running at port 9119. Built from `Dockerfile.hermes`.
 
+## Fresh VPS / Migration Setup
+
+Pre-built image is published to GHCR on every CI run that changes `Dockerfile.hermes`
+or `patches/`. Pull it instead of building (~5 min vs ~1 hour):
+
+```bash
+# 1. Pull pre-built image from GHCR (public package, no auth needed)
+docker pull ghcr.io/eksant/viko-hermes:latest
+docker tag ghcr.io/eksant/viko-hermes:latest viko-hermes:latest
+
+# 2. Start services (uses pulled image — skips build)
+cp .env.example .env  # fill in secrets
+docker compose --profile full up -d
+
+# 3. Apply config (creates config.yaml with Viko settings)
+python3 scripts/init-hermes-config.py
+docker compose --profile full up -d --force-recreate hermes
+```
+
+**Note:** The GHCR image is built with `HERMES_UID=1000 HERMES_GID=1000` (matching
+trahku's `viko` user). On a VPS with a different UID, Hermes auto-chowns at first
+start — slightly slower boot, works fine after that.
+
+**When to build locally instead:** If you've modified `patches/` without pushing to
+main, run `docker compose build hermes` and skip the pull step.
+
 ## Critical config.yaml Settings
 
 `data/hermes/config.yaml` is gitignored. After a data wipe, Hermes creates
@@ -46,9 +72,8 @@ They persist across restarts — only need rebuild to update.
 
 | Patch | What |
 |-------|------|
-| `whatsapp-bridge.js` | WhatsApp integration bridge |
-| `apply-run-py.py` | Applies run.py modifications (base patch) |
-| `apply-agent-msgs.py` | Agent message handling improvements |
+| `whatsapp-bridge.js` | WhatsApp bridge — routing, relay mode, per-project queues, group participants API |
+| `indonesian-locale.py` | Indonesian locale support |
 | `patch-ssh-guard.py` | Narrows SSH threat pattern — allows legitimate SSH, blocks key exfiltration |
 | `patch-model-router.py` | Routes messages to `viko-chat` or `viko-code` based on content keywords |
 
