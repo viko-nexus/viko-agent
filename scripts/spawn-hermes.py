@@ -276,21 +276,14 @@ def main():
     if group_jid in routing:
         port = int(routing[group_jid])
         container_name = f"viko-hermes-{slug}"
-        if _container_exists(container_name):
-            print(f"\n=== Updating Hermes-{slug} (port {port}) ===")
-            subprocess.run(["docker", "restart", container_name], check=True, capture_output=True)
-            print(f"  ✓ Container restarted")
-            _wait_healthy(container_name)
-            print(f"  ✓ Container healthy")
-        else:
-            # In routing but container missing — re-spawn
-            print(f"\n=== Re-spawning Hermes-{slug} (port {port}, container missing) ===")
-            data_dir = create_hermes_data_dir(slug, port, group_jid, env)
-            spawn_container(slug, port, data_dir, env)
-            _wait_healthy(container_name)
-            print(f"  ✓ Container re-spawned and healthy")
+        # Always full re-spawn (rm + run) so env var changes take effect.
+        # docker restart preserves old env — only docker run applies new vars.
+        print(f"\n=== Re-spawning Hermes-{slug} (port {port}) ===")
+        data_dir = create_hermes_data_dir(slug, port, group_jid, env)
+        spawn_container(slug, port, data_dir, env)
+        _wait_healthy(container_name)
+        print(f"  ✓ Container re-spawned and healthy")
         print(f"\nHermes-{slug} running on port {port}")
-        print(f"Dashboard: http://localhost:{port + 900 - 1}")
         print(f"SPAWN_COMPLETE port={port}")
         return
 
