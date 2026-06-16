@@ -20,7 +20,10 @@ Image: viko-viko-hermes (built by docker compose build hermes)
 
 import sys
 import os
+import re
 import json
+import shutil
+import argparse
 import subprocess
 import yaml
 from pathlib import Path
@@ -29,6 +32,12 @@ REPO_DIR = Path(__file__).parent.parent.resolve()
 ROUTING_FILE = REPO_DIR / "data" / "bridge" / "routing.json"
 MIN_PORT = 8101
 HERMES_IMAGE = "viko-hermes"
+
+# Per-project SSH material lives here on the host (one keypair + 1-alias config
+# per project). Only the project's own dir is mounted into its container, so a
+# container physically cannot present another project's key or resolve its alias.
+SSH_DIR = Path.home() / ".viko" / "ssh"
+SSH_PROJECTS_DIR = SSH_DIR / "projects"
 
 
 def _read_env() -> dict:
@@ -94,6 +103,125 @@ def next_port(routing: dict) -> int:
     while port in used:
         port += 1
     return port
+
+
+def _run(cmd: list, **kw) -> subprocess.CompletedProcess:
+    return subprocess.run(cmd, capture_output=True, text=True, **kw)
+
+
+def _parse_ssh_host_block(config_text: str, *aliases: str) -> dict:
+    """Extract HostName/User for the first Host block matching any alias."""
+    out, capture = {}, False
+    for line in config_text.splitlines():
+        s = line.strip()
+        if s.lower().startswith("host "):
+            capture = bool(set(s.split()[1:]) & set(aliases))
+            continue
+        if capture:
+            m = re.match(r"(?i)\s*(hostname|user)\s+(\S+)", line)
+            if m:
+                out.setdefault(m.group(1).lower(), m.group(2))
+    return out
+
+
+def _resolve_vps(slug: str, vps_host: str, vps_user: str) -> tuple:
+    """Resolve (vps_host, vps_user) from args, then per-project config, then the
+    legacy shared config. Returns ('', '') if this project has no VPS."""
+    if vps_host:
+        return vps_host, (vps_user or "viko-exec")
+
+    proj_cfg = SSH_PROJECTS_DIR / slug / "config"
+    if proj_cfg.exists():
+        d = _parse_ssh_host_block(proj_cfg.read_text(), f"{slug}-vps", f"{slug}-prod")
+        if d.get("hostname"):
+            return d["hostname"], d.get("user", "viko-exec")
+
+    shared = SSH_DIR / "config"
+    if shared.exists():
+        d = _parse_ssh_host_block(shared.read_text(), f"{slug}-vps", f"{slug}-prod")
+        if d.get("hostname"):
+            return d["hostname"], d.get("user", "viko-exec")
+
+    return "", ""
+
+
+def _ensure_project_key(slug: str) -> Path:
+    """Generate a dedicated {slug}-deploy keypair if missing. Returns the private
+    key path. The .pub must be authorized ONLY on this project's VPS user."""
+    SSH_DIR.mkdir(parents=True, exist_ok=True)
+    priv = SSH_DIR / f"{slug}-deploy"
+    if not priv.exists():
+        r = _run(["ssh-keygen", "-t", "ed25519", "-N", "", "-C", f"viko-{slug}", "-f", str(priv)])
+        if r.returncode != 0:
+            raise RuntimeError(f"ssh-keygen failed for {slug}: {r.stderr.strip()}")
+        print(f"  ✓ Generated dedicated key {slug}-deploy")
+    priv.chmod(0o600)
+    return priv
+
+
+def _build_project_ssh_dir(slug: str, vps_host: str, vps_user: str) -> Path:
+    """Build ~/.viko/ssh/projects/{slug}/ holding ONLY this project's key + a
+    single-alias config + pre-seeded known_hosts. This whole dir is what gets
+    mounted at /opt/data/.ssh — so the container has no other project's key and
+    cannot resolve any other {slug}-vps alias."""
+    proj_dir = SSH_PROJECTS_DIR / slug
+    proj_dir.mkdir(parents=True, exist_ok=True)
+
+    priv = _ensure_project_key(slug)
+    shutil.copy2(priv, proj_dir / "id_viko")
+    (proj_dir / "id_viko").chmod(0o600)
+    if (SSH_DIR / f"{slug}-deploy.pub").exists():
+        shutil.copy2(SSH_DIR / f"{slug}-deploy.pub", proj_dir / "id_viko.pub")
+
+    # Single-alias config — both {slug}-vps and {slug}-prod point to the one host.
+    if vps_host:
+        (proj_dir / "config").write_text(
+            f"Host {slug}-vps {slug}-prod\n"
+            f"    HostName {vps_host}\n"
+            f"    User {vps_user}\n"
+            f"    IdentityFile /opt/data/.ssh/id_viko\n"
+            f"    IdentitiesOnly yes\n"
+            f"    StrictHostKeyChecking accept-new\n"
+            f"    UserKnownHostsFile /opt/data/.ssh/known_hosts\n"
+        )
+    else:
+        (proj_dir / "config").write_text("# no VPS configured for this project\n")
+
+    # Pre-seed known_hosts from the shared file so accept-new doesn't need to
+    # write into the read-only mount on first connect.
+    shared_kh = SSH_DIR / "known_hosts"
+    (proj_dir / "known_hosts").write_text(shared_kh.read_text() if shared_kh.exists() else "")
+    return proj_dir
+
+
+def preflight(slug: str, projects_root: Path, proj_ssh_dir: Path, vps_host: str) -> None:
+    """Fail-closed invariants checked BEFORE docker run. Raise to abort spawn."""
+    errors = []
+
+    project_code = projects_root / slug
+    if not project_code.is_dir():
+        errors.append(f"project code dir missing: {project_code}")
+
+    cfg = proj_ssh_dir / "config"
+    if not cfg.exists():
+        errors.append(f"per-project ssh config missing: {cfg}")
+    else:
+        # Exactly one Host line, and every alias on it must belong to this slug.
+        host_lines = [l for l in cfg.read_text().splitlines() if l.strip().lower().startswith("host ")]
+        if vps_host and len(host_lines) != 1:
+            errors.append(f"ssh config must have exactly 1 Host block, found {len(host_lines)}")
+        for hl in host_lines:
+            for alias in hl.split()[1:]:
+                if not alias.startswith(f"{slug}-"):
+                    errors.append(f"ssh config leaks foreign alias: {alias}")
+
+    key = proj_ssh_dir / "id_viko"
+    if not key.exists():
+        errors.append(f"per-project key missing: {key}")
+
+    if errors:
+        raise RuntimeError("preflight failed:\n  - " + "\n  - ".join(errors))
+    print(f"  ✓ preflight passed (code={project_code.name}, ssh=1 alias, key present)")
 
 
 def _build_project_config(slug: str, group_jid: str, env: dict) -> dict:
@@ -174,7 +302,6 @@ def _build_project_config(slug: str, group_jid: str, env: dict) -> dict:
             "hermes kanban",
             "execute_code",
             "overwrite system file via redirection",
-            f"git clone to VIKO_PROJECTS_ROOT (project onboarding)",
             f"ssh {slug}-vps (deploy to {slug} VPS)",
         ],
     }
@@ -203,14 +330,13 @@ def create_hermes_data_dir(slug: str, port: int, group_jid: str, env: dict) -> P
     return data_dir
 
 
-def spawn_container(slug: str, port: int, data_dir: Path, env: dict) -> str:
+def spawn_container(slug: str, port: int, data_dir: Path, env: dict, proj_ssh_dir: Path) -> str:
     projects_root = env.get("VIKO_PROJECTS_ROOT", str(Path.home() / "Projects"))
-    home = str(Path.home())
     uid = env.get("HERMES_UID", "1000")
     gid = env.get("HERMES_GID", "1000")
     ninerouter_key = env.get("OPENAI_API_KEY", "")
     home_channel = env.get("WHATSAPP_HOME_CHANNEL", "")
-    github_token = env.get("GITHUB_TOKEN", "")
+    vroot = f"{projects_root}/viko-agent"   # == REPO_DIR (same path host↔container)
 
     cmd = [
         "docker", "run", "-d",
@@ -218,14 +344,25 @@ def spawn_container(slug: str, port: int, data_dir: Path, env: dict) -> str:
         "--restart", "unless-stopped",
         "--network", "viko_default",
         "-p", f"127.0.0.1:{port + 900}:9119",
-        # Volumes
+        # ── Volumes ── HARD ISOLATION: only this project's code + its own slice of
+        # the viko-agent repo. No full-root mount → cannot cd into other projects.
         "-v", f"{data_dir}:/opt/data",
-        "-v", f"{projects_root}:{projects_root}:rw",
-        "-v", f"{home}/.viko/ssh:/opt/data/.ssh:ro",
-        "-v", f"{home}/.viko/ssh:/opt/data/home/.ssh:ro",
+        "-v", f"{projects_root}/{slug}:{projects_root}/{slug}:rw",
+        # viko-agent context — explicit allowlist only (NOT the whole repo, which
+        # holds .env secrets, data/ of every container, and other projects/).
+        "-v", f"{REPO_DIR}/AGENTS.md:{vroot}/AGENTS.md:ro",
+        "-v", f"{REPO_DIR}/rules:{vroot}/rules:ro",
+        "-v", f"{REPO_DIR}/soul:{vroot}/soul:ro",
+        "-v", f"{REPO_DIR}/skills:{vroot}/skills:ro",
+        "-v", f"{REPO_DIR}/projects/{slug}:{vroot}/projects/{slug}:rw",
+        # Per-project SSH: only this project's key + 1-alias config (no id_viko,
+        # no other {slug}-vps aliases). Cannot reach another project's VPS.
+        "-v", f"{proj_ssh_dir}:/opt/data/.ssh:ro",
+        "-v", f"{proj_ssh_dir}:/opt/data/home/.ssh:ro",
         "-v", f"{REPO_DIR}/hooks:/opt/data/hooks:ro",
-        "-v", f"{REPO_DIR}/mcp-servers:/opt/viko/mcp-servers:ro",
         "-v", f"{REPO_DIR}/skills:/opt/viko/skills:ro",
+        # NOTE: mcp-servers/ deliberately NOT mounted — projects-gateway.py exposes
+        # cross-project ssh_exec. Project containers must not carry it.
         # Environment
         "-e", f"HERMES_UID={uid}",
         "-e", f"HERMES_GID={gid}",
@@ -235,7 +372,8 @@ def spawn_container(slug: str, port: int, data_dir: Path, env: dict) -> str:
         "-e", f"WHATSAPP_RELAY_MODE=true",
         "-e", f"WHATSAPP_RELAY_TARGET=http://viko-hermes:3000",
         "-e", f"WHATSAPP_PORT_FILTER={port}",
-        "-e", f"GITHUB_TOKEN={github_token}",
+        # GITHUB_TOKEN deliberately NOT injected — a broad PAT would let the
+        # container clone any repo. Cloning is the admin Hermes's job.
         "-e", f"NINEROUTER_URL=http://viko-9router:20128",
         "-e", f"NINEROUTER_KEY={ninerouter_key}",
         "-e", f"VIKO_PROJECTS_ROOT={projects_root}",
@@ -262,16 +400,35 @@ def spawn_container(slug: str, port: int, data_dir: Path, env: dict) -> str:
     return result.stdout.strip()
 
 
-def main():
-    if len(sys.argv) < 3:
-        print(__doc__)
-        sys.exit(1)
+def _prepare_isolation(slug: str, env: dict, vps_host: str, vps_user: str) -> Path:
+    """Resolve VPS, build the per-project SSH dir, and run preflight. Returns the
+    per-project ssh dir to mount. Raises (fail-closed) if invariants don't hold."""
+    projects_root = Path(env.get("VIKO_PROJECTS_ROOT", str(Path.home() / "Projects")))
+    rh, ru = _resolve_vps(slug, vps_host, vps_user)
+    if rh:
+        print(f"  VPS: {ru}@{rh} (alias {slug}-vps)")
+    else:
+        print(f"  No VPS resolved for {slug} — ssh disabled for this container")
+    proj_ssh_dir = _build_project_ssh_dir(slug, rh, ru)
+    preflight(slug, projects_root, proj_ssh_dir, rh)
+    return proj_ssh_dir
 
-    slug = sys.argv[1].lower().strip()
-    group_jid = sys.argv[2].strip()
+
+def main():
+    parser = argparse.ArgumentParser(description="Spawn an isolated Hermes container for a project.")
+    parser.add_argument("slug")
+    parser.add_argument("group_jid")
+    parser.add_argument("--vps-host", default="")
+    parser.add_argument("--vps-user", default="")
+    args = parser.parse_args()
+
+    slug = args.slug.lower().strip()
+    group_jid = args.group_jid.strip()
 
     env = _read_env()
     routing = load_routing()
+
+    proj_ssh_dir = _prepare_isolation(slug, env, args.vps_host.strip(), args.vps_user.strip())
 
     if group_jid in routing:
         port = int(routing[group_jid])
@@ -280,7 +437,7 @@ def main():
         # docker restart preserves old env — only docker run applies new vars.
         print(f"\n=== Re-spawning Hermes-{slug} (port {port}) ===")
         data_dir = create_hermes_data_dir(slug, port, group_jid, env)
-        spawn_container(slug, port, data_dir, env)
+        spawn_container(slug, port, data_dir, env, proj_ssh_dir)
         _wait_healthy(container_name)
         print(f"  ✓ Container re-spawned and healthy")
         print(f"\nHermes-{slug} running on port {port}")
@@ -293,7 +450,7 @@ def main():
     data_dir = create_hermes_data_dir(slug, port, group_jid, env)
     print(f"  ✓ Config created at {data_dir}")
 
-    container_id = spawn_container(slug, port, data_dir, env)
+    container_id = spawn_container(slug, port, data_dir, env, proj_ssh_dir)
     print(f"  ✓ Container started: {container_id[:12]}")
 
     routing[group_jid] = port
