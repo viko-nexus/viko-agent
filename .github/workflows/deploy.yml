@@ -29,6 +29,9 @@ jobs:
             git fetch origin main
             git reset --hard origin/main
 
+            # Remove stale/orphaned containers that could block compose up
+            docker rm -f viko-hermes 2>/dev/null || true
+
             # Rebuild image if Dockerfile or patches changed in last 10 commits
             # (window covers cases where CI failed mid-run and skipped a rebuild)
             if git log --name-only --pretty=format: HEAD~10..HEAD 2>/dev/null | grep -qE '^(Dockerfile\.hermes|patches/)'; then
