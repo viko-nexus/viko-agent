@@ -97,10 +97,9 @@ jobs:
             git fetch origin main
             git reset --hard origin/main
 
-            # Remove stale/orphaned containers that could block compose up
-            docker rm -f viko-hermes 2>/dev/null || true
-
-            # Pull from GHCR only when image was rebuilt this run
+            # Pull from GHCR FIRST (admin stays up during the pull) — only when the
+            # image was rebuilt this run. A slow/failed pull must not take admin down,
+            # so we do NOT remove the running container before the pull completes.
             if [ "$REBUILT" = "true" ]; then
               echo "Pulling latest image from GHCR..."
               echo "$GHCR_TOKEN" | docker login ghcr.io -u "$GHCR_ACTOR" --password-stdin
@@ -109,5 +108,7 @@ jobs:
               docker logout ghcr.io
             fi
 
+            # Now swap — quick rm + recreate (brief blip only, after the image is local)
+            docker rm -f viko-hermes 2>/dev/null || true
             docker compose --profile full up -d --force-recreate hermes
             docker ps --filter name=viko --format 'table {{.Names}}\t{{.Status}}'

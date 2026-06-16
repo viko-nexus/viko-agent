@@ -23,6 +23,7 @@ import os
 import re
 import json
 import shutil
+import secrets
 import argparse
 import subprocess
 import yaml
@@ -97,8 +98,16 @@ def _wait_healthy(name: str, timeout: int = 90) -> None:
     raise RuntimeError(f"Container {name} did not start within {timeout}s")
 
 
+def _entry_port(val) -> int:
+    """Port from a routing entry — new schema {port,...} or legacy bare int."""
+    if isinstance(val, dict):
+        return int(val.get("port", 0))
+    return int(val) if str(val).isdigit() else 0
+
+
 def next_port(routing: dict) -> int:
-    used = set(int(v) for v in routing.values() if str(v).isdigit())
+    used = {_entry_port(v) for v in routing.values()}
+    used.discard(0)
     port = MIN_PORT
     while port in used:
         port += 1
@@ -195,12 +204,18 @@ def _build_project_ssh_dir(slug: str, vps_host: str, vps_user: str) -> Path:
 
 
 def preflight(slug: str, projects_root: Path, proj_ssh_dir: Path, vps_host: str) -> None:
-    """Fail-closed invariants checked BEFORE docker run. Raise to abort spawn."""
+    """Fail-closed invariants checked BEFORE docker run. Raise to abort spawn.
+
+    Security invariants (ssh config has only this slug's aliases, key present) are
+    hard failures. A missing code dir is an onboarding-completeness warning, not a
+    security failure — the container still runs fully isolated over an empty dir.
+    """
     errors = []
 
     project_code = projects_root / slug
     if not project_code.is_dir():
-        errors.append(f"project code dir missing: {project_code}")
+        print(f"  ⚠ project code dir missing ({project_code}) — not onboarded yet; "
+              f"container will run isolated over an empty dir")
 
     cfg = proj_ssh_dir / "config"
     if not cfg.exists():
@@ -330,7 +345,8 @@ def create_hermes_data_dir(slug: str, port: int, group_jid: str, env: dict) -> P
     return data_dir
 
 
-def spawn_container(slug: str, port: int, data_dir: Path, env: dict, proj_ssh_dir: Path) -> str:
+def spawn_container(slug: str, port: int, data_dir: Path, env: dict, proj_ssh_dir: Path,
+                    relay_token: str = "") -> str:
     projects_root = env.get("VIKO_PROJECTS_ROOT", str(Path.home() / "Projects"))
     uid = env.get("HERMES_UID", "1000")
     gid = env.get("HERMES_GID", "1000")
@@ -372,6 +388,9 @@ def spawn_container(slug: str, port: int, data_dir: Path, env: dict, proj_ssh_di
         "-e", f"WHATSAPP_RELAY_MODE=true",
         "-e", f"WHATSAPP_RELAY_TARGET=http://viko-hermes:3000",
         "-e", f"WHATSAPP_PORT_FILTER={port}",
+        # Relay scope token — admin bridge maps this → the one JID this container
+        # may send to. Outbound to any other chat is 403 (surface #1).
+        "-e", f"HERMES_RELAY_TOKEN={relay_token}",
         # GITHUB_TOKEN deliberately NOT injected — a broad PAT would let the
         # container clone any repo. Cloning is the admin Hermes's job.
         "-e", f"NINEROUTER_URL=http://viko-9router:20128",
@@ -430,16 +449,23 @@ def main():
 
     proj_ssh_dir = _prepare_isolation(slug, env, args.vps_host.strip(), args.vps_user.strip())
 
+    # Mint a fresh relay token every (re)spawn — rotatable by design.
+    relay_token = secrets.token_urlsafe(32)
+
     if group_jid in routing:
-        port = int(routing[group_jid])
+        port = _entry_port(routing[group_jid])
         container_name = f"viko-hermes-{slug}"
         # Always full re-spawn (rm + run) so env var changes take effect.
         # docker restart preserves old env — only docker run applies new vars.
         print(f"\n=== Re-spawning Hermes-{slug} (port {port}) ===")
         data_dir = create_hermes_data_dir(slug, port, group_jid, env)
-        spawn_container(slug, port, data_dir, env, proj_ssh_dir)
+        # Update routing BEFORE the container starts polling, so the admin bridge
+        # has the new token mapped (hot-reload <1s) by the time it relays.
+        routing[group_jid] = {"port": port, "slug": slug, "relay_token": relay_token}
+        save_routing(routing)
+        spawn_container(slug, port, data_dir, env, proj_ssh_dir, relay_token)
         _wait_healthy(container_name)
-        print(f"  ✓ Container re-spawned and healthy")
+        print(f"  ✓ Container re-spawned and healthy (relay token rotated)")
         print(f"\nHermes-{slug} running on port {port}")
         print(f"SPAWN_COMPLETE port={port}")
         return
@@ -450,12 +476,12 @@ def main():
     data_dir = create_hermes_data_dir(slug, port, group_jid, env)
     print(f"  ✓ Config created at {data_dir}")
 
-    container_id = spawn_container(slug, port, data_dir, env, proj_ssh_dir)
-    print(f"  ✓ Container started: {container_id[:12]}")
-
-    routing[group_jid] = port
+    routing[group_jid] = {"port": port, "slug": slug, "relay_token": relay_token}
     save_routing(routing)
     print(f"  ✓ routing.json updated (bridge hot-reloads automatically)")
+
+    container_id = spawn_container(slug, port, data_dir, env, proj_ssh_dir, relay_token)
+    print(f"  ✓ Container started: {container_id[:12]}")
 
     print(f"\nHermes-{slug} running on port {port}")
     print(f"Dashboard: http://localhost:{port + 900}")

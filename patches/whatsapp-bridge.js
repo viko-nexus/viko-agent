@@ -184,13 +184,27 @@ const globalQueue = [];         // unrouted messages → Admin Hermes
 const ROUTING_FILE = process.env.ROUTING_FILE ||
   path.join(process.env.HOME || '/opt/data', 'projects/viko-agent/data/bridge/routing.json');
 
-let _routing = {};  // { "jid@g.us": 8101, ... }
+let _routing = {};      // { "jid@g.us": 8101 }        — normalized, inbound routing
+let _tokenToJid = {};   // { "<relay_token>": "jid@g.us" } — outbound scope checks
 
 function _loadRouting() {
   try {
-    _routing = JSON.parse(readFileSync(ROUTING_FILE, 'utf8'));
-    console.log(`[bridge] routing.json loaded: ${Object.keys(_routing).length} routes`);
-  } catch { _routing = {}; }
+    const raw = JSON.parse(readFileSync(ROUTING_FILE, 'utf8'));
+    const routing = {}, tokenToJid = {};
+    for (const [jid, val] of Object.entries(raw)) {
+      if (val && typeof val === 'object') {
+        // New schema: { jid: { port, slug, relay_token } }
+        if (val.port != null) routing[jid] = val.port;
+        if (val.relay_token) tokenToJid[val.relay_token] = jid;
+      } else {
+        // Legacy schema: { jid: port }
+        routing[jid] = val;
+      }
+    }
+    _routing = routing;
+    _tokenToJid = tokenToJid;
+    console.log(`[bridge] routing.json loaded: ${Object.keys(_routing).length} routes, ${Object.keys(_tokenToJid).length} relay tokens`);
+  } catch { _routing = {}; _tokenToJid = {}; }
 }
 
 _loadRouting();
@@ -210,6 +224,14 @@ try {
 const RELAY_MODE = ['1','true','yes'].includes((process.env.WHATSAPP_RELAY_MODE || '').toLowerCase());
 const RELAY_TARGET = process.env.WHATSAPP_RELAY_TARGET || 'http://viko-hermes-admin:3000';
 const PORT_FILTER = process.env.WHATSAPP_PORT_FILTER || '';
+// Per-container relay credential. The admin bridge maps this token → the one JID
+// this container is allowed to send to. Absent for the admin container itself.
+const RELAY_TOKEN = process.env.HERMES_RELAY_TOKEN || '';
+const _relayHeaders = () => ({
+  'Content-Type': 'application/json',
+  Host: 'viko-hermes-admin',
+  ...(RELAY_TOKEN ? { Authorization: `Bearer ${RELAY_TOKEN}` } : {}),
+});
 
 const MAX_QUEUE_SIZE = 100;
 
@@ -594,7 +616,7 @@ if (RELAY_MODE) {
   app.post('/send', async (req, res) => {
     try {
       const resp = await fetch(`${RELAY_TARGET}/send`, {
-        method: 'POST', headers: { 'Content-Type': 'application/json', Host: 'viko-hermes-admin' },
+        method: 'POST', headers: _relayHeaders(),
         body: JSON.stringify(req.body)
       });
       res.status(resp.status).json(await resp.json());
@@ -603,7 +625,16 @@ if (RELAY_MODE) {
   app.post('/send-media', async (req, res) => {
     try {
       const resp = await fetch(`${RELAY_TARGET}/send-media`, {
-        method: 'POST', headers: { 'Content-Type': 'application/json', Host: 'viko-hermes-admin' },
+        method: 'POST', headers: _relayHeaders(),
+        body: JSON.stringify(req.body)
+      });
+      res.status(resp.status).json(await resp.json());
+    } catch (e) { res.status(503).json({ error: 'relay_error' }); }
+  });
+  app.post('/edit', async (req, res) => {
+    try {
+      const resp = await fetch(`${RELAY_TARGET}/edit`, {
+        method: 'POST', headers: _relayHeaders(),
         body: JSON.stringify(req.body)
       });
       res.status(resp.status).json(await resp.json());
@@ -612,7 +643,7 @@ if (RELAY_MODE) {
   ['post'].forEach(m => app[m]('/typing', async (req, res) => {
     try {
       await fetch(`${RELAY_TARGET}/typing`, {
-        method: 'POST', headers: { 'Content-Type': 'application/json', Host: 'viko-hermes-admin' },
+        method: 'POST', headers: _relayHeaders(),
         body: JSON.stringify(req.body)
       });
       res.json({ ok: true });
@@ -669,6 +700,58 @@ app.use((req, res, next) => {
     });
   }
   next();
+});
+
+// ── Outbound scope enforcement (surface #1) ─────────────────────────────────
+// Authorization is server-side, never a container's self-claim. A project relay
+// presents Authorization: Bearer <relay_token>; the admin maps token → the one
+// JID it may send to. Loopback callers (the admin Hermes itself, which posts to
+// 127.0.0.1) carry no token and get full access. A networked caller with no /
+// unknown token is denied (default-deny) — this is the only thing that stops a
+// project container from POSTing /send with another group's chatId.
+function _bearer(req) {
+  const m = (req.headers['authorization'] || '').match(/^Bearer\s+(.+)$/i);
+  return m ? m[1].trim() : '';
+}
+function _isLoopback(req) {
+  const a = req.socket.remoteAddress || '';
+  return a === '127.0.0.1' || a === '::1' || a === '::ffff:127.0.0.1';
+}
+function _scopeError(req, chatId) {
+  const token = _bearer(req);
+  if (token) {
+    const jid = _tokenToJid[token];
+    if (!jid) return { code: 403, error: 'unknown_relay_token' };
+    if (!chatId || chatId !== jid) {
+      return { code: 403, error: 'cross_project_send_blocked', allowed: jid };
+    }
+    return null;                       // scoped, destination matches
+  }
+  if (_isLoopback(req)) return null;    // admin Hermes (loopback) — full access
+  return { code: 403, error: 'relay_token_required' };
+}
+
+const _SCOPED_PATHS = new Set(['/send', '/send-media', '/edit', '/typing']);
+app.use((req, res, next) => {
+  if (req.method === 'POST' && _SCOPED_PATHS.has(req.path)) {
+    const chatId = (req.body && req.body.chatId) || '';
+    const err = _scopeError(req, chatId);
+    if (err) {
+      console.warn(`[bridge] scope-deny ${req.path} chatId=${chatId || '?'} (${err.error}${err.allowed ? ' allowed=' + err.allowed : ''})`);
+      return res.status(err.code).json(err);
+    }
+  }
+  next();
+});
+
+// Relay scope introspection — a project relay (or the boot guard) presents its
+// token and gets back the exact port + JID(s) it is allowed to talk to. Used to
+// self-verify isolation without spraying a canary message into a group.
+app.get('/relay/scope', (req, res) => {
+  const token = _bearer(req);
+  const jid = _tokenToJid[token];
+  if (!jid) return res.status(403).json({ error: 'unknown_relay_token' });
+  res.json({ port: _routing[jid], allowed_jids: [jid] });
 });
 
 // Poll for new messages — ?port=8101 for project instances, no param for Admin Hermes
