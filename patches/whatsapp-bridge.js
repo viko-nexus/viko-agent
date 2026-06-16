@@ -901,6 +901,26 @@ app.get('/chat/:id', async (req, res) => {
   });
 });
 
+// Group participants with names
+app.get('/group/:jid/participants', async (req, res) => {
+  const jid = req.params.jid;
+  if (!jid.endsWith('@g.us') || !sock) {
+    return res.status(400).json({ error: 'Not a group JID or socket not ready' });
+  }
+  try {
+    const meta = await sock.groupMetadata(jid);
+    const participants = meta.participants.map(p => {
+      const contact = store.contacts[p.id] || {};
+      const phone = p.id.split('@')[0];
+      const name = contact.notify || contact.name || contact.verifiedName || null;
+      return { jid: p.id, phone, name, admin: p.admin || null };
+    });
+    res.json({ group: meta.subject, jid, participants });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 // Health check
 app.get('/health', (req, res) => {
   res.json({

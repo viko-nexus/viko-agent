@@ -59,6 +59,17 @@ ssh viko-vps python3 ~/projects/viko-agent/scripts/add-project.py \
 
 Baca output. Cek SPAWN_COMPLETE.
 
+## Resolve nama member dari WA
+
+Setelah spawn selesai, fetch nama semua participant dari group:
+
+```bash
+curl -s http://localhost:3000/group/<group_jid>/participants
+```
+
+Gunakan field `name` (WA profile name) untuk identifikasi member di context.md dan summary.
+Jika `name` null → tampilkan phone saja, nama akan diketahui saat mereka kirim pesan pertama.
+
 ## Scan codebase + update context.md
 
 ```bash
