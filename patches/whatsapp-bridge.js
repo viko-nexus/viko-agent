@@ -478,6 +478,15 @@ async function startSocket() {
         body = `[READ-ONLY MEMBER - hanya boleh tanya dan cek data, tidak bisa authorize execution]\n${body}`;
       }
 
+      // Append @mentioned phone numbers so Viko can act on them
+      // e.g. "allow @X to DM" — Viko reads the phone from [Mentioned: ...]
+      const humanMentions = mentionedIds
+          .filter(id => !botIds.includes(id))
+          .map(id => id.split('@')[0]);
+      if (humanMentions.length > 0) {
+          body = `${body}\n[Mentioned: ${humanMentions.join(', ')}]`;
+      }
+
       const event = {
         messageId: msg.key.id,
         chatId,

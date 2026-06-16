@@ -113,6 +113,7 @@ DESIRED = {
         "overwrite system file via redirection",
         "git clone to VIKO_PROJECTS_ROOT (project onboarding)",
         "python3 scripts/add-project.py (project onboarding)",
+        "python3 scripts/allow-member.py (add member to DM allowlist)",
         "ssh viko-vps docker compose (remote hermes restart)",
     ],
     # Display: language + runtime footer (model, context %)

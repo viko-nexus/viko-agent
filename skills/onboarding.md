@@ -60,9 +60,47 @@ Setelah restart, kirim ringkasan singkat:
 - Stack yang terdeteksi
 - Siapa yang bisa bertanya
 
+---
+
+## Add Member ke DM Allowlist
+
+Ketika Eksa minta "viko, allow @X bisa DM" atau "tambah @X ke allowlist":
+
+### Cara 1 — via @mention di pesan
+
+Bridge otomatis inject phone X ke body: `[Mentioned: 628xxx]`
+
+1. Baca phone dari `[Mentioned: ...]` di pesan Eksa
+2. Jalankan via SSH:
+   ```bash
+   ssh viko-vps python3 ~/projects/viko-agent/scripts/allow-member.py 628xxx
+   ```
+3. Restart hermes dan konfirmasi ke group
+
+### Cara 2 — via pesan terakhir X di group
+
+Kalau X sudah pernah kirim pesan di group, Viko tahu phone X dari sender.
+
+1. Ambil phone dari message history (sender JID = `628xxx@s.whatsapp.net`)
+2. Jalankan:
+   ```bash
+   ssh viko-vps python3 ~/projects/viko-agent/scripts/allow-member.py 628xxx
+   ```
+3. Restart hermes dan konfirmasi
+
+### Cara 3 — phone diberikan langsung oleh Eksa
+
+Kalau Eksa sebut nomor langsung ("viko allow 628xxx"):
+```bash
+ssh viko-vps python3 ~/projects/viko-agent/scripts/allow-member.py 628xxx
+```
+
+---
+
 ## Catatan
 
 - Selalu jalankan dari dalam group WA project yang akan di-onboard (supaya JID benar)
 - Script idempotent — aman dijalankan ulang jika ada yang gagal
 - Jika github_url butuh token (private repo): gunakan `https://<token>@github.com/...`
 - Restart akan memutus sesi aktif — kirim konfirmasi SEBELUM restart
+- `allow-member.py` hanya untuk DM access — di group yang sudah trusted, semua member sudah bisa mention Viko otomatis
