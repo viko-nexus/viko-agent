@@ -20,7 +20,7 @@ jobs:
           host: ${{ secrets.VPS_HOST }}
           username: ${{ secrets.VPS_USER }}
           key: ${{ secrets.VPS_SSH_KEY }}
-          command_timeout: 30m
+          command_timeout: 90m
           script: |
             set -e
             cd ~/projects/viko-agent
@@ -33,7 +33,7 @@ jobs:
             # (window covers cases where CI failed mid-run and skipped a rebuild)
             if git log --name-only --pretty=format: HEAD~10..HEAD 2>/dev/null | grep -qE '^(Dockerfile\.hermes|patches/)'; then
               echo "Dockerfile/patches changed — rebuilding image..."
-              docker compose build hermes
+              DOCKER_BUILDKIT=1 docker compose build hermes
               docker compose --profile full up -d --force-recreate hermes
             else
               echo "No image rebuild needed — restarting hermes..."
