@@ -23,7 +23,7 @@ jobs:
       - name: Check if image rebuild needed
         id: changed
         run: |
-          if git log --name-only --pretty=format: HEAD~10..HEAD | grep -qE '^(Dockerfile\.hermes|patches/)'; then
+          if git log --name-only --pretty=format: -10 | grep -qE '^(Dockerfile\.hermes|patches/)'; then
             echo "result=true" >> $GITHUB_OUTPUT
           else
             echo "result=false" >> $GITHUB_OUTPUT
