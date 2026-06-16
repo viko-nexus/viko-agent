@@ -4,38 +4,36 @@ Onboard a new project into Viko.
 
 Run this on trahku as the viko user (Viko does this via SSH):
   python3 ~/projects/viko-agent/scripts/add-project.py \\
-    <slug> <group_jid> <github_url> [member_phones]
+    <slug> <group_jid> <github_url> [--vps-host HOST] [--members PHONES]
 
 Arguments:
   slug          Project slug (e.g. siprodev, mankop)
   group_jid     WhatsApp group JID (e.g. 120363407940533307@g.us)
   github_url    GitHub repo URL (e.g. https://github.com/forgeyard/siprodev)
-  member_phones Comma-separated phone numbers to allow DM access (optional)
+  --vps-host    VPS hostname or IP for this project (optional)
+  --members     Comma-separated phone numbers to allow DM access (optional)
                 e.g. "6282112124452,6281234567890"
+
+Backward compat: if 4th positional arg exists and doesn't start with --,
+  treat as member_phones.
 
 What this does:
   1. Clone/pull repo to $VIKO_PROJECTS_ROOT/<slug>/
   2. Create projects/<slug>/context.md and steps.md stubs
-  3. Add channel_prompts entry in data/hermes/config.yaml
-  4. Add group JID to WHATSAPP_TRUSTED_GROUPS in data/hermes/.env
-  5. Add member phones to WHATSAPP_ALLOWED_USERS in data/hermes/.env
-  6. Print restart command (Viko runs this via SSH after script exits)
+  3. Call spawn-hermes.py to create an isolated Hermes container for the project
+  4. If --members provided, update WHATSAPP_ALLOWED_USERS in data/hermes-admin/.env
+     (falls back to data/hermes/.env if hermes-admin/.env doesn't exist)
 """
 
 import sys
 import os
+import argparse
 import subprocess
 from pathlib import Path
 from datetime import datetime
 
-try:
-    import yaml
-except ImportError:
-    subprocess.check_call([sys.executable, "-m", "pip", "install", "pyyaml", "-q"])
-    import yaml
-
 REPO_DIR = Path(__file__).parent.parent.resolve()
-CONFIG_PATH = REPO_DIR / "data" / "hermes" / "config.yaml"
+HERMES_ADMIN_ENV_PATH = REPO_DIR / "data" / "hermes-admin" / ".env"
 HERMES_ENV_PATH = REPO_DIR / "data" / "hermes" / ".env"
 
 
@@ -71,15 +69,28 @@ def _get_env_val(path: Path, key: str) -> str:
 
 
 def main():
-    if len(sys.argv) < 4:
-        print(__doc__)
-        sys.exit(1)
+    # Handle backward compat: if 4th positional arg exists and doesn't start with --,
+    # inject it as --members before argparse sees the args.
+    args_in = sys.argv[1:]
+    if len(args_in) >= 4 and not args_in[3].startswith("--"):
+        args_in = args_in[:3] + ["--members", args_in[3]] + args_in[4:]
 
-    slug = sys.argv[1].lower().strip()
-    group_jid = sys.argv[2].strip()
-    github_url = sys.argv[3].strip()
-    member_phones_raw = sys.argv[4] if len(sys.argv) > 4 else ""
-    member_phones = [p.strip().lstrip("+") for p in member_phones_raw.split(",") if p.strip()]
+    parser = argparse.ArgumentParser(
+        description="Onboard a new project into Viko.",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    parser.add_argument("slug", help="Project slug (e.g. siprodev)")
+    parser.add_argument("group_jid", help="WhatsApp group JID")
+    parser.add_argument("github_url", help="GitHub repo URL")
+    parser.add_argument("--vps-host", default="", help="VPS hostname or IP for this project")
+    parser.add_argument("--members", default="", help="Comma-separated phone numbers for DM access")
+    args = parser.parse_args(args_in)
+
+    slug = args.slug.lower().strip()
+    group_jid = args.group_jid.strip()
+    github_url = args.github_url.strip()
+    vps_host = args.vps_host.strip()
+    member_phones = [p.strip().lstrip("+") for p in args.members.split(",") if p.strip()]
 
     # Resolve VIKO_PROJECTS_ROOT
     projects_root_str = _get_env_val(REPO_DIR / ".env", "VIKO_PROJECTS_ROOT")
@@ -90,11 +101,13 @@ def main():
     print(f"  Group JID : {group_jid}")
     print(f"  GitHub    : {github_url}")
     print(f"  Clone to  : {project_dir}")
+    if vps_host:
+        print(f"  VPS host  : {vps_host}")
     if member_phones:
         print(f"  DM access : {', '.join(member_phones)}")
 
     # ── 1. Clone or pull repo ─────────────────────────────────────────────────
-    print("\n[1/5] Repository...")
+    print("\n[1/4] Repository...")
     if (project_dir / ".git").exists():
         result = subprocess.run(
             ["git", "-C", str(project_dir), "pull", "--ff-only"],
@@ -113,7 +126,7 @@ def main():
         print(f"      Cloned to {project_dir}")
 
     # ── 2. Create context.md and steps.md stubs ───────────────────────────────
-    print("\n[2/5] Project context stubs...")
+    print("\n[2/4] Project context stubs...")
     context_dir = REPO_DIR / "projects" / slug
     context_dir.mkdir(parents=True, exist_ok=True)
 
@@ -139,66 +152,44 @@ def main():
     else:
         print(f"      steps.md exists, skipping.")
 
-    # ── 3. Update config.yaml (channel_prompts) ───────────────────────────────
-    print("\n[3/5] config.yaml — channel_prompts...")
-    with open(CONFIG_PATH, "r") as f:
-        cfg = yaml.safe_load(f)
+    # ── 3. Spawn isolated Hermes container for this project ───────────────────
+    print("\n[3/4] Spawning Hermes instance...")
+    spawn_cmd = [sys.executable, str(REPO_DIR / "scripts" / "spawn-hermes.py"), slug, group_jid]
+    if vps_host:
+        spawn_cmd += ["--vps-host", vps_host]
+    result = subprocess.run(spawn_cmd, capture_output=True, text=True)
+    print(result.stdout)
+    if result.returncode != 0:
+        print(f"ERROR spawning Hermes: {result.stderr}")
+        sys.exit(1)
 
-    prompt = (
-        f"Kamu ada di group WhatsApp {slug.upper()}. Project aktif: {slug.upper()} — hanya {slug}.\n\n"
-        f"ATURAN ISOLASI (wajib, tanpa pengecualian):\n"
-        f"- Hanya bahas hal yang berkaitan dengan project {slug}\n"
-        f"- Jika ditanya tentang project lain oleh siapapun termasuk Eksa: "
-        f"jawab 'Untuk [nama project], diskusikan di group-nya langsung.' — lalu stop\n"
-        f"- Memory atau konteks dari project lain tidak relevan di sini, abaikan\n\n"
-        f"Siapapun boleh bertanya — hanya Eksa yang bisa authorize eksekusi (deploy, kode, infra).\n"
-        f"Jika pesan diawali [READ-ONLY MEMBER]: hanya jawab pertanyaan/info, "
-        f"tolak eksekusi dengan 'Hanya Eksa yang bisa minta ini.'\n\n"
-        f"Balas dalam Bahasa Indonesia."
-    )
-
-    if "whatsapp" not in cfg:
-        cfg["whatsapp"] = {}
-    if "channel_prompts" not in cfg["whatsapp"]:
-        cfg["whatsapp"]["channel_prompts"] = {}
-
-    cfg["whatsapp"]["channel_prompts"][group_jid] = prompt
-
-    with open(CONFIG_PATH, "w") as f:
-        yaml.dump(cfg, f, allow_unicode=True, default_flow_style=False, sort_keys=False)
-    print(f"      Added channel_prompt for {group_jid}")
-
-    # ── 4. Update data/hermes/.env ────────────────────────────────────────────
-    print("\n[4/5] data/hermes/.env — WHATSAPP_TRUSTED_GROUPS...")
-    existing_trusted = _get_env_val(HERMES_ENV_PATH, "WHATSAPP_TRUSTED_GROUPS")
-    trusted = [g.strip() for g in existing_trusted.split(",") if g.strip()]
-    if group_jid not in trusted:
-        trusted.append(group_jid)
-    print(f"      WHATSAPP_TRUSTED_GROUPS={','.join(trusted)}")
-
-    print("\n[5/5] data/hermes/.env — WHATSAPP_ALLOWED_USERS...")
-    existing_allowed = _get_env_val(HERMES_ENV_PATH, "WHATSAPP_ALLOWED_USERS")
-    allowed = [u.strip() for u in existing_allowed.split(",") if u.strip()]
-    added = []
-    for phone in member_phones:
-        if phone not in allowed:
-            allowed.append(phone)
-            added.append(phone)
-    if added:
-        print(f"      Added: {', '.join(added)}")
-    print(f"      WHATSAPP_ALLOWED_USERS={','.join(allowed)}")
-
-    _update_env(HERMES_ENV_PATH, {
-        "WHATSAPP_TRUSTED_GROUPS": ",".join(trusted),
-        "WHATSAPP_ALLOWED_USERS": ",".join(allowed),
-    })
+    # ── 4. Update WHATSAPP_ALLOWED_USERS for DM access ────────────────────────
+    if member_phones:
+        print("\n[4/4] WHATSAPP_ALLOWED_USERS — DM access...")
+        # Use hermes-admin/.env; fall back to hermes/.env for migration compat
+        env_path = HERMES_ADMIN_ENV_PATH if HERMES_ADMIN_ENV_PATH.exists() else HERMES_ENV_PATH
+        print(f"      Writing to: {env_path}")
+        existing_allowed = _get_env_val(env_path, "WHATSAPP_ALLOWED_USERS")
+        allowed = [u.strip() for u in existing_allowed.split(",") if u.strip()]
+        added = []
+        for phone in member_phones:
+            if phone not in allowed:
+                allowed.append(phone)
+                added.append(phone)
+        if added:
+            print(f"      Added: {', '.join(added)}")
+        print(f"      WHATSAPP_ALLOWED_USERS={','.join(allowed)}")
+        _update_env(env_path, {"WHATSAPP_ALLOWED_USERS": ",".join(allowed)})
+    else:
+        print("\n[4/4] No members specified — skipping WHATSAPP_ALLOWED_USERS update.")
 
     print(f"\n✓ Onboarding {slug} selesai.")
     print(f"\nLangkah Viko berikutnya:")
     print(f"  1. Scan codebase: ls {project_dir}/ dan baca file utama")
     print(f"  2. Update {context_dir}/context.md dengan stack dan info project")
-    print(f"  3. Restart hermes (jalankan ini via SSH ke viko-vps):")
-    print(f"     cd ~/projects/viko-agent && docker compose --profile full up -d --force-recreate hermes")
+    print(f"  3. Restart hermes (admin instance) jika WHATSAPP_ALLOWED_USERS diubah:")
+    print(f"     cd ~/projects/viko-agent && docker compose --profile full up -d --force-recreate hermes-admin")
+    print(f"  (spawn-hermes.py output above shows status of isolated Hermes instance)")
 
 
 if __name__ == "__main__":

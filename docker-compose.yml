@@ -45,7 +45,9 @@ services:
     command: python3 /scripts/init-9router.py /app/data/db/data.sqlite
     restart: "no"
 
-  # ── Hermes — AI orchestrator (single brain) ─────────────────────────────────
+  # ── Hermes (admin/primary) — AI orchestrator, WhatsApp bridge owner ─────────
+  # Handles personal DMs, unregistered groups, and project onboarding.
+  # Bridge binds on 0.0.0.0 so per-project Hermes containers can relay through it.
   # Built from Dockerfile.hermes (no official image).
   # Run: docker compose build hermes
   # Then: docker compose --profile full up -d
@@ -77,6 +79,8 @@ services:
       - ./mcp-servers:/opt/viko/mcp-servers:ro
       # Skills dir — fixed container path so external_dirs works on any host
       - ./skills:/opt/viko/skills:ro
+      # Bridge routing config — written by hermes-admin, hot-reloaded by bridge
+      - ./data/bridge:/opt/data/bridge:rw
     ports:
       - "127.0.0.1:9119:9119"
     environment:
@@ -100,6 +104,12 @@ services:
       # Use certifi bundle (inside image layers, not VirtioFS) to bypass the issue.
       SSL_CERT_FILE: /opt/hermes/.venv/lib/python3.13/site-packages/certifi/cacert.pem
       REQUESTS_CA_BUNDLE: /opt/hermes/.venv/lib/python3.13/site-packages/certifi/cacert.pem
+      # Bridge binds on all interfaces so per-project Hermes containers can reach it
+      BRIDGE_BIND: "0.0.0.0"
+      # Hostname used by relay clients as the Host header when connecting over Docker network
+      BRIDGE_EXTRA_HOSTS: "viko-hermes"
+      # GitHub token for automated deploy key setup during project onboarding
+      GITHUB_TOKEN: ${GITHUB_TOKEN:-}
       # Holographic memory — pure local SQLite, no API key needed
       # Dashboard (runs as s6 service alongside gateway)
       HERMES_DASHBOARD: "true"
@@ -114,3 +124,10 @@ services:
       timeout: 15s
       retries: 5
       start_period: 60s
+
+# ── Option B: per-project Hermes instances ──────────────────────────────────
+# Project Hermes containers are spawned dynamically by spawn-hermes.py
+# and are NOT defined in this file. Each uses WHATSAPP_RELAY_MODE=true
+# to proxy through the admin bridge above.
+# To spawn: ssh viko-vps python3 ~/projects/viko-agent/scripts/spawn-hermes.py <slug> <jid>
+# Routing: data/bridge/routing.json (hot-reloaded by bridge, no restart needed)

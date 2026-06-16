@@ -9,6 +9,9 @@ keys are changed.
 Usage:
   python3 scripts/init-hermes-config.py
   python3 scripts/init-hermes-config.py /custom/path/to/config.yaml
+  python3 scripts/init-hermes-config.py --target admin
+
+  # --target admin: configure data/hermes-admin/ (for Option B multi-instance setup)
 
 Run this after:
   - First-time setup (data/hermes/ initialized by Hermes, then apply overrides)
@@ -27,9 +30,13 @@ except ImportError:
     subprocess.check_call([sys.executable, "-m", "pip", "install", "pyyaml", "-q"])
     import yaml
 
+TARGET = "admin"
 CONFIG_PATH = Path(__file__).parent.parent / "data" / "hermes" / "config.yaml"
 
-if len(sys.argv) > 1:
+if len(sys.argv) > 1 and sys.argv[1] == "--target" and len(sys.argv) > 2:
+    TARGET = sys.argv[2]
+    CONFIG_PATH = Path(__file__).parent.parent / "data" / f"hermes-{TARGET}" / "config.yaml"
+elif len(sys.argv) > 1 and not sys.argv[1].startswith("--"):
     CONFIG_PATH = Path(sys.argv[1])
 
 # ── Desired settings ──────────────────────────────────────────────────────────
@@ -121,6 +128,11 @@ DESIRED = {
         "python3 scripts/add-project.py (project onboarding)",
         "python3 scripts/allow-member.py (add member to DM allowlist)",
         "ssh viko-vps docker compose (remote hermes restart)",
+        "python3 scripts/spawn-hermes.py (spawn isolated project hermes container)",
+        "python3 scripts/setup-keys.py (generate SSH keys + GitHub deploy key for onboarding)",
+        "ssh viko-vps python3 scripts/spawn-hermes.py (remote project hermes spawn)",
+        "ssh viko-vps python3 scripts/setup-keys.py (remote key setup)",
+        "curl https://api.github.com/repos (GitHub deploy key API)",
     ],
     # Display: language + runtime footer (model, context %)
     "display": {
@@ -205,7 +217,8 @@ def main():
 
     print(f"✓ Hermes config updated ({changed} setting(s) applied)")
     print("Restart Hermes to apply changes:")
-    print("  docker compose --profile full up -d --force-recreate hermes")
+    service = "hermes" if TARGET == "admin" else TARGET
+    print(f"  docker compose --profile full up -d --force-recreate {service}")
 
 
 if __name__ == "__main__":

@@ -54,7 +54,9 @@ viko-agent/
 │
 ├── scripts/               ← Setup and restore automation
 │   ├── init-9router.py    ← Idempotent combo setup for 9router
-│   └── init-hermes-config.py  ← Idempotent config restore for Hermes
+│   ├── init-hermes-config.py  ← Idempotent config restore for Hermes
+│   ├── spawn-hermes.py    ← Spawn isolated Hermes container per project (Option B)
+│   └── setup-keys.py     ← Generate SSH keys + GitHub deploy key for onboarding
 │
 ├── docs/                  ← Setup and operational documentation
 │   ├── 9router/setup.md
@@ -65,7 +67,10 @@ viko-agent/
 ├── .env.example           ← Secrets template (copy to .env, never commit)
 └── data/                  ← Bind-mount targets — gitignored, persists on laptop
     ├── hermes/            ← HERMES_HOME: config.yaml, SOUL.md, state.db, memory
-    └── 9router/
+    ├── 9router/
+    ├── bridge/            ← routing.json: group JID → Hermes port mapping
+    ├── hermes-admin/      ← Admin Hermes: DMs + onboarding (HERMES_HOME)
+    └── hermes-{slug}/     ← Per-project Hermes instances (created by spawn-hermes.py)
 ```
 
 ## Viko Startup Sequence
@@ -98,6 +103,23 @@ Each message is automatically routed to the right model before the LLM is called
 
 Each combo has Groq fallback: `sonnet/haiku → groq/llama-3.3 → groq/maverick`.
 Implemented in `patches/patch-model-router.py`.
+
+## Project Isolation (Option B)
+
+Each WhatsApp group runs its own Hermes instance with isolated memory:
+
+```
+WA (1 number)
+    └── hermes (admin) — bridge exposed on Docker network at :3000
+            ├── queue[personal_jid / unregistered] → handled by admin
+            ├── queue[project_jid_1] → Hermes-Mankop  (RELAY_MODE)
+            └── queue[project_jid_2] → Hermes-Siprodev (RELAY_MODE)
+```
+
+- **Admin Hermes** (viko-hermes): handles DMs, unregistered groups, onboarding
+- **Project Hermes** (viko-hermes-{slug}): spawned by spawn-hermes.py, memory-isolated
+- **Routing**: data/bridge/routing.json maps group JIDs to Hermes ports, hot-reloaded
+- **Relay mode**: project containers set WHATSAPP_RELAY_MODE=true, proxy to admin bridge
 
 ## Projects
 
@@ -148,6 +170,18 @@ docker compose logs -f hermes
 
 # Stop all
 docker compose down
+
+# Spawn new project Hermes instance
+ssh viko-vps python3 ~/projects/viko-agent/scripts/spawn-hermes.py <slug> <group_jid>
+
+# Initialize admin Hermes config (after fresh setup or data/ wipe)
+python3 scripts/init-hermes-config.py --target admin
+
+# View routing table
+cat data/bridge/routing.json
+
+# View per-project container
+docker logs viko-hermes-<slug> -f
 ```
 
 ## After a Reset
@@ -160,6 +194,10 @@ Quick reference:
 # Hermes config — restore manually:
 python3 scripts/init-hermes-config.py
 docker compose --profile full up -d --force-recreate hermes
+
+# Re-spawn all project containers (routing.json has the JIDs)
+cat data/bridge/routing.json  # see all projects + ports
+python3 scripts/spawn-hermes.py <slug> <jid>  # repeat per project
 ```
 
 ## Environment Variables
@@ -172,3 +210,4 @@ See `.env.example` for the full list. Key variables:
 | `OPENAI_BASE_URL` | 9router URL (default: `http://viko-9router:20128/v1`) |
 | `WHATSAPP_HOME_CHANNEL` | JID Viko sends startup notifications to |
 | `VIKO_PROJECTS_ROOT` | Root folder for all your app projects (e.g. `~/Projects`) |
+| `GITHUB_TOKEN` | Classic PAT (repo scope) for automated GitHub deploy key setup |

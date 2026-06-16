@@ -23,7 +23,7 @@ import express from 'express';
 import { Boom } from '@hapi/boom';
 import pino from 'pino';
 import path from 'path';
-import { mkdirSync, readFileSync, writeFileSync, existsSync, readdirSync, unlinkSync } from 'fs';
+import { mkdirSync, readFileSync, writeFileSync, existsSync, readdirSync, unlinkSync, watch } from 'fs';
 import { randomBytes } from 'crypto';
 import { execSync } from 'child_process';
 import { tmpdir } from 'os';
@@ -176,7 +176,41 @@ let lidToPhone = buildLidMap();
 const logger = pino({ level: 'warn' });
 
 // Message queue for polling
-const messageQueue = [];
+const messageQueue = [];        // kept for backward compat (admin Hermes, no port filter)
+const messageQueues = {};       // per-port queues: { "8101": [...], "8102": [...] }
+const globalQueue = [];         // unrouted messages → Admin Hermes
+
+// ── Routing table (routing.json hot-reload) ──────────────────────────────
+const ROUTING_FILE = process.env.ROUTING_FILE ||
+  path.join(process.env.HOME || '/opt/data', 'projects/viko-agent/data/bridge/routing.json');
+
+let _routing = {};  // { "jid@g.us": 8101, ... }
+
+function _loadRouting() {
+  try {
+    _routing = JSON.parse(readFileSync(ROUTING_FILE, 'utf8'));
+    console.log(`[bridge] routing.json loaded: ${Object.keys(_routing).length} routes`);
+  } catch { _routing = {}; }
+}
+
+_loadRouting();
+// Ensure directory exists before watching
+let _reloadTimer;
+try {
+  const _routingDir = path.dirname(ROUTING_FILE);
+  watch(_routingDir, { persistent: false }, (ev, fn) => {
+    if (fn === path.basename(ROUTING_FILE)) {
+      clearTimeout(_reloadTimer);
+      _reloadTimer = setTimeout(_loadRouting, 50);
+    }
+  });
+} catch {}
+
+// ── Relay mode (project Hermes instances) ────────────────────────────────
+const RELAY_MODE = ['1','true','yes'].includes((process.env.WHATSAPP_RELAY_MODE || '').toLowerCase());
+const RELAY_TARGET = process.env.WHATSAPP_RELAY_TARGET || 'http://viko-hermes-admin:3000';
+const PORT_FILTER = process.env.WHATSAPP_PORT_FILTER || '';
+
 const MAX_QUEUE_SIZE = 100;
 
 // Track recently sent message IDs to prevent echo-back loops with media
@@ -526,9 +560,17 @@ async function startSocket() {
         timestamp: msg.messageTimestamp,
       };
 
-      messageQueue.push(event);
-      if (messageQueue.length > MAX_QUEUE_SIZE) {
-        messageQueue.shift();
+      const _targetPort = _routing[chatId];
+      if (_targetPort) {
+        const _pq = (messageQueues[String(_targetPort)] = messageQueues[String(_targetPort)] || []);
+        _pq.push(event);
+        if (_pq.length > MAX_QUEUE_SIZE) _pq.shift();
+      } else {
+        globalQueue.push(event);
+        if (globalQueue.length > MAX_QUEUE_SIZE) globalQueue.shift();
+        // Backward compat: also push to legacy messageQueue (Admin Hermes uses this)
+        messageQueue.push(event);
+        if (messageQueue.length > MAX_QUEUE_SIZE) messageQueue.shift();
       }
     }
   });
@@ -537,6 +579,64 @@ async function startSocket() {
 // HTTP server
 const app = express();
 app.use(express.json());
+
+if (RELAY_MODE) {
+  // Relay mode: proxy all requests to the admin bridge, filtered by port
+  app.get('/messages', async (req, res) => {
+    try {
+      const url = PORT_FILTER
+        ? `${RELAY_TARGET}/messages?port=${PORT_FILTER}`
+        : `${RELAY_TARGET}/messages`;
+      const resp = await fetch(url, { headers: { Host: 'viko-hermes-admin' } });
+      res.json(await resp.json());
+    } catch (e) { res.json([]); }
+  });
+  app.post('/send', async (req, res) => {
+    try {
+      const resp = await fetch(`${RELAY_TARGET}/send`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json', Host: 'viko-hermes-admin' },
+        body: JSON.stringify(req.body)
+      });
+      res.status(resp.status).json(await resp.json());
+    } catch (e) { res.status(503).json({ error: 'relay_error' }); }
+  });
+  app.post('/send-media', async (req, res) => {
+    try {
+      const resp = await fetch(`${RELAY_TARGET}/send-media`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json', Host: 'viko-hermes-admin' },
+        body: JSON.stringify(req.body)
+      });
+      res.status(resp.status).json(await resp.json());
+    } catch (e) { res.status(503).json({ error: 'relay_error' }); }
+  });
+  ['post'].forEach(m => app[m]('/typing', async (req, res) => {
+    try {
+      await fetch(`${RELAY_TARGET}/typing`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json', Host: 'viko-hermes-admin' },
+        body: JSON.stringify(req.body)
+      });
+      res.json({ ok: true });
+    } catch { res.json({ ok: false }); }
+  }));
+  app.get('/health', async (req, res) => {
+    try {
+      const resp = await fetch(`${RELAY_TARGET}/health`, { headers: { Host: 'viko-hermes-admin' } });
+      const data = await resp.json();
+      res.json({ ...data, relay: true, port_filter: PORT_FILTER });
+    } catch { res.json({ status: 'relay_disconnected', relay: true }); }
+  });
+  app.get('/chat/:id', async (req, res) => {
+    try {
+      const resp = await fetch(`${RELAY_TARGET}/chat/${req.params.id}`, { headers: { Host: 'viko-hermes-admin' } });
+      res.status(resp.status).json(await resp.json());
+    } catch { res.status(503).json({ error: 'relay_error' }); }
+  });
+  const BRIDGE_BIND = process.env.BRIDGE_BIND || '127.0.0.1';
+  app.listen(PORT, BRIDGE_BIND, () => {
+    console.log(`[bridge] Relay mode → ${RELAY_TARGET} (port_filter: ${PORT_FILTER || 'none'})`);
+  });
+  // In relay mode, don't start WA socket at all — exit main flow here
+} else {
 
 // Host-header validation — defends against DNS rebinding.
 // The bridge binds loopback-only (127.0.0.1) but a victim browser on
@@ -549,6 +649,8 @@ const _ACCEPTED_HOST_VALUES = new Set([
   '127.0.0.1',
   '[::1]',
   '::1',
+  'viko-hermes-admin',   // Docker service name for inter-container access
+  ...(process.env.BRIDGE_EXTRA_HOSTS || '').split(',').map(s => s.trim()).filter(Boolean),
 ]);
 
 app.use((req, res, next) => {
@@ -569,10 +671,21 @@ app.use((req, res, next) => {
   next();
 });
 
-// Poll for new messages (long-poll style)
+// Poll for new messages — ?port=8101 for project instances, no param for Admin Hermes
 app.get('/messages', (req, res) => {
-  const msgs = messageQueue.splice(0, messageQueue.length);
-  res.json(msgs);
+  const port = req.query.port ? String(req.query.port) : null;
+  if (port) {
+    const q = messageQueues[port] || [];
+    const msgs = q.splice(0, q.length);
+    messageQueues[port] = [];
+    res.json(msgs);
+  } else {
+    // Admin Hermes: gets unrouted messages (globalQueue) + legacy messageQueue
+    const msgs = [...messageQueue.splice(0, messageQueue.length), ...globalQueue.splice(0, globalQueue.length)];
+    // Deduplicate by messageId in case of overlap
+    const seen = new Set();
+    res.json(msgs.filter(m => { if (seen.has(m.messageId)) return false; seen.add(m.messageId); return true; }));
+  }
 });
 
 // Send a message
@@ -792,7 +905,9 @@ app.get('/chat/:id', async (req, res) => {
 app.get('/health', (req, res) => {
   res.json({
     status: connectionState,
-    queueLength: messageQueue.length,
+    queueLength: messageQueue.length + globalQueue.length,
+    perPortQueues: Object.fromEntries(Object.entries(messageQueues).map(([p, q]) => [p, q.length])),
+    routingEntries: Object.keys(_routing).length,
     uptime: process.uptime(),
   });
 });
@@ -805,7 +920,8 @@ if (PAIR_ONLY) {
   console.log();
   startSocket();
 } else {
-  app.listen(PORT, '127.0.0.1', () => {
+  const BRIDGE_BIND = process.env.BRIDGE_BIND || '127.0.0.1';
+  app.listen(PORT, BRIDGE_BIND, () => {
     console.log(`🌉 WhatsApp bridge listening on port ${PORT} (mode: ${WHATSAPP_MODE})`);
     console.log(`📁 Session stored in: ${SESSION_DIR}`);
     if (ALLOWED_USERS.size > 0) {
@@ -824,3 +940,4 @@ if (PAIR_ONLY) {
     startSocket();
   });
 }
+} // end !RELAY_MODE

@@ -2,9 +2,15 @@
 
 Jalankan ini saat Eksa minta "viko onboard project X" dari dalam group WA project tersebut.
 
-## Langkah-langkah
+## Pra-syarat — kumpulkan info dari Eksa
 
-### 1. Dapatkan group JID (dari context sesi saat ini)
+Tanya jika belum ada:
+- slug: nama project (lowercase, e.g. forecastinn)
+- github_url: full URL (e.g. github.com/eksa/forecastinn)
+- vps_host: IP atau domain VPS project (optional)
+- member_phones: nomor yang boleh DM Viko (optional, comma-separated)
+
+## Dapatkan group JID saat ini
 
 ```bash
 python3 -c "
@@ -19,88 +25,80 @@ else:
 "
 ```
 
-### 2. Jalankan add-project.py via SSH ke viko-vps
+## Phase 1 — Generate keys + GitHub deploy key
 
 ```bash
-ssh viko-vps python3 ~/projects/viko-agent/scripts/add-project.py \
-  <slug> <group_jid> <github_url> [phones]
+ssh viko-vps GITHUB_TOKEN=$GITHUB_TOKEN python3 ~/projects/viko-agent/scripts/setup-keys.py \
+  <slug> <github_url> [vps_host]
 ```
 
-Contoh:
+Baca output. Cek marker PHASE1_COMPLETE.
+
+Kirim ke group WA:
+- Jika GitHub key otomatis: "✓ GitHub deploy key ditambahkan otomatis"
+- Jika ada VPS: tampilkan public key + instruksi 1 baris untuk Eksa
+- Minta Eksa reply "done" setelah VPS key dipasang
+
+## Phase 2 — Test + clone + spawn (setelah Eksa reply "done")
+
 ```bash
+# Test SSH connections
+ssh viko-vps ssh -o BatchMode=yes -o ConnectTimeout=10 <slug>-github echo OK
+ssh viko-vps ssh -o BatchMode=yes -o ConnectTimeout=10 <slug>-vps echo OK  # skip if no vps
+
+# Run full onboarding (clone + context stubs + spawn Hermes instance)
 ssh viko-vps python3 ~/projects/viko-agent/scripts/add-project.py \
-  siprodev \
-  120363407940533307@g.us \
-  https://github.com/forgeyard/siprodev \
-  "6282112124452"
+  <slug> <group_jid> <github_url> [--vps-host <vps_host>] [--members "<phones>"]
 ```
 
-### 3. Scan codebase dan update context.md
+Baca output. Cek SPAWN_COMPLETE.
+
+## Scan codebase + update context.md
 
 ```bash
-# Di trahku, via SSH:
+# Deteksi stack
 ssh viko-vps ls ~/projects/<slug>/
-ssh viko-vps cat ~/projects/<slug>/package.json 2>/dev/null \
-  || ssh viko-vps cat ~/projects/<slug>/go.mod 2>/dev/null \
-  || ssh viko-vps ls ~/projects/<slug>/
+ssh viko-vps cat ~/projects/<slug>/package.json 2>/dev/null | python3 -c "import sys,json; d=json.load(sys.stdin); print('NestJS' if 'nest' in str(d) else 'Node.js')"
+ssh viko-vps cat ~/projects/<slug>/go.mod 2>/dev/null | head -3
 ```
 
-Tulis hasil scan ke `~/projects/viko-agent/projects/<slug>/context.md`.
+Tulis hasil ke projects/<slug>/context.md via edit.
 
-### 4. Restart hermes
+## Kirim konfirmasi ke group
 
-```bash
-ssh viko-vps "cd ~/projects/viko-agent && docker compose --profile full up -d --force-recreate hermes"
-```
+Setelah spawn selesai, kirim ringkasan:
+- ✓ Project <slug> onboarded
+- Stack yang terdeteksi  
+- Instance Hermes-<slug> berjalan terpisah (memory isolated)
+- Siapa yang bisa tanya (semua) vs authorize (Eksa only)
 
-### 5. Kirim konfirmasi ke group
-
-Setelah restart, kirim ringkasan singkat:
-- Project X sudah di-onboard
-- Stack yang terdeteksi
-- Siapa yang bisa bertanya
-
----
+KIRIM KONFIRMASI SEBELUM apapun yang mungkin memutus sesi.
 
 ## Add Member ke DM Allowlist
 
-Ketika Eksa minta "viko, allow @X bisa DM" atau "tambah @X ke allowlist":
+Ketika Eksa minta "viko allow @X bisa DM":
 
-### Cara 1 — via @mention di pesan
+Cara 1 — via @mention (phone dari [Mentioned: 628xxx] di body pesan):
+```bash
+ssh viko-vps python3 ~/projects/viko-agent/scripts/allow-member.py 628xxx
+ssh viko-vps "cd ~/projects/viko-agent && docker compose --profile full up -d --force-recreate hermes"
+```
 
-Bridge otomatis inject phone X ke body: `[Mentioned: 628xxx]`
-
-1. Baca phone dari `[Mentioned: ...]` di pesan Eksa
-2. Jalankan via SSH:
-   ```bash
-   ssh viko-vps python3 ~/projects/viko-agent/scripts/allow-member.py 628xxx
-   ```
-3. Restart hermes dan konfirmasi ke group
-
-### Cara 2 — via pesan terakhir X di group
-
-Kalau X sudah pernah kirim pesan di group, Viko tahu phone X dari sender.
-
-1. Ambil phone dari message history (sender JID = `628xxx@s.whatsapp.net`)
-2. Jalankan:
-   ```bash
-   ssh viko-vps python3 ~/projects/viko-agent/scripts/allow-member.py 628xxx
-   ```
-3. Restart hermes dan konfirmasi
-
-### Cara 3 — phone diberikan langsung oleh Eksa
-
-Kalau Eksa sebut nomor langsung ("viko allow 628xxx"):
+Cara 2 — dari pesan X di group (phone dari sender JID):
 ```bash
 ssh viko-vps python3 ~/projects/viko-agent/scripts/allow-member.py 628xxx
 ```
 
----
+Cara 3 — phone disebut langsung oleh Eksa:
+```bash
+ssh viko-vps python3 ~/projects/viko-agent/scripts/allow-member.py 628xxx
+```
 
 ## Catatan
 
-- Selalu jalankan dari dalam group WA project yang akan di-onboard (supaya JID benar)
-- Script idempotent — aman dijalankan ulang jika ada yang gagal
-- Jika github_url butuh token (private repo): gunakan `https://<token>@github.com/...`
-- Restart akan memutus sesi aktif — kirim konfirmasi SEBELUM restart
-- `allow-member.py` hanya untuk DM access — di group yang sudah trusted, semua member sudah bisa mention Viko otomatis
+- setup-keys.py idempotent — aman dijalankan ulang
+- spawn-hermes.py idempotent — skip jika group JID sudah ada di routing.json  
+- add-project.py idempotent — clone jadi pull jika repo sudah ada
+- Routing.json hot-reload: bridge detect perubahan dalam <1 detik, tidak perlu restart
+- Memory isolation: setiap project Hermes punya memory_store.db sendiri
+- Untuk private GitHub repo: GITHUB_TOKEN dengan scope repo sudah cukup (personal + org)
