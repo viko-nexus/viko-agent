@@ -56,6 +56,8 @@ const ALLOWED_USERS = parseAllowedUsers(process.env.WHATSAPP_ALLOWED_USERS || ''
 const TRUSTED_GROUPS = new Set(
     (process.env.WHATSAPP_TRUSTED_GROUPS || '').split(',').map(s => s.trim()).filter(Boolean)
 );
+// Owner phone(s) — derived from WHATSAPP_HOME_CHANNEL. Only owner can authorize execution.
+const OWNER_PHONES = parseAllowedUsers(process.env.WHATSAPP_HOME_CHANNEL || '');
 // Allow group messages in self-chat mode (filtered by Python gateway via REQUIRE_MENTION)
 const SELF_CHAT_ALLOW_GROUPS = ['1','true','yes','on'].includes((process.env.WHATSAPP_SELF_CHAT_ALLOW_GROUPS || '').toLowerCase());
 const DEFAULT_REPLY_PREFIX = '⚕ *Hermes Agent*\n────────────\n';
@@ -460,13 +462,20 @@ async function startSocket() {
       // Skip empty messages
       if (!body && !hasMedia) {
         if (WHATSAPP_DEBUG) {
-          try { 
-            console.log(JSON.stringify({ event: 'ignored', reason: 'empty', chatId, messageKeys: Object.keys(msg.message || {}) })); 
+          try {
+            console.log(JSON.stringify({ event: 'ignored', reason: 'empty', chatId, messageKeys: Object.keys(msg.message || {}) }));
           } catch (err) {
             console.error('Failed to log empty message event:', err);
           }
         }
         continue;
+      }
+
+      // Tag group messages from non-owner members so the gateway enforces read-only mode.
+      // Owner is identified by WHATSAPP_HOME_CHANNEL. Non-owners can ask questions and
+      // check data, but cannot authorize execution, deploys, or infra changes.
+      if (!msg.key.fromMe && isGroup && OWNER_PHONES.size > 0 && !matchesAllowedUser(senderId, OWNER_PHONES, SESSION_DIR)) {
+        body = `[READ-ONLY MEMBER - hanya boleh tanya dan cek data, tidak bisa authorize execution]\n${body}`;
       }
 
       const event = {

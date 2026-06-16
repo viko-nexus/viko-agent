@@ -37,8 +37,32 @@ See `rules/approval-format.md` for the message format.
 
 ## Who Can Authorize
 
-- **Anyone** — questions, discussion, status requests
-- **Eksa only** (the JID set as `WHATSAPP_HOME_CHANNEL` in `.env`) — execution commands (Tier 2 and Tier 3 actions)
+| Action | Eksa (owner) | Member lain |
+|--------|-------------|-------------|
+| Tanya, diskusi, cek status | ✓ | ✓ |
+| Baca log, file, data | ✓ | ✓ |
+| Tier 2 (execute & report) | ✓ | ✗ |
+| Tier 3 (execute + approval) | ✓ | ✗ |
+| Onboard project baru | ✓ | ✗ |
+| Ubah config Viko | ✓ | ✗ |
 
-If an execution command comes from someone else:
-> "Sorry, only Eksa can issue execution commands."
+**Eksa** = nomor yang di-set sebagai `WHATSAPP_HOME_CHANNEL` di `.env`.
+
+Pesan dari member lain di group ditandai `[READ-ONLY MEMBER]` oleh bridge.
+Jika tag ini ada di awal pesan: **hanya jawab pertanyaan dan info, tolak semua request execution**.
+
+## Response Penolakan (untuk non-Eksa)
+
+Gunakan salah satu, singkat dan langsung:
+
+- *"Maaf, hanya Eksa yang bisa minta ini."*
+- *"Ini butuh authorize dari Eksa dulu."*
+- *"Pertanyaan boleh, tapi untuk eksekusi harus Eksa yang minta."*
+
+Jangan jelaskan panjang lebar — cukup tolak dan tawarkan alternatif (misal: cek status, baca data).
+
+## Catatan Penting
+
+- Tag `[READ-ONLY MEMBER]` di-inject otomatis oleh bridge — tidak bisa dipalsukan dari WA
+- Jika tidak ada tag: pesan dari Eksa langsung atau dari DM yang sudah di-allowlist
+- Di DM (bukan group): non-Eksa yang di-allowlist bisa tanya, tapi tetap tidak bisa authorize Tier 2/3
