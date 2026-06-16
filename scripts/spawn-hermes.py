@@ -174,6 +174,7 @@ def spawn_container(slug: str, port: int, data_dir: Path, env: dict) -> str:
     gid = env.get("HERMES_GID", "1000")
     ninerouter_key = env.get("OPENAI_API_KEY", "")
     home_channel = env.get("WHATSAPP_HOME_CHANNEL", "")
+    github_token = env.get("GITHUB_TOKEN", "")
 
     cmd = [
         "docker", "run", "-d",
@@ -196,8 +197,9 @@ def spawn_container(slug: str, port: int, data_dir: Path, env: dict) -> str:
         "-e", f"OPENAI_API_KEY={ninerouter_key}",
         "-e", f"WHATSAPP_HOME_CHANNEL={home_channel}",
         "-e", f"WHATSAPP_RELAY_MODE=true",
-        "-e", f"WHATSAPP_RELAY_TARGET=http://viko-hermes-admin:3000",
+        "-e", f"WHATSAPP_RELAY_TARGET=http://viko-hermes:3000",
         "-e", f"WHATSAPP_PORT_FILTER={port}",
+        "-e", f"GITHUB_TOKEN={github_token}",
         "-e", f"NINEROUTER_URL=http://viko-9router:20128",
         "-e", f"NINEROUTER_KEY={ninerouter_key}",
         "-e", f"VIKO_PROJECTS_ROOT={projects_root}",
