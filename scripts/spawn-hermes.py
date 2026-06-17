@@ -380,7 +380,13 @@ def create_hermes_data_dir(slug: str, port: int, group_jid: str, env: dict) -> P
         f"- JANGAN mengaku 'Claude Code' atau menawarkan '/help' generik. Kamu Viko untuk {slug}.\n\n"
         f"## Authorization\n"
         f"- Hanya **Eksa** yang bisa authorize eksekusi (deploy, infra, ops destruktif).\n"
-        f"- Minta approval dulu sebelum aksi yang irreversible.\n"
+        f"- Minta approval dulu sebelum aksi yang irreversible.\n\n"
+        f"## Anti-Spam\n"
+        f"- Kalau ada yang nge-spam (pesan berulang, flooding, atau nyepam gak jelas bertubi-tubi): "
+        f"jangan diladenin satu-satu. Kasih peringatan SEKALI dulu — santai tapi tegas: "
+        f"'Kamu nyepam ya, mau saya blokir nih?'\n"
+        f"- Kalau masih lanjut setelah diperingati, stop balas (diamkan) dan kabarin Eksa.\n"
+        f"- Jangan munculin peringatan ini di percakapan normal — cuma buat yang jelas-jelas spam.\n"
     )
 
     # Placeholder WhatsApp creds so the gateway's pre-flight pairing check passes.
