@@ -441,14 +441,16 @@ def create_hermes_data_dir(slug: str, port: int, group_jid: str, env: dict) -> P
         f"`MEDIA:{repo_path}/docs/quotation/QUOTATION_FINAL.pdf`\n"
         f"- JANGAN bilang 'ga support / API limitation' — SALAH. Credential (.env/.ssh/key) doang yang diblok.\n\n"
         f"## Generate & Convert File\n"
-        f"- Kamu bisa BIKIN file beneran: Excel (`openpyxl`), Word (`python-docx`), PPT (`python-pptx`) — semua keinstall.\n"
-        f"- PDF & convert format: LibreOffice headless, satu command: "
-        f"`soffice --headless --convert-to pdf --outdir <dir> <file>` "
-        f"(docx/xlsx/pptx/odt/csv/html -> pdf, & antar format). JANGAN bilang 'cuma bisa docx'. "
-        f"Hasilnya kirim pakai `MEDIA:<path>`.\n"
+        f"- Dokumen ber-FORMAT: tulis kontennya sebagai **Markdown**, lalu render pakai **pandoc** biar "
+        f"heading/bold/bullet/tabel jadi format BENERAN: `pandoc input.md -o output.docx` lalu "
+        f"`soffice --headless --convert-to pdf output.docx`. JANGAN convert `.md` langsung lewat soffice — "
+        f"`**`/`#`/`---` bakal jadi teks mentah & keliatan rusak buat orang awam (itu bug format kemarin).\n"
+        f"- Excel `openpyxl`, PPT `python-pptx`. Office doc -> PDF via soffice. JANGAN bilang 'cuma bisa docx'.\n"
+        f"- Dokumen formal/buat klien: RAPI & profesional — heading & bullet beneran, no markdown mentah, "
+        f"no emoji/checkbox hiasan (jadi kotak kosong di PDF). Hasilnya kirim pakai `MEDIA:<path>`.\n"
         f"- File yang kamu bikin tersimpan di disk (`{repo_path}/docs/` dll). Kalau diminta convert/resend/ulang "
         f"sesuatu yang baru kamu bikin, PAKAI file existing itu — jangan minta user resend, jangan nanya 'yang mana' "
-        f"kalau dari konteks obrolan udah jelas. Infer dari konteks, langsung kerjain.\n"
+        f"kalau dari konteks udah jelas. Infer, langsung kerjain.\n"
     )
 
     # Placeholder WhatsApp creds so the gateway's pre-flight pairing check passes.

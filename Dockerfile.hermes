@@ -104,12 +104,14 @@ RUN apt-get update && \
     rm -rf /var/lib/apt/lists/*
 ENV CHROME_PATH=/usr/bin/chromium
 
-# ── LibreOffice headless: universal document/format converter ─────────────────
-# One tool to convert ANY office doc to PDF (and between formats), no per-format code:
-#   soffice --headless --convert-to pdf --outdir <dir> <file.docx|xlsx|pptx|odt|...>
-# fonts-liberation gives decent docx→pdf fidelity for business documents.
+# ── Document conversion: pandoc (markdown-aware) + LibreOffice headless ───────
+# pandoc renders markdown (**bold**, # headings, bullets, tables) into a REAL .docx;
+# LibreOffice then converts any office doc to PDF. Clean-output workflow:
+#   pandoc in.md -o out.docx   →   soffice --headless --convert-to pdf out.docx
+# (Running .md straight through soffice leaves raw **/#/--- markdown in the PDF —
+# that's the "user awam bingung" formatting bug.) fonts-liberation = decent fidelity.
 RUN apt-get update && \
-    apt-get install -y --no-install-recommends libreoffice-writer libreoffice-calc libreoffice-impress fonts-liberation && \
+    apt-get install -y --no-install-recommends pandoc libreoffice-writer libreoffice-calc libreoffice-impress fonts-liberation && \
     rm -rf /var/lib/apt/lists/*
 
 # ── agent-browser: token-efficient browser automation via accessibility tree ──
