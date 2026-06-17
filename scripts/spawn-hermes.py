@@ -429,7 +429,16 @@ def create_hermes_data_dir(slug: str, port: int, group_jid: str, env: dict) -> P
         f"lalu query ke `127.0.0.1:5433`. Tipe DB dari scheme DATABASE_URL, client udah keinstall semua: "
         f"`postgresql`->psql/psycopg2, `mysql`->mysql/PyMySQL, `mongodb`->pymongo, `redis`->redis-cli/redis, "
         f"atau SQLAlchemy buat URL SQL apa pun (python3). "
-        f"Tutup tunnel kalau selesai (`pkill -f '5433:'`). JANGAN hardcode creds.\n"
+        f"Tutup tunnel kalau selesai (`pkill -f '5433:'`). JANGAN hardcode creds.\n\n"
+        f"## Kirim File/Media ke Chat\n"
+        f"- Kamu BISA kirim file (docx/pdf/gambar/audio/dll) ke WhatsApp & channel lain. "
+        f"JANGAN PERNAH bilang 'ga support / API limitation' — itu SALAH.\n"
+        f"- Caranya: taruh tag `MEDIA:<path_absolut>` di balasan (1 tag per file, path absolut, tanpa spasi). "
+        f"Hermes otomatis kirim sebagai attachment native.\n"
+        f"- Contoh: abis bikin `{repo_path}/docs/quotation.docx`, balas: "
+        f"`Ini quotation-nya 👇` lalu baris baru `MEDIA:{repo_path}/docs/quotation.docx`\n"
+        f"- Cuma suruh user download manual kalau kirim beneran GAGAL. "
+        f"Credential (.env/.ssh/key) emang diblok buat dikirim — jangan coba.\n"
     )
 
     # Placeholder WhatsApp creds so the gateway's pre-flight pairing check passes.
