@@ -710,9 +710,23 @@ if (RELAY_MODE) {
   });
   app.post('/send-media', async (req, res) => {
     try {
+      let payload = req.body;
+      const fp = payload && payload.filePath;
+      // The admin can't read this isolated container's filesystem (e.g. files under
+      // /opt/data/cache or this project's own dirs), so ship the BYTES instead of a
+      // path it can't open. Admin materializes them to a temp file and sends.
+      if (fp && path.isAbsolute(fp) && existsSync(fp)) {
+        payload = {
+          chatId: payload.chatId,
+          mediaType: payload.mediaType,
+          caption: payload.caption,
+          fileName: payload.fileName || path.basename(fp),
+          fileBase64: readFileSync(fp).toString('base64'),
+        };
+      }
       const resp = await fetch(`${RELAY_TARGET}/send-media`, {
         method: 'POST', headers: _relayHeaders(),
-        body: JSON.stringify(req.body)
+        body: JSON.stringify(payload)
       });
       res.status(resp.status).json(await resp.json());
     } catch (e) { res.status(503).json({ error: 'relay_error' }); }
@@ -960,7 +974,19 @@ app.post('/send-media', async (req, res) => {
     return res.status(503).json({ error: 'Not connected to WhatsApp' });
   }
 
-  const { chatId, filePath, mediaType, caption, fileName } = req.body;
+  let { chatId, filePath, mediaType, caption, fileName, fileBase64 } = req.body;
+  // Relay containers ship file BYTES (their isolated filesystem is unreadable here),
+  // so materialize them to a temp file and let the path-based logic below run as-is.
+  if (fileBase64 && !filePath) {
+    try {
+      mkdirSync(DOCUMENT_CACHE_DIR, { recursive: true });
+      const safe = path.basename(fileName || 'file').replace(/[^a-zA-Z0-9._-]/g, '_');
+      filePath = path.join(DOCUMENT_CACHE_DIR, `outbox_${randomBytes(6).toString('hex')}_${safe}`);
+      writeFileSync(filePath, Buffer.from(fileBase64, 'base64'));
+    } catch (e) {
+      return res.status(500).json({ error: 'outbox write failed: ' + e.message });
+    }
+  }
   if (!chatId || !filePath) {
     return res.status(400).json({ error: 'chatId and filePath are required' });
   }
