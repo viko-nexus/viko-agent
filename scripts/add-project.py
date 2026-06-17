@@ -27,12 +27,19 @@ What this does:
 
 import sys
 import os
+import re
+import json
 import argparse
 import subprocess
+import urllib.request
+import urllib.error
 from pathlib import Path
 from datetime import datetime
 
 REPO_DIR = Path(__file__).parent.parent.resolve()
+SSH_DIR = Path.home() / ".viko" / "ssh"
+CORE_SSH_CMD = ("ssh -i /opt/data/.ssh/id_viko -o IdentitiesOnly=yes "
+                "-o StrictHostKeyChecking=accept-new -o UserKnownHostsFile=/opt/data/.ssh/known_hosts")
 HERMES_ADMIN_ENV_PATH = REPO_DIR / "data" / "hermes-admin" / ".env"
 HERMES_ENV_PATH = REPO_DIR / "data" / "hermes" / ".env"
 
@@ -86,6 +93,46 @@ def _to_https_url(github_url: str, token: str) -> str:
     if token:
         return f"https://{token}@github.com/{path}.git"
     return f"https://github.com/{path}.git"
+
+
+def _gh_org_repo(github_url: str) -> str:
+    m = re.search(r'github\.com[:/]([\w.\-]+/[\w.\-]+?)(?:\.git)?$', github_url)
+    return m.group(1) if m else ""
+
+
+def _enable_push(project_dir: Path, github_url: str, slug: str, token: str) -> None:
+    """Give the project's container a SCOPED git-push capability: register its
+    {slug}-deploy key as a write deploy key on THIS repo only, point the repo at
+    an SSH remote, and pin git to the per-project key via core.sshCommand. The key
+    is a deploy key on this repo alone, so the container cannot push anywhere else."""
+    org_repo = _gh_org_repo(github_url)
+    pub_path = SSH_DIR / f"{slug}-deploy.pub"
+    if not org_repo or not pub_path.exists():
+        print(f"      push: skipped (org_repo={org_repo or '?'}, key={'ok' if pub_path.exists() else 'missing'})")
+        return
+
+    # 1. Register the deploy key (write) — idempotent.
+    if token:
+        body = json.dumps({"title": f"viko-{slug}", "key": pub_path.read_text().strip(),
+                           "read_only": False}).encode()
+        req = urllib.request.Request(
+            f"https://api.github.com/repos/{org_repo}/keys", data=body, method="POST",
+            headers={"Authorization": f"Bearer {token}", "Accept": "application/vnd.github+json"})
+        try:
+            urllib.request.urlopen(req)
+            print(f"      push: deploy key registered on {org_repo}")
+        except urllib.error.HTTPError as e:
+            msg = e.read().decode()
+            print(f"      push: deploy key {'already present' if 'already in use' in msg else 'note ' + msg[:80]}")
+
+    # 2. Point the repo at SSH + pin the per-project key + set a commit identity.
+    ssh_url = f"git@github.com:{org_repo}.git"
+    for args in (["remote", "set-url", "origin", ssh_url],
+                 ["config", "core.sshCommand", CORE_SSH_CMD],
+                 ["config", "user.name", "Viko"],
+                 ["config", "user.email", f"viko-{slug}@local"]):
+        subprocess.run(["git", "-C", str(project_dir)] + args, capture_output=True)
+    print(f"      push: repo -> {ssh_url} (scoped key, identity Viko)")
 
 
 def main():
@@ -195,6 +242,9 @@ def main():
     if result.returncode != 0:
         print(f"ERROR spawning Hermes: {result.stderr}")
         sys.exit(1)
+
+    # ── 3b. Enable scoped git push for the container (deploy key + SSH remote) ─
+    _enable_push(project_dir, github_url, slug, github_token)
 
     # ── 4. Update WHATSAPP_ALLOWED_USERS for DM access ────────────────────────
     if member_phones:

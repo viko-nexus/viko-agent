@@ -197,9 +197,16 @@ def _build_project_ssh_dir(slug: str, vps_host: str, vps_user: str) -> Path:
         (proj_dir / "config").write_text("# no VPS configured for this project\n")
 
     # Pre-seed known_hosts from the shared file so accept-new doesn't need to
-    # write into the read-only mount on first connect.
+    # write into the read-only mount on first connect. Also seed github.com so
+    # the container can `git push` over SSH (scoped per-repo deploy key).
     shared_kh = SSH_DIR / "known_hosts"
-    (proj_dir / "known_hosts").write_text(shared_kh.read_text() if shared_kh.exists() else "")
+    kh = shared_kh.read_text() if shared_kh.exists() else ""
+    if "github.com" not in kh:
+        try:
+            kh += _run(["ssh-keyscan", "-t", "ed25519", "github.com"]).stdout
+        except Exception:
+            pass
+    (proj_dir / "known_hosts").write_text(kh)
     return proj_dir
 
 
