@@ -340,7 +340,22 @@ def create_hermes_data_dir(slug: str, port: int, group_jid: str, env: dict) -> P
     # doesn't auto-create it root-owned when it mounts .ssh into /opt/data/home/.ssh.
     # A root-owned HOME makes $HOME/.cache unwritable for the hermes user, which
     # breaks uv/pip/execute_code and any on-the-fly document tooling.
-    (data_dir / "home").mkdir(parents=True, exist_ok=True)
+    home_dir = data_dir / "home"
+    home_dir.mkdir(parents=True, exist_ok=True)
+
+    # Agent git config (HOME=/opt/data/home). Trust the mounted repo (else git aborts
+    # with "dubious ownership"), set the Viko identity, and pin the per-project SSH key
+    # so `git pull/commit/push` from the already-cloned repo just works — the agent
+    # must use the repo at {projects_root}/{slug} and never re-clone to /tmp.
+    projects_root = env.get("VIKO_PROJECTS_ROOT", str(Path.home() / "Projects"))
+    repo_path = f"{projects_root}/{slug}"
+    (home_dir / ".gitconfig").write_text(
+        f"[safe]\n\tdirectory = {repo_path}\n"
+        f"[user]\n\tname = Viko\n\temail = viko-{slug}@local\n"
+        f"[core]\n\tsshCommand = ssh -i /opt/data/.ssh/id_viko -o IdentitiesOnly=yes "
+        f"-o StrictHostKeyChecking=accept-new -o UserKnownHostsFile=/opt/data/.ssh/known_hosts\n"
+        f"[init]\n\tdefaultBranch = main\n"
+    )
 
     # Write .env
     (data_dir / ".env").write_text(
@@ -400,7 +415,14 @@ def create_hermes_data_dir(slug: str, port: int, group_jid: str, env: dict) -> P
         f"- PDF/scan: `python3 -c \"import pymupdf; d=pymupdf.open('PATH'); print(''.join(p.get_text() for p in d))\"`. "
         f"JANGAN pakai vision/vision_analyze buat PDF — itu cuma buat gambar.\n"
         f"- docx: `import docx`. pptx: `import pptx`. xlsx: `import openpyxl`. Gambar (jpg/png): vision baca langsung.\n"
-        f"- Langsung baca filenya — jangan minta user paste/convert manual.\n"
+        f"- Langsung baca filenya — jangan minta user paste/convert manual.\n\n"
+        f"## Project & Git (dev)\n"
+        f"- Repo project ini SUDAH ke-clone lokal di `{repo_path}`. `cd` ke situ buat baca/edit/jalanin/build kode. "
+        f"JANGAN clone ulang, JANGAN ke /tmp.\n"
+        f"- Git udah dikonfigurasi (identity Viko, key `/opt/data/.ssh/id_viko`, repo di-trust). "
+        f"Tinggal `git pull/add/commit/push` dari DALAM repo — jangan bikin key baru / ngarang path key.\n"
+        f"- SSH ke server project: pakai alias di `/opt/data/.ssh/config` (`{slug}-prod` / `{slug}-vps`) "
+        f"atau key `/opt/data/.ssh/id_viko`. Jangan ngarang.\n"
     )
 
     # Placeholder WhatsApp creds so the gateway's pre-flight pairing check passes.

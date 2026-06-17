@@ -76,6 +76,13 @@ has the libraries pre-installed — read the file directly, never install anythi
 One path covers every file type — don't ask the user to paste or convert; just
 read the local file with `python3`.
 
+## Project Code & Git
+
+Each project's repo is already cloned at its mounted path (the project SOUL has the
+exact path). Use it in place — never re-clone to `/tmp`. Git is pre-configured (Viko
+identity, the per-project key at `/opt/data/.ssh/id_viko`, repo marked safe), so
+`git pull/commit/push` works from inside the repo. Never invent SSH key paths.
+
 ## Project Isolation in Groups (Critical)
 
 Each project has its own WhatsApp group and its own **isolated** Viko instance that
