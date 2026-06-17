@@ -342,6 +342,16 @@ def create_hermes_data_dir(slug: str, port: int, group_jid: str, env: dict) -> P
         yaml.dump(config, allow_unicode=True, default_flow_style=False, sort_keys=False)
     )
 
+    # Placeholder WhatsApp creds so the gateway's pre-flight pairing check passes.
+    # Newer Hermes fatally exits when WhatsApp is enabled but creds.json is absent.
+    # Relay-mode containers never pair locally (the bridge proxies through admin and
+    # never opens a WA socket), so this file is only there to satisfy the check.
+    session_dir = data_dir / "platforms" / "whatsapp" / "session"
+    session_dir.mkdir(parents=True, exist_ok=True)
+    creds = session_dir / "creds.json"
+    if not creds.exists():
+        creds.write_text("{}\n")
+
     return data_dir
 
 
