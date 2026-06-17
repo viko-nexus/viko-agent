@@ -1,4 +1,4 @@
 name: viko-media-autosend
-description: Safety-net — if a reply claims a file was sent but has no MEDIA: tag, auto-send the file the agent just produced
+description: "Safety-net — if a reply claims a file was sent but has no MEDIA tag, auto-send the file the agent just produced"
 events:
   - agent:end
