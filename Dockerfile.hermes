@@ -132,6 +132,7 @@ COPY patches/whatsapp-bridge.js /tmp/viko-wa-bridge.js
 COPY patches/indonesian-locale.py /tmp/indonesian-locale.py
 COPY patches/patch-ssh-guard.py /tmp/patch-ssh-guard.py
 COPY patches/patch-model-router.py /tmp/patch-model-router.py
+COPY patches/patch-approval-sql-context.py /tmp/patch-approval-sql-context.py
 COPY patches/isolation-guard.py /opt/hermes/docker/viko-isolation-guard.py
 RUN if [ -f /opt/hermes/scripts/whatsapp-bridge/bridge.js ]; then \
         cp /tmp/viko-wa-bridge.js /opt/hermes/scripts/whatsapp-bridge/bridge.js; \
@@ -139,6 +140,7 @@ RUN if [ -f /opt/hermes/scripts/whatsapp-bridge/bridge.js ]; then \
 RUN python3 /tmp/indonesian-locale.py
 RUN python3 /tmp/patch-ssh-guard.py
 RUN python3 /tmp/patch-model-router.py
+RUN python3 /tmp/patch-approval-sql-context.py
 
 # ── Permissions — after patches so patched files get correct ownership ─────────
 RUN mkdir -p /opt/hermes/gateway && \
