@@ -86,9 +86,10 @@ RUN uv sync --frozen --no-install-project \
 RUN uv pip install --no-cache-dir --no-deps -e "."
 
 # ── Extra tools: charts, web search, document extraction (PDF/docx/pptx/xlsx) ──
-# pymupdf ships as a Hermes dep; add office-doc libs so the agent reads ANY
-# attachment via the venv python — no per-media-type code, no on-the-fly install.
-RUN uv pip install --no-cache-dir matplotlib duckduckgo-search python-docx python-pptx openpyxl
+# PDF + office-doc libs so the agent reads ANY attachment via the venv python —
+# no per-media-type code, no on-the-fly install. pymupdf is NOT a pinned Hermes
+# dep (uv sync --no-install-project + -e . --no-deps skip it), so install it here.
+RUN uv pip install --no-cache-dir matplotlib duckduckgo-search pymupdf python-docx python-pptx openpyxl
 
 # ── Chromium (for browser tools + agent-browser screenshots) ─────────────────
 RUN apt-get update && \

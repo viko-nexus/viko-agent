@@ -124,7 +124,10 @@ services:
       # Dashboard (runs as s6 service alongside gateway)
       HERMES_DASHBOARD: "true"
       HERMES_DASHBOARD_INSECURE: "true"
-      HERMES_DASHBOARD_HOST: "127.0.0.1"
+      # Bind the dashboard on all CONTAINER interfaces so Docker's host port map
+      # reaches it. The security boundary is the host-side bind (VIKO_BIND_ADDR =
+      # Tailscale IP), not the container-internal bind.
+      HERMES_DASHBOARD_HOST: "0.0.0.0"
       HERMES_DASHBOARD_PORT: "9119"
     command: ["gateway", "run"]
     restart: unless-stopped
