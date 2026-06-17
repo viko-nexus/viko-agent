@@ -23,7 +23,7 @@ import express from 'express';
 import { Boom } from '@hapi/boom';
 import pino from 'pino';
 import path from 'path';
-import { mkdirSync, readFileSync, writeFileSync, existsSync, readdirSync, unlinkSync, watch } from 'fs';
+import { mkdirSync, readFileSync, writeFileSync, existsSync, readdirSync, unlinkSync, watch, statSync } from 'fs';
 import { randomBytes } from 'crypto';
 import { execSync } from 'child_process';
 import { tmpdir } from 'os';
@@ -58,6 +58,10 @@ const AUDIO_CACHE_DIR = path.join(process.env.HOME || '~', '.hermes', 'audio_cac
 // message — e.g. forward a .docx, then "buatin pdf viko") can still reach the file.
 const _recentMediaByChat = {};
 const RECENT_MEDIA_WINDOW_MS = 5 * 60 * 1000;
+// Outbound de-dup: the gateway's MEDIA: delivery and the viko-media-autosend hook can
+// both try to send the same file — drop a duplicate (same chat+name+size) within a window.
+const _recentSends = {};
+const SEND_DEDUP_MS = 90 * 1000;
 const PAIR_ONLY = args.includes('--pair-only');
 const WHATSAPP_MODE = getArg('mode', process.env.WHATSAPP_MODE || 'self-chat'); // "bot" or "self-chat"
 const ALLOWED_USERS = parseAllowedUsers(process.env.WHATSAPP_ALLOWED_USERS || '');
@@ -1003,6 +1007,15 @@ app.post('/send-media', async (req, res) => {
     if (!existsSync(filePath)) {
       return res.status(404).json({ error: `File not found: ${filePath}` });
     }
+
+    // Drop a duplicate send (gateway MEDIA: delivery + viko-media-autosend hook can both
+    // fire for the same file) within the window, keyed by chat + name + size.
+    const _dkey = `${chatId}|${path.basename(fileName || filePath)}|${statSync(filePath).size}`;
+    const _nowSend = Date.now();
+    if (_recentSends[_dkey] && (_nowSend - _recentSends[_dkey]) < SEND_DEDUP_MS) {
+      return res.json({ success: true, deduped: true });
+    }
+    _recentSends[_dkey] = _nowSend;
 
     const buffer = readFileSync(filePath);
     const ext = filePath.toLowerCase().split('.').pop();

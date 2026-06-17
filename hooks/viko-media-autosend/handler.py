@@ -1,31 +1,27 @@
 """Deterministic safety-net for outbound files.
 
-The model sometimes finishes a turn claiming it "sent" a file (a screenshot, PDF,
-video, report) but never emits the `MEDIA:<path>` tag — so nothing is delivered, and
-it often pastes the file path into the reply ("file tersimpan di /opt/.../x.png",
-"download via path itu") or falsely claims "WhatsApp can't attach media".
-
-On agent:end, if the reply has NO `MEDIA:` tag, recover the file two ways:
-  1. Any deliverable file PATH the model pasted into its reply that exists on disk.
-  2. Fallback: if it claims it sent something but pasted no path, the most recent
+The gateway's normal `MEDIA:<path>` delivery is occasionally skipped (long / multi-part
+replies), and the model sometimes pastes the file path or claims it "sent" something
+without a working tag — so the user gets no attachment. On agent:end, recover the file:
+  1. paths inside any `MEDIA:` tag still in the reply,
+  2. deliverable file paths pasted in prose,
+  3. fallback: if it claimed/intended to send but no valid path resolved, the freshest
      deliverable produced this turn.
-It only ever sends a real file that already exists — it never invents one.
+Every send goes through the bridge, which de-dups (same chat+name+size), so a file the
+gateway already delivered is never sent twice. It only ever sends a real file on disk.
 """
 import asyncio
-import json
 import os
 import re
 import time
+import json
 import urllib.request
 
-# Absolute paths to deliverable files mentioned in the reply (gif excluded — bridge
-# rejects it). Tolerant of a trailing ``.`` / ``)`` etc. via the explicit char class.
+_MEDIA_TAG_RE = re.compile(r'MEDIA:\s*([^\s\]\)]+)', re.IGNORECASE)
 _PATH_RE = re.compile(
     r'(/[A-Za-z0-9._/\-]+\.(?:png|jpe?g|webp|pdf|docx?|xlsx?|pptx?|mp4|mov|m4a|ogg|csv))',
     re.IGNORECASE,
 )
-
-# Reply claims a file went out (Indonesian + English) — used only for the fallback.
 _CLAIM_RE = re.compile(
     r'(screenshot|gambar|foto|file|pdf|dokumen|docx|video|mp4|excel|xlsx|laporan|report|quotation)'
     r'[\s\S]{0,40}(di ?kirim|terkirim|ke ?attach|sudah dikirim|udah dikirim|sent|delivered|ke group|ke sini|tersimpan|download)'
@@ -36,7 +32,7 @@ _CLAIM_RE = re.compile(
 
 _DELIVERABLE_EXT = {".png", ".jpg", ".jpeg", ".webp", ".pdf", ".docx", ".doc",
                     ".xlsx", ".xls", ".pptx", ".mp4", ".mov", ".m4a", ".ogg", ".csv"}
-_MAX_AGE = 180  # fallback: only a file produced this turn (seconds)
+_MAX_AGE = 180
 
 
 def _home():
@@ -72,7 +68,7 @@ def _recent_deliverable():
             for fn in files:
                 if os.path.splitext(fn)[1].lower() not in _DELIVERABLE_EXT:
                     continue
-                if fn.startswith("outbox_"):  # our own temp send artifacts
+                if fn.startswith("outbox_"):
                     continue
                 fp = os.path.join(dirpath, fn)
                 try:
@@ -86,7 +82,7 @@ def _recent_deliverable():
 
 def _autosend(chat_id, paths):
     for fp in paths:
-        payload = json.dumps({
+        body = json.dumps({
             "chatId": chat_id,
             "filePath": fp,
             "fileName": os.path.basename(fp),
@@ -94,12 +90,12 @@ def _autosend(chat_id, paths):
         try:
             req = urllib.request.Request(
                 "http://127.0.0.1:3000/send-media",
-                data=payload,
+                data=body,
                 headers={"Content-Type": "application/json"},
                 method="POST",
             )
             urllib.request.urlopen(req, timeout=25)
-            print(f"[viko-media-autosend] recovered + sent {fp}", flush=True)
+            print(f"[viko-media-autosend] sent {fp}", flush=True)
         except Exception as e:
             print(f"[viko-media-autosend] failed for {fp}: {e}", flush=True)
 
@@ -111,14 +107,18 @@ async def handle(event_type, context):
     resp = context.get("response") or ""
     if not chat_id or not resp:
         return
-    if "MEDIA:" in resp:            # the agent delivered it correctly
-        return
 
     paths = []
+    saw_intent = False
+    for p in _MEDIA_TAG_RE.findall(resp):
+        saw_intent = True
+        p = p.rstrip(".,;:)]}>\"'")
+        if os.path.isfile(p) and p not in paths:
+            paths.append(p)
     for m in _PATH_RE.findall(resp):
-        if m not in paths and os.path.isfile(m):
+        if os.path.isfile(m) and m not in paths:
             paths.append(m)
-    if not paths and _CLAIM_RE.search(resp):
+    if not paths and (saw_intent or _CLAIM_RE.search(resp)):
         f = _recent_deliverable()
         if f:
             paths.append(f)
