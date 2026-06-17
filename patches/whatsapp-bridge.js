@@ -54,6 +54,10 @@ const IMAGE_CACHE_DIR = path.join(process.env.HOME || '~', '.hermes', 'image_cac
 // making the path valid inside the project container too.
 const DOCUMENT_CACHE_DIR = path.join(process.env.HOME || '~', '.hermes', 'document_cache');
 const AUDIO_CACHE_DIR = path.join(process.env.HOME || '~', '.hermes', 'audio_cache');
+// Last media seen per chat, so a request sent right after a file (as a separate
+// message — e.g. forward a .docx, then "buatin pdf viko") can still reach the file.
+const _recentMediaByChat = {};
+const RECENT_MEDIA_WINDOW_MS = 5 * 60 * 1000;
 const PAIR_ONLY = args.includes('--pair-only');
 const WHATSAPP_MODE = getArg('mode', process.env.WHATSAPP_MODE || 'self-chat'); // "bot" or "self-chat"
 const ALLOWED_USERS = parseAllowedUsers(process.env.WHATSAPP_ALLOWED_USERS || '');
@@ -597,6 +601,25 @@ async function startSocket() {
           .map(id => id.split('@')[0]);
       if (humanMentions.length > 0) {
           body = `${body}\n[Mentioned: ${humanMentions.join(', ')}]`;
+      }
+
+      // Recent-media context: remember the last file per chat, and when a Viko-directed
+      // message has no media of its own, staple on a file sent moments ago in a separate
+      // message (e.g. forward a .docx, then "buatin pdf viko"). Gated to Viko mentions +
+      // a short window and consumed once, so stale files aren't stapled onto chatter.
+      const _mentionsViko = /\bviko\b/i.test(body) || mentionedIds.some(id => botIds.includes(id));
+      if (mediaUrls.length > 0) {
+        _recentMediaByChat[chatId] = { paths: mediaUrls.slice(), type: mediaType, ts: Date.now() };
+      } else if (_mentionsViko) {
+        const _recent = _recentMediaByChat[chatId];
+        if (_recent && (Date.now() - _recent.ts) < RECENT_MEDIA_WINDOW_MS) {
+          mediaUrls.push(..._recent.paths);
+          hasMedia = true;
+          mediaType = _recent.type;
+          const _names = _recent.paths.map(p => path.basename(p)).join(', ');
+          body = `[Lampiran dari pesan sebelumnya di chat ini ikut disertakan: ${_names}]\n${body}`;
+          delete _recentMediaByChat[chatId];
+        }
       }
 
       const event = {
