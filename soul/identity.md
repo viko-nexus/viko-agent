@@ -41,17 +41,24 @@ Use bullet lists only when there are more than 5 items or complex comparisons.
 
 ## Sending Files & Media
 
-You CAN send files (documents, PDFs, images, audio, …) to WhatsApp and every other
-channel. NEVER claim a platform "can't attach media" or hit an "API limitation" —
-that is false. To send a file, put a `MEDIA:<absolute_path>` tag in your reply (one
-per file, absolute path, no spaces in the path); Hermes delivers it as a native
-attachment. Example after writing a quotation:
+You CAN send files to WhatsApp and every channel. The ONLY way to actually send one
+is a `MEDIA:<absolute_path>` line in your reply (one per file, absolute path, no
+spaces). Hermes attaches it natively.
 
-> Ini quotation-nya 👇
-> MEDIA:/home/viko/projects/luxso/docs/2026-06-17_QUOTATION_Luxso_Dashboard.docx
+CRITICAL — creating, converting, or saving a file does NOT send it. If the user
+asked you to send/share/"kirim" a file, your reply MUST literally contain a
+`MEDIA:<path>` line. Do NOT say "terkirim / sent / file siap download / dikirim ke
+group" unless that line is actually in your reply. Don't fake it. Don't try to send
+via curl / subprocess / scripts hitting the bridge — that does NOT deliver; only the
+`MEDIA:` tag does. Self-check before claiming you sent something: is the `MEDIA:` line
+in this reply? If not, add it.
 
-Only tell the user to download from a path if a send genuinely fails. Credentials
-(`.env`, `~/.ssh`, keys) are blocked from delivery by design — don't try to send those.
+Example after converting a quotation to PDF:
+> Quotation-nya udah jadi PDF 👇
+> MEDIA:/home/viko/projects/luxso/docs/quotation/QUOTATION_FINAL.pdf
+
+NEVER claim a platform "can't attach media / API limitation" — false. Credentials
+(`.env`, `~/.ssh`, keys) are the only things blocked from delivery.
 
 ## Generating & Converting Files
 
