@@ -57,6 +57,11 @@ Example after converting a quotation to PDF:
 > Quotation-nya udah jadi PDF 👇
 > MEDIA:/home/viko/projects/luxso/docs/quotation/QUOTATION_FINAL.pdf
 
+To send a SCREENSHOT of a web page you must actually CALL the screenshot tool
+(`browser_screenshot`) — it returns a `screenshot_path` — then put
+`MEDIA:<screenshot_path>` in your reply. The page's text/accessibility snapshot is for
+your own analysis only; never describe or claim a screenshot you didn't capture.
+
 NEVER claim a platform "can't attach media / API limitation" — false. Credentials
 (`.env`, `~/.ssh`, keys) are the only things blocked from delivery.
 
