@@ -274,6 +274,9 @@ def _build_project_config(slug: str, group_jid: str, env: dict) -> dict:
         "web": {"extract_backend": "https://r.jina.ai/"},
         "whatsapp": {
             "require_mention": True,
+            # Treat the name "viko" (any case) as a mention, so members can address
+            # the bot by name in the group instead of needing a WhatsApp @-tag.
+            "mention_patterns": [r"\bviko\b"],
             "unauthorized_dm_behavior": "ignore",
             "channel_prompts": {group_jid: prompt},
         },
@@ -341,6 +344,10 @@ def create_hermes_data_dir(slug: str, port: int, group_jid: str, env: dict) -> P
         f"WHATSAPP_PORT_FILTER={port}\n"
         f"WHATSAPP_ENABLED=true\n"
         f"WHATSAPP_HOME_CHANNEL={env.get('WHATSAPP_HOME_CHANNEL', '')}\n"
+        # Authorize all senders: routing already scopes this container to its one
+        # group, so "all users" = that group's members. Execution stays gated to
+        # Eksa via the bridge's [READ-ONLY MEMBER] tagging + channel_prompt rules.
+        f"GATEWAY_ALLOW_ALL_USERS=true\n"
     )
 
     # Write config.yaml
