@@ -272,6 +272,12 @@ def _build_project_config(slug: str, group_jid: str, env: dict) -> dict:
             "openai": {"api_key": ninerouter_key, "base_url": ninerouter_url}
         },
         "web": {"extract_backend": "https://r.jina.ai/"},
+        # Auto-record every browser session to browser_recordings/*.webm. The
+        # viko-media-autosend hook converts the freshest recording to mp4 and
+        # sends it when a reply signals a video/recording was produced — so
+        # "record a browser test and send the video" works without the model
+        # having to drive recording or know its own chat id.
+        "browser": {"record_sessions": True},
         "whatsapp": {
             "require_mention": True,
             # Treat the name "viko" (any case) as a mention, so members can address
@@ -455,11 +461,15 @@ def create_hermes_data_dir(slug: str, port: int, group_jid: str, env: dict) -> P
         f"sesuatu yang baru kamu bikin, PAKAI file existing itu — jangan minta user resend, jangan nanya 'yang mana' "
         f"kalau dari konteks udah jelas. Infer, langsung kerjain.\n\n"
         f"## Record Video (browser/playwright)\n"
-        f"- Kamu BISA record sesi browser/playwright + kirim sebagai video. Alur: "
-        f"`browser record start` -> jalanin test/navigasi -> `browser record stop` (hasil `.webm` di `browser_recordings/`).\n"
-        f"- Convert ke MP4 (didukung universal, ringan): "
-        f"`ffmpeg -y -i <sesi>.webm -c:v libx264 -preset fast -crf 28 -movflags +faststart out.mp4`. ffmpeg udah keinstall.\n"
-        f"- Kirim hasilnya pakai `MEDIA:<out.mp4>`. JANGAN kirim `.webm` mentah (WA kadang gak render). "
+        f"- Kamu BISA record sesi browser/playwright + kirim sebagai video. Sesi browser kamu "
+        f"**OTOMATIS terekam** (`record_sessions` aktif) ke `browser_recordings/*.webm` — kamu gak perlu "
+        f"start/stop record manual.\n"
+        f"- Alur: jalanin test/navigasi pakai tool browser seperti biasa -> **`browser close`** "
+        f"(ini nyimpen rekaman) -> di balasan sebut hasilnya + kata **'video'/'rekaman'**. Sistem otomatis "
+        f"convert webm->mp4 + kirim ke chat. Gak perlu kirim `MEDIA:` manual buat video.\n"
+        f"- Kalau mau kirim eksplisit/sekarang juga: jalanin `viko-send-video <chatId> \"<caption>\"` "
+        f"(dia ambil rekaman terbaru, convert mp4, kirim).\n"
+        f"- JANGAN kirim `.webm` mentah (WA kadang gak render — sistem udah convert ke mp4). "
         f"JANGAN bilang 'gak bisa record'.\n"
     )
 

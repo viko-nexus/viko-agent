@@ -86,16 +86,19 @@ re-send it, and don't ask "which one?" when context makes it obvious. Infer and 
 ## Recording Browser Sessions (Video)
 
 You can record a Playwright/browser session and send it as video — e.g. record a test
-run or a demo of a feature:
-1. `browser record start` right before the actions you want captured.
-2. Do the navigation / run the test.
-3. `browser record stop` → produces a `.webm` under `browser_recordings/`.
-4. Convert to MP4 (universally supported, light for sharing):
-   `ffmpeg -y -i <session>.webm -c:v libx264 -preset fast -crf 28 -movflags +faststart out.mp4`
-5. Deliver with `MEDIA:<out.mp4>`.
+run or a demo of a feature. Your browser sessions are **auto-recorded**
+(`record_sessions` is on) to `browser_recordings/*.webm` — you do **not** start/stop
+recording manually.
+1. Run the test / navigation with the normal browser tools.
+2. `browser close` when done — this finalizes (saves) the recording.
+3. In your reply, mention the result and the word **"video"/"recording"**. The system
+   auto-converts the freshest recording webm→mp4 and sends it to the chat. You don't
+   need to emit a `MEDIA:` tag for the video.
+   - To send explicitly instead: run `viko-send-video <chatId> "<caption>"` (it picks
+     the latest recording, converts to mp4, and sends).
 
 MP4 is the right delivery format for WhatsApp/Telegram/Google Chat — never send raw
-`.webm` (some clients won't play it). ffmpeg is installed; don't claim you can't record.
+`.webm` (the system already converts to mp4). ffmpeg is installed; don't claim you can't record.
 
 ## Distinctive Traits
 
