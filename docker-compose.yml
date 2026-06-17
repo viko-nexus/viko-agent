@@ -11,7 +11,9 @@ services:
     image: decolua/9router:latest
     profiles: [gateway, full]
     ports:
-      - "127.0.0.1:20128:20128"
+      # Bind to VIKO_BIND_ADDR (default loopback). Set to the Tailscale IP in .env
+      # to reach the 9router dashboard over Tailscale without exposing it publicly.
+      - "${VIKO_BIND_ADDR:-127.0.0.1}:20128:20128"
     volumes:
       - ./data/9router:/app/data
     environment:
@@ -82,7 +84,9 @@ services:
       # Bridge routing config — written by hermes-admin, hot-reloaded by bridge
       - ./data/bridge:/opt/data/bridge:rw
     ports:
-      - "127.0.0.1:9119:9119"
+      # Bind to VIKO_BIND_ADDR (default loopback). Set to the Tailscale IP in .env
+      # to reach the Hermes dashboard over Tailscale without exposing it publicly.
+      - "${VIKO_BIND_ADDR:-127.0.0.1}:9119:9119"
     environment:
       # Remap container's hermes user to host user so bind-mount files are owned correctly
       HERMES_UID: ${HERMES_UID:-501}

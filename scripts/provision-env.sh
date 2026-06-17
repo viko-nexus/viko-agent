@@ -40,5 +40,8 @@ upsert GITHUB_TOKEN "${VIKO_GITHUB_TOKEN:-}"
 default_if_missing VIKO_PROJECTS_ROOT /home/viko/projects
 default_if_missing HERMES_UID 1000
 default_if_missing HERMES_GID 1000
+# Port bind address — loopback by default; a host can set its Tailscale IP to
+# expose the dashboards over Tailscale only. Host-specific, so never overridden.
+default_if_missing VIKO_BIND_ADDR 127.0.0.1
 
 echo "provision-env: .env now has $(grep -cE '^[A-Z_]+=' "$ENV_FILE") keys"
