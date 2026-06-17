@@ -421,8 +421,13 @@ def create_hermes_data_dir(slug: str, port: int, group_jid: str, env: dict) -> P
         f"JANGAN clone ulang, JANGAN ke /tmp.\n"
         f"- Git udah dikonfigurasi (identity Viko, key `/opt/data/.ssh/id_viko`, repo di-trust). "
         f"Tinggal `git pull/add/commit/push` dari DALAM repo — jangan bikin key baru / ngarang path key.\n"
-        f"- SSH ke server project: pakai alias di `/opt/data/.ssh/config` (`{slug}-prod` / `{slug}-vps`) "
-        f"atau key `/opt/data/.ssh/id_viko`. Jangan ngarang.\n"
+        f"- SSH ke server project: pakai alias `{slug}-prod` (config + key `/opt/data/.ssh/id_viko` udah siap). "
+        f"Contoh: `ssh {slug}-prod 'perintah'`. Jangan ngarang host/user/key.\n"
+        f"- **Akses DB lewat SSH TUNNEL** (DB gak ke-expose publik, jangan konek langsung): "
+        f"baca `DATABASE_URL` dari `.env` project DI SERVER (`ssh {slug}-prod 'cat <path>/.env'`), "
+        f"buka tunnel ke host:port DB-nya — `ssh -fN -L 5433:<db_host>:<db_port> {slug}-prod` — "
+        f"lalu query: `psql 'postgresql://USER:PASS@127.0.0.1:5433/DB'` atau psycopg2 (python3, udah keinstall). "
+        f"Tutup tunnel kalau selesai (`pkill -f '5433:'`). JANGAN hardcode creds.\n"
     )
 
     # Placeholder WhatsApp creds so the gateway's pre-flight pairing check passes.

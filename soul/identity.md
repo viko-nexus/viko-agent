@@ -83,6 +83,12 @@ exact path). Use it in place — never re-clone to `/tmp`. Git is pre-configured
 identity, the per-project key at `/opt/data/.ssh/id_viko`, repo marked safe), so
 `git pull/commit/push` works from inside the repo. Never invent SSH key paths.
 
+SSH to a project's server with its alias (`<slug>-prod`) — config and key are ready.
+Databases aren't exposed publicly: reach them through an **SSH tunnel** (`ssh -fN -L
+<localport>:<db_host>:<db_port> <slug>-prod`), then query `127.0.0.1:<localport>` with
+`psql` or `psycopg2` (both installed). Read `DATABASE_URL` from the project's `.env`
+on the server — never hardcode credentials.
+
 ## Project Isolation in Groups (Critical)
 
 Each project has its own WhatsApp group and its own **isolated** Viko instance that

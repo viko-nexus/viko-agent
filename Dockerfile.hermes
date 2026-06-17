@@ -85,19 +85,20 @@ RUN uv sync --frozen --no-install-project \
 # ── Install Hermes as editable package ────────────────────────────────────────
 RUN uv pip install --no-cache-dir --no-deps -e "."
 
-# ── Extra tools: charts, web search, document extraction (PDF/docx/pptx/xlsx) ──
-# PDF + office-doc libs so the agent reads ANY attachment via the venv python —
-# no per-media-type code, no on-the-fly install. pymupdf is NOT a pinned Hermes
-# dep (uv sync --no-install-project + -e . --no-deps skip it), so install it here.
-RUN uv pip install --no-cache-dir matplotlib duckduckgo-search pymupdf python-docx python-pptx openpyxl
+# ── Extra tools: charts, web search, doc extraction (PDF/docx/pptx/xlsx), DB ──
+# PDF + office-doc libs so the agent reads ANY attachment via the venv python, and
+# psycopg2 so it can query project Postgres over an SSH tunnel. No per-media-type
+# code, no on-the-fly install. pymupdf is NOT a pinned Hermes dep (uv sync
+# --no-install-project + -e . --no-deps skip it), so install it here.
+RUN uv pip install --no-cache-dir matplotlib duckduckgo-search pymupdf python-docx python-pptx openpyxl psycopg2-binary
 # Same libs in the SYSTEM python3 too. The agent's terminal runs in a LOGIN shell
 # where /etc/profile resets PATH so `python3` = /usr/bin/python3 (not the venv),
-# so the doc libs must be importable there as well or attachment reads fail.
-RUN uv pip install --python /usr/bin/python3 --break-system-packages --no-cache-dir pymupdf python-docx python-pptx openpyxl
+# so these must be importable there as well or attachment reads / DB queries fail.
+RUN uv pip install --python /usr/bin/python3 --break-system-packages --no-cache-dir pymupdf python-docx python-pptx openpyxl psycopg2-binary
 
-# ── Chromium (for browser tools + agent-browser screenshots) ─────────────────
+# ── Chromium (browser tools) + psql (DB checks over an SSH tunnel) ────────────
 RUN apt-get update && \
-    apt-get install -y --no-install-recommends chromium && \
+    apt-get install -y --no-install-recommends chromium postgresql-client && \
     rm -rf /var/lib/apt/lists/*
 ENV CHROME_PATH=/usr/bin/chromium
 
