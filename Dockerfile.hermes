@@ -90,6 +90,10 @@ RUN uv pip install --no-cache-dir --no-deps -e "."
 # no per-media-type code, no on-the-fly install. pymupdf is NOT a pinned Hermes
 # dep (uv sync --no-install-project + -e . --no-deps skip it), so install it here.
 RUN uv pip install --no-cache-dir matplotlib duckduckgo-search pymupdf python-docx python-pptx openpyxl
+# Same libs in the SYSTEM python3 too. The agent's terminal runs in a LOGIN shell
+# where /etc/profile resets PATH so `python3` = /usr/bin/python3 (not the venv),
+# so the doc libs must be importable there as well or attachment reads fail.
+RUN uv pip install --python /usr/bin/python3 --break-system-packages --no-cache-dir pymupdf python-docx python-pptx openpyxl
 
 # ── Chromium (for browser tools + agent-browser screenshots) ─────────────────
 RUN apt-get update && \

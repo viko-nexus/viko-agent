@@ -395,12 +395,12 @@ def create_hermes_data_dir(slug: str, port: int, group_jid: str, env: dict) -> P
         f"- Jangan munculin peringatan ini di percakapan normal — cuma buat yang jelas-jelas spam.\n\n"
         f"## Baca Lampiran (PDF/dokumen/gambar)\n"
         f"- File yang dikirim ke WA otomatis ke-download lokal; path-nya ada di pesan. "
-        f"Baca isinya pakai **python venv Hermes**: `/opt/hermes/.venv/bin/python` "
-        f"(udah ada pymupdf, python-docx, python-pptx, openpyxl, Pillow). "
-        f"JANGAN pakai `python3` polos, JANGAN pip/uv install.\n"
-        f"- PDF: `import pymupdf; d=pymupdf.open(path); t=\"\".join(p.get_text() for p in d)`. "
-        f"docx: `import docx`. pptx: `import pptx`. xlsx: `import openpyxl`. Gambar: vision baca langsung.\n"
-        f"- Jadi jangan minta user paste/convert manual — langsung baca filenya.\n"
+        f"`python3` udah ada lib-nya (pymupdf, python-docx, python-pptx, openpyxl) — "
+        f"baca langsung, JANGAN install apa-apa.\n"
+        f"- PDF/scan: `python3 -c \"import pymupdf; d=pymupdf.open('PATH'); print(''.join(p.get_text() for p in d))\"`. "
+        f"JANGAN pakai vision/vision_analyze buat PDF — itu cuma buat gambar.\n"
+        f"- docx: `import docx`. pptx: `import pptx`. xlsx: `import openpyxl`. Gambar (jpg/png): vision baca langsung.\n"
+        f"- Langsung baca filenya — jangan minta user paste/convert manual.\n"
     )
 
     # Placeholder WhatsApp creds so the gateway's pre-flight pairing check passes.
