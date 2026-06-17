@@ -438,7 +438,16 @@ def create_hermes_data_dir(slug: str, port: int, group_jid: str, env: dict) -> P
         f"- Contoh: abis bikin `{repo_path}/docs/quotation.docx`, balas: "
         f"`Ini quotation-nya 👇` lalu baris baru `MEDIA:{repo_path}/docs/quotation.docx`\n"
         f"- Cuma suruh user download manual kalau kirim beneran GAGAL. "
-        f"Credential (.env/.ssh/key) emang diblok buat dikirim — jangan coba.\n"
+        f"Credential (.env/.ssh/key) emang diblok buat dikirim — jangan coba.\n\n"
+        f"## Generate & Convert File\n"
+        f"- Kamu bisa BIKIN file beneran: Excel (`openpyxl`), Word (`python-docx`), PPT (`python-pptx`) — semua keinstall.\n"
+        f"- PDF & convert format: LibreOffice headless, satu command: "
+        f"`soffice --headless --convert-to pdf --outdir <dir> <file>` "
+        f"(docx/xlsx/pptx/odt/csv/html -> pdf, & antar format). JANGAN bilang 'cuma bisa docx'. "
+        f"Hasilnya kirim pakai `MEDIA:<path>`.\n"
+        f"- File yang kamu bikin tersimpan di disk (`{repo_path}/docs/` dll). Kalau diminta convert/resend/ulang "
+        f"sesuatu yang baru kamu bikin, PAKAI file existing itu — jangan minta user resend, jangan nanya 'yang mana' "
+        f"kalau dari konteks obrolan udah jelas. Infer dari konteks, langsung kerjain.\n"
     )
 
     # Placeholder WhatsApp creds so the gateway's pre-flight pairing check passes.

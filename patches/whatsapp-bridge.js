@@ -508,6 +508,37 @@ async function startSocket() {
         }
       }
 
+      // Extract document from a quoted/forwarded message so Viko can read/convert it
+      // (e.g. user replies to a .docx with "buatin pdf"). Without this only the text
+      // "[dokumen: name]" reaches Viko — the file itself never arrives.
+      if (contextInfo?.quotedMessage?.documentMessage) {
+        const quotedDocMsg = contextInfo.quotedMessage.documentMessage;
+        try {
+          const fakeMsg = {
+            key: {
+              remoteJid: quotedRemoteJid || chatId,
+              id: quotedMessageId,
+              participant: quotedParticipant || undefined,
+              fromMe: false,
+            },
+            message: contextInfo.quotedMessage,
+          };
+          const buf = await downloadMediaMessage(fakeMsg, 'buffer', {}, { logger, reuploadRequest: sock.updateMediaMessage });
+          const fileName = quotedDocMsg.fileName || 'document';
+          mkdirSync(DOCUMENT_CACHE_DIR, { recursive: true });
+          const safeFileName = path.basename(fileName).replace(/[^a-zA-Z0-9._-]/g, '_');
+          const filePath = path.join(DOCUMENT_CACHE_DIR, `quoted_${randomBytes(6).toString('hex')}_${safeFileName}`);
+          writeFileSync(filePath, buf);
+          mediaUrls.push(filePath);
+          if (!hasMedia) {
+            hasMedia = true;
+            mediaType = 'document';
+          }
+        } catch (err) {
+          console.error('[bridge] Failed to download quoted document:', err.message);
+        }
+      }
+
       // Extract text from quoted/replied message so Viko knows what's being replied to
       if (hasQuotedMessage && contextInfo?.quotedMessage) {
         const qm = contextInfo.quotedMessage;

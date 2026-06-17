@@ -104,6 +104,14 @@ RUN apt-get update && \
     rm -rf /var/lib/apt/lists/*
 ENV CHROME_PATH=/usr/bin/chromium
 
+# ── LibreOffice headless: universal document/format converter ─────────────────
+# One tool to convert ANY office doc to PDF (and between formats), no per-format code:
+#   soffice --headless --convert-to pdf --outdir <dir> <file.docx|xlsx|pptx|odt|...>
+# fonts-liberation gives decent docx→pdf fidelity for business documents.
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends libreoffice-writer libreoffice-calc libreoffice-impress fonts-liberation && \
+    rm -rf /var/lib/apt/lists/*
+
 # ── agent-browser: token-efficient browser automation via accessibility tree ──
 RUN set -eu; \
     case "${TARGETARCH:-amd64}" in \
