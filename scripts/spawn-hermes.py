@@ -450,7 +450,14 @@ def create_hermes_data_dir(slug: str, port: int, group_jid: str, env: dict) -> P
         f"no emoji/checkbox hiasan (jadi kotak kosong di PDF). Hasilnya kirim pakai `MEDIA:<path>`.\n"
         f"- File yang kamu bikin tersimpan di disk (`{repo_path}/docs/` dll). Kalau diminta convert/resend/ulang "
         f"sesuatu yang baru kamu bikin, PAKAI file existing itu — jangan minta user resend, jangan nanya 'yang mana' "
-        f"kalau dari konteks udah jelas. Infer, langsung kerjain.\n"
+        f"kalau dari konteks udah jelas. Infer, langsung kerjain.\n\n"
+        f"## Record Video (browser/playwright)\n"
+        f"- Kamu BISA record sesi browser/playwright + kirim sebagai video. Alur: "
+        f"`browser record start` -> jalanin test/navigasi -> `browser record stop` (hasil `.webm` di `browser_recordings/`).\n"
+        f"- Convert ke MP4 (didukung universal, ringan): "
+        f"`ffmpeg -y -i <sesi>.webm -c:v libx264 -preset fast -crf 28 -movflags +faststart out.mp4`. ffmpeg udah keinstall.\n"
+        f"- Kirim hasilnya pakai `MEDIA:<out.mp4>`. JANGAN kirim `.webm` mentah (WA kadang gak render). "
+        f"JANGAN bilang 'gak bisa record'.\n"
     )
 
     # Placeholder WhatsApp creds so the gateway's pre-flight pairing check passes.
