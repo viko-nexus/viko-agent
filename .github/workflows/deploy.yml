@@ -129,7 +129,13 @@ jobs:
               docker logout ghcr.io
             fi
 
-            # Now swap — quick rm + recreate (brief blip only, after the image is local)
-            docker rm -f viko-hermes 2>/dev/null || true
-            docker compose --profile full up -d --force-recreate hermes
+            # Recreate admin ONLY when the image was rebuilt; otherwise let compose
+            # recreate it only if compose/.env config actually changed. This avoids a
+            # needless ~30s WhatsApp blip on scripts-only deploys.
+            if [ "$REBUILT" = "true" ]; then
+              docker rm -f viko-hermes 2>/dev/null || true
+              docker compose --profile full up -d --force-recreate hermes
+            else
+              docker compose --profile full up -d hermes
+            fi
             docker ps --filter name=viko --format 'table {{.Names}}\t{{.Status}}'
