@@ -46,6 +46,12 @@ const WHATSAPP_DEBUG =
 const PORT = parseInt(getArg('port', '3000'), 10);
 const SESSION_DIR = getArg('session', path.join(process.env.HOME || '~', '.hermes', 'whatsapp', 'session'));
 const IMAGE_CACHE_DIR = path.join(process.env.HOME || '~', '.hermes', 'image_cache');
+// Media is downloaded by the ADMIN bridge into these cache dirs and referenced by
+// ABSOLUTE PATH. The admin's own Hermes reads the files directly. Project (relay)
+// containers can't read the admin's filesystem, and Hermes' SSRF guard (is_safe_url)
+// blocks loopback HTTP fetches — so the relay /messages handler pre-downloads each
+// referenced file to the SAME absolute path locally (see _prefetchRelayMedia),
+// making the path valid inside the project container too.
 const DOCUMENT_CACHE_DIR = path.join(process.env.HOME || '~', '.hermes', 'document_cache');
 const AUDIO_CACHE_DIR = path.join(process.env.HOME || '~', '.hermes', 'audio_cache');
 const PAIR_ONLY = args.includes('--pair-only');
@@ -604,13 +610,39 @@ app.use(express.json());
 
 if (RELAY_MODE) {
   // Relay mode: proxy all requests to the admin bridge, filtered by port
+
+  // The admin downloads inbound media to absolute paths under its own cache dirs,
+  // which this isolated container can't read — and Hermes' SSRF guard blocks the
+  // loopback HTTP fallback. So pull each referenced file from the admin's /media
+  // endpoint and write it to the SAME absolute path here, making Hermes'
+  // os.path.isabs media branch resolve it locally. Best-effort + idempotent
+  // (skips files already cached). Runs at the /messages boundary.
+  async function _prefetchRelayMedia(messages) {
+    if (!Array.isArray(messages)) return messages;
+    for (const msg of messages) {
+      const urls = (msg && msg.mediaUrls) || [];
+      for (const p of urls) {
+        try {
+          if (typeof p !== 'string' || !path.isAbsolute(p) || existsSync(p)) continue;
+          const r = await fetch(`${RELAY_TARGET}/media/${encodeURIComponent(path.basename(p))}`,
+            { headers: { Host: 'viko-hermes-admin' } });
+          if (!r.ok) { console.log(`[bridge] relay media prefetch ${r.status} for ${path.basename(p)}`); continue; }
+          mkdirSync(path.dirname(p), { recursive: true });
+          writeFileSync(p, Buffer.from(await r.arrayBuffer()));
+          console.log(`[bridge] relay prefetched media → ${p}`);
+        } catch (e) { console.log(`[bridge] relay media prefetch failed: ${e.message}`); }
+      }
+    }
+    return messages;
+  }
+
   app.get('/messages', async (req, res) => {
     try {
       const url = PORT_FILTER
         ? `${RELAY_TARGET}/messages?port=${PORT_FILTER}`
         : `${RELAY_TARGET}/messages`;
       const resp = await fetch(url, { headers: { Host: 'viko-hermes-admin' } });
-      res.json(await resp.json());
+      res.json(await _prefetchRelayMedia(await resp.json()));
     } catch (e) { res.json([]); }
   });
   app.post('/send', async (req, res) => {
@@ -660,6 +692,17 @@ if (RELAY_MODE) {
     try {
       const resp = await fetch(`${RELAY_TARGET}/chat/${req.params.id}`, { headers: { Host: 'viko-hermes-admin' } });
       res.status(resp.status).json(await resp.json());
+    } catch { res.status(503).json({ error: 'relay_error' }); }
+  });
+  // Proxy media fetches to the admin (which downloaded the file). Lets this
+  // isolated container's vision tool read images/docs it can't access on disk.
+  app.get('/media/:file', async (req, res) => {
+    try {
+      const resp = await fetch(`${RELAY_TARGET}/media/${encodeURIComponent(path.basename(req.params.file))}`,
+        { headers: { Host: 'viko-hermes-admin' } });
+      if (!resp.ok) return res.status(resp.status).json({ error: 'media_relay_error' });
+      res.set('Content-Type', resp.headers.get('content-type') || 'application/octet-stream');
+      res.send(Buffer.from(await resp.arrayBuffer()));
     } catch { res.status(503).json({ error: 'relay_error' }); }
   });
   const BRIDGE_BIND = process.env.BRIDGE_BIND || '127.0.0.1';
@@ -982,6 +1025,18 @@ app.get('/chat/:id', async (req, res) => {
     isGroup,
     participants: [],
   });
+});
+
+// Serve a downloaded media file by basename. The relay /messages handler pulls
+// from here to mirror the admin's media into each project container's cache at the
+// same absolute path. basename() guards against path traversal.
+app.get('/media/:file', (req, res) => {
+  const file = path.basename(req.params.file);
+  for (const dir of [IMAGE_CACHE_DIR, DOCUMENT_CACHE_DIR, AUDIO_CACHE_DIR]) {
+    const fp = path.join(dir, file);
+    if (existsSync(fp)) return res.sendFile(fp);
+  }
+  res.status(404).json({ error: 'media_not_found' });
 });
 
 // Group participants with names
