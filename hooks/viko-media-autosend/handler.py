@@ -33,6 +33,16 @@ _CLAIM_RE = re.compile(
     r'(screenshot|gambar|foto|file|pdf|dokumen|video|laporan|report)',
     re.IGNORECASE,
 )
+# A reply that simply *presents* a deliverable — "ini screenshot-nya 👇", "berikut
+# laporannya" — without a "sent/delivered" verb or a MEDIA: tag. The common case the
+# model gets wrong. Only ever acts together with _recent_deliverable's <=180s freshness
+# guard, so it just ships the file produced THIS turn, never a stale one.
+_PRESENT_RE = re.compile(
+    r'\b(?:screenshot|tangkapan\s*layar|gambar|foto|image|pdf|dokumen|docx|excel|xlsx|'
+    r'spreadsheet|laporan|report|quotation|invoice|video|rekaman|grafik|chart|diagram)'
+    r'(?:nya|ku|mu)?\b',  # allow clitics: screenshotnya / laporannya / gambarku
+    re.IGNORECASE,
+)
 # A reply that talks about a recording/video — trigger for the webm->mp4 path. Pairs
 # with the fresh-webm guard below, so a stray "video" with no recent recording is a no-op.
 _VIDEO_INTENT_RE = re.compile(
@@ -185,7 +195,7 @@ def _resolve_and_send(chat_id, resp):
             if mp4 and mp4 not in paths:
                 paths.append(mp4)
 
-    if not paths and (saw_intent or _CLAIM_RE.search(resp)):
+    if not paths and (saw_intent or _CLAIM_RE.search(resp) or _PRESENT_RE.search(resp)):
         f = _recent_deliverable()
         if f:
             paths.append(f)
