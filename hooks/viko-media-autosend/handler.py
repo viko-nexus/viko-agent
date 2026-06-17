@@ -1,11 +1,15 @@
 """Deterministic safety-net for outbound files.
 
-The model sometimes claims it "sent / attached" a file (a screenshot, PDF, video,
-report) but forgets to emit the `MEDIA:<path>` tag, so nothing is actually delivered.
-On agent:end, if the reply claims a file was sent but contains NO `MEDIA:` tag, find
-the file the agent just produced (a deliverable created within this turn) and send it
-via the bridge. This only RECOVERS a real, freshly-made file — it never invents one,
-so if the agent didn't actually produce anything, nothing is sent.
+The model sometimes finishes a turn claiming it "sent" a file (a screenshot, PDF,
+video, report) but never emits the `MEDIA:<path>` tag — so nothing is delivered, and
+it often pastes the file path into the reply ("file tersimpan di /opt/.../x.png",
+"download via path itu") or falsely claims "WhatsApp can't attach media".
+
+On agent:end, if the reply has NO `MEDIA:` tag, recover the file two ways:
+  1. Any deliverable file PATH the model pasted into its reply that exists on disk.
+  2. Fallback: if it claims it sent something but pasted no path, the most recent
+     deliverable produced this turn.
+It only ever sends a real file that already exists — it never invents one.
 """
 import asyncio
 import json
@@ -14,18 +18,25 @@ import re
 import time
 import urllib.request
 
-# The reply claims a file went out (Indonesian + English).
+# Absolute paths to deliverable files mentioned in the reply (gif excluded — bridge
+# rejects it). Tolerant of a trailing ``.`` / ``)`` etc. via the explicit char class.
+_PATH_RE = re.compile(
+    r'(/[A-Za-z0-9._/\-]+\.(?:png|jpe?g|webp|pdf|docx?|xlsx?|pptx?|mp4|mov|m4a|ogg|csv))',
+    re.IGNORECASE,
+)
+
+# Reply claims a file went out (Indonesian + English) — used only for the fallback.
 _CLAIM_RE = re.compile(
-    r'(screenshot|gambar|foto|file|pdf|dokumen|docx|video|mp4|excel|xlsx|laporan|quotation|report)'
-    r'[\s\S]{0,40}(di ?kirim|terkirim|ke ?attach|ter ?attach|sudah dikirim|udah dikirim|sent|delivered|ke group|ke sini)'
+    r'(screenshot|gambar|foto|file|pdf|dokumen|docx|video|mp4|excel|xlsx|laporan|report|quotation)'
+    r'[\s\S]{0,40}(di ?kirim|terkirim|ke ?attach|sudah dikirim|udah dikirim|sent|delivered|ke group|ke sini|tersimpan|download)'
     r'|(di ?kirim|terkirim|sent|attached?|share)[\s\S]{0,40}'
     r'(screenshot|gambar|foto|file|pdf|dokumen|video|laporan|report)',
     re.IGNORECASE,
 )
 
-_DELIVERABLE_EXT = {".png", ".jpg", ".jpeg", ".webp", ".pdf", ".docx",
-                    ".xlsx", ".pptx", ".mp4", ".csv"}
-_MAX_AGE = 180  # only a file produced in this turn (seconds)
+_DELIVERABLE_EXT = {".png", ".jpg", ".jpeg", ".webp", ".pdf", ".docx", ".doc",
+                    ".xlsx", ".xls", ".pptx", ".mp4", ".mov", ".m4a", ".ogg", ".csv"}
+_MAX_AGE = 180  # fallback: only a file produced this turn (seconds)
 
 
 def _home():
@@ -73,26 +84,24 @@ def _recent_deliverable():
     return best
 
 
-def _autosend(chat_id):
-    fp = _recent_deliverable()
-    if not fp:
-        return
-    payload = json.dumps({
-        "chatId": chat_id,
-        "filePath": fp,
-        "fileName": os.path.basename(fp),
-    }).encode()
-    try:
-        req = urllib.request.Request(
-            "http://127.0.0.1:3000/send-media",
-            data=payload,
-            headers={"Content-Type": "application/json"},
-            method="POST",
-        )
-        urllib.request.urlopen(req, timeout=25)
-        print(f"[viko-media-autosend] recovered + sent {fp}", flush=True)
-    except Exception as e:
-        print(f"[viko-media-autosend] failed: {e}", flush=True)
+def _autosend(chat_id, paths):
+    for fp in paths:
+        payload = json.dumps({
+            "chatId": chat_id,
+            "filePath": fp,
+            "fileName": os.path.basename(fp),
+        }).encode()
+        try:
+            req = urllib.request.Request(
+                "http://127.0.0.1:3000/send-media",
+                data=payload,
+                headers={"Content-Type": "application/json"},
+                method="POST",
+            )
+            urllib.request.urlopen(req, timeout=25)
+            print(f"[viko-media-autosend] recovered + sent {fp}", flush=True)
+        except Exception as e:
+            print(f"[viko-media-autosend] failed for {fp}: {e}", flush=True)
 
 
 async def handle(event_type, context):
@@ -102,8 +111,17 @@ async def handle(event_type, context):
     resp = context.get("response") or ""
     if not chat_id or not resp:
         return
-    if "MEDIA:" in resp:        # the agent delivered it correctly
+    if "MEDIA:" in resp:            # the agent delivered it correctly
         return
-    if not _CLAIM_RE.search(resp):
+
+    paths = []
+    for m in _PATH_RE.findall(resp):
+        if m not in paths and os.path.isfile(m):
+            paths.append(m)
+    if not paths and _CLAIM_RE.search(resp):
+        f = _recent_deliverable()
+        if f:
+            paths.append(f)
+    if not paths:
         return
-    await asyncio.get_running_loop().run_in_executor(None, _autosend, chat_id)
+    await asyncio.get_running_loop().run_in_executor(None, _autosend, chat_id, paths[:3])
