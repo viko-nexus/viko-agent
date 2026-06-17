@@ -426,7 +426,9 @@ def create_hermes_data_dir(slug: str, port: int, group_jid: str, env: dict) -> P
         f"- **Akses DB lewat SSH TUNNEL** (DB gak ke-expose publik, jangan konek langsung): "
         f"baca `DATABASE_URL` dari `.env` project DI SERVER (`ssh {slug}-prod 'cat <path>/.env'`), "
         f"buka tunnel ke host:port DB-nya — `ssh -fN -L 5433:<db_host>:<db_port> {slug}-prod` — "
-        f"lalu query: `psql 'postgresql://USER:PASS@127.0.0.1:5433/DB'` atau psycopg2 (python3, udah keinstall). "
+        f"lalu query ke `127.0.0.1:5433`. Tipe DB dari scheme DATABASE_URL, client udah keinstall semua: "
+        f"`postgresql`->psql/psycopg2, `mysql`->mysql/PyMySQL, `mongodb`->pymongo, `redis`->redis-cli/redis, "
+        f"atau SQLAlchemy buat URL SQL apa pun (python3). "
         f"Tutup tunnel kalau selesai (`pkill -f '5433:'`). JANGAN hardcode creds.\n"
     )
 

@@ -86,19 +86,21 @@ RUN uv sync --frozen --no-install-project \
 RUN uv pip install --no-cache-dir --no-deps -e "."
 
 # ── Extra tools: charts, web search, doc extraction (PDF/docx/pptx/xlsx), DB ──
-# PDF + office-doc libs so the agent reads ANY attachment via the venv python, and
-# psycopg2 so it can query project Postgres over an SSH tunnel. No per-media-type
-# code, no on-the-fly install. pymupdf is NOT a pinned Hermes dep (uv sync
-# --no-install-project + -e . --no-deps skip it), so install it here.
-RUN uv pip install --no-cache-dir matplotlib duckduckgo-search pymupdf python-docx python-pptx openpyxl psycopg2-binary
+# PDF + office-doc libs so the agent reads ANY attachment via the venv python, plus
+# DB drivers so it can query ANY project database over an SSH tunnel: psycopg2
+# (Postgres), PyMySQL (MySQL/MariaDB), pymongo (Mongo), redis, and SQLAlchemy as a
+# universal URL-driven layer for SQL DBs. No per-media/per-DB code, no on-the-fly
+# install. pymupdf is NOT a pinned Hermes dep (uv sync --no-install-project + -e .
+# --no-deps skip it), so install it here.
+RUN uv pip install --no-cache-dir matplotlib duckduckgo-search pymupdf python-docx python-pptx openpyxl psycopg2-binary PyMySQL pymongo redis SQLAlchemy
 # Same libs in the SYSTEM python3 too. The agent's terminal runs in a LOGIN shell
 # where /etc/profile resets PATH so `python3` = /usr/bin/python3 (not the venv),
 # so these must be importable there as well or attachment reads / DB queries fail.
-RUN uv pip install --python /usr/bin/python3 --break-system-packages --no-cache-dir pymupdf python-docx python-pptx openpyxl psycopg2-binary
+RUN uv pip install --python /usr/bin/python3 --break-system-packages --no-cache-dir pymupdf python-docx python-pptx openpyxl psycopg2-binary PyMySQL pymongo redis SQLAlchemy
 
-# ── Chromium (browser tools) + psql (DB checks over an SSH tunnel) ────────────
+# ── Chromium (browser tools) + DB CLIs (psql/mysql/redis over an SSH tunnel) ──
 RUN apt-get update && \
-    apt-get install -y --no-install-recommends chromium postgresql-client && \
+    apt-get install -y --no-install-recommends chromium postgresql-client default-mysql-client redis-tools && \
     rm -rf /var/lib/apt/lists/*
 ENV CHROME_PATH=/usr/bin/chromium
 
