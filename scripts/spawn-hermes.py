@@ -426,6 +426,11 @@ def _prepare_isolation(slug: str, env: dict, vps_host: str, vps_user: str) -> Pa
     """Resolve VPS, build the per-project SSH dir, and run preflight. Returns the
     per-project ssh dir to mount. Raises (fail-closed) if invariants don't hold."""
     projects_root = Path(env.get("VIKO_PROJECTS_ROOT", str(Path.home() / "Projects")))
+    # Pre-create the project's code + context dirs as the current (viko) user, so
+    # Docker doesn't auto-create the bind-mount sources as root — which would later
+    # block `git clone` into the code dir and context.md writes during onboarding.
+    (projects_root / slug).mkdir(parents=True, exist_ok=True)
+    (REPO_DIR / "projects" / slug).mkdir(parents=True, exist_ok=True)
     rh, ru = _resolve_vps(slug, vps_host, vps_user)
     if rh:
         print(f"  VPS: {ru}@{rh} (alias {slug}-vps)")

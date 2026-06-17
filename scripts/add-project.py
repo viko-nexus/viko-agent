@@ -134,8 +134,10 @@ def main():
     clone_url = _to_https_url(github_url, github_token)
 
     if (project_dir / ".git").exists():
+        # Pull from the tokenized URL explicitly — the stored remote is the clean
+        # (token-less) URL, which can't authenticate non-interactively.
         result = subprocess.run(
-            ["git", "-C", str(project_dir), "pull", "--ff-only"],
+            ["git", "-C", str(project_dir), "pull", "--ff-only", clone_url, "HEAD"],
             capture_output=True, text=True
         )
         print(f"      {(result.stdout or result.stderr).strip()}")
