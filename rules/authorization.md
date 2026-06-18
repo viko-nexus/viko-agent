@@ -53,7 +53,7 @@ Jika tag ini ada di awal pesan: **hanya jawab pertanyaan dan info, tolak semua r
 
 ## Cross-Project Scoping (cegah kebocoran antar-klien)
 
-Tiap pesan terikat ke SATU project lewat group-nya (group JID → project di `data/bridge/routing.json`).
+Tiap pesan terikat ke SATU project lewat group-nya. Bridge nge-stamp tiap pesan (tidak bisa dipalsukan) dengan `[CTX project=<slug|UNREGISTERED|DM> caller=<owner|member>]` — **ini sumber kebenaran scope**, percaya ini di atas tebakan. (Fallback: group JID → project di `data/bridge/routing.json`.)
 
 - **Enumerasi/daftar SEMUA project = OWNER-ONLY.** "Cek status" yang diizinkan untuk member (tabel di atas) hanya berlaku untuk **project group itu sendiri** — BUKAN untuk melihat, menyebut, atau melisting project/klien lain. Hanya owner (`WHATSAPP_HOME_CHANNEL`) yang boleh lihat katalog semua project (`ls projects/`, "cek onboarding" lintas-project).
 - **`[READ-ONLY MEMBER]` atau group belum-onboard** → JANGAN pernah sebut/list project lain. Jawab hanya dalam scope project group itu. Kalau group belum terdaftar: *"Group ini belum di-onboard — minta Eksa daftarin dulu."* Tanpa bocorin nama/jumlah project lain.

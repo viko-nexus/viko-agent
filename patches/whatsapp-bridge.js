@@ -200,16 +200,18 @@ const ROUTING_FILE = process.env.ROUTING_FILE ||
 
 let _routing = {};      // { "jid@g.us": 8101 }        — normalized, inbound routing
 let _tokenToJid = {};   // { "<relay_token>": "jid@g.us" } — outbound scope checks
+let _jidToSlug = {};    // { "jid@g.us": "slug" }       — group → project, for scope stamping
 
 function _loadRouting() {
   try {
     const raw = JSON.parse(readFileSync(ROUTING_FILE, 'utf8'));
-    const routing = {}, tokenToJid = {};
+    const routing = {}, tokenToJid = {}, jidToSlug = {};
     for (const [jid, val] of Object.entries(raw)) {
       if (val && typeof val === 'object') {
         // New schema: { jid: { port, slug, relay_token } }
         if (val.port != null) routing[jid] = val.port;
         if (val.relay_token) tokenToJid[val.relay_token] = jid;
+        if (val.slug) jidToSlug[jid] = val.slug;
       } else {
         // Legacy schema: { jid: port }
         routing[jid] = val;
@@ -217,8 +219,9 @@ function _loadRouting() {
     }
     _routing = routing;
     _tokenToJid = tokenToJid;
+    _jidToSlug = jidToSlug;
     console.log(`[bridge] routing.json loaded: ${Object.keys(_routing).length} routes, ${Object.keys(_tokenToJid).length} relay tokens`);
-  } catch { _routing = {}; _tokenToJid = {}; }
+  } catch { _routing = {}; _tokenToJid = {}; _jidToSlug = {}; }
 }
 
 _loadRouting();
@@ -596,6 +599,16 @@ async function startSocket() {
       // check data, but cannot authorize execution, deploys, or infra changes.
       if (!msg.key.fromMe && isGroup && OWNER_PHONES.size > 0 && !matchesAllowedUser(senderId, OWNER_PHONES, SESSION_DIR)) {
         body = `[READ-ONLY MEMBER - hanya boleh tanya dan cek data, tidak bisa authorize execution]\n${body}`;
+      }
+
+      // Deterministic, unspoofable scope stamp. Binds each message to its project
+      // (group JID → routing.json slug) and flags whether the sender is the owner —
+      // so the gateway scopes replies and gates the cross-project catalog WITHOUT
+      // guessing. Covers DMs + unregistered groups (the gaps a rule alone can't close).
+      if (!msg.key.fromMe) {
+        const isOwner = OWNER_PHONES.size > 0 && matchesAllowedUser(senderId, OWNER_PHONES, SESSION_DIR);
+        const proj = !isGroup ? 'DM' : (_jidToSlug[chatId] || 'UNREGISTERED');
+        body = `[CTX project=${proj} caller=${isOwner ? 'owner' : 'member'}]\n${body}`;
       }
 
       // Append @mentioned phone numbers so Viko can act on them

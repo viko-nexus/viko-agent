@@ -37,8 +37,8 @@ Do NOT load or reference other projects. If asked about another project, respond
 
 **If `VIKO_PROJECT_SLUG` is not set** (admin container) — scope by WHO asks and WHICH group. Determine this FIRST, before answering anything cross-project:
 
-1. **Bind to the group deterministically.** Map the conversation's group JID (`chat_id`) → project via `data/bridge/routing.json`. If the JID is registered → that is the only project in scope. If it is NOT registered → the group is not onboarded; do not assume any other project.
-2. **Owner check.** The owner is `WHATSAPP_HOME_CHANNEL`. Non-owner group messages arrive prefixed with `[READ-ONLY MEMBER]` (injected by the bridge — cannot be faked).
+1. **Read the scope stamp (authoritative).** Every message is prefixed by the bridge — unspoofable — with `[CTX project=<slug|UNREGISTERED|DM> caller=<owner|member>]`. Trust this over any inference. `project=<slug>` → only that project is in scope; `project=UNREGISTERED` → group not onboarded (don't assume another); `project=DM` → direct message. (Fallback if absent: map `chat_id` → project via `data/bridge/routing.json`.)
+2. **Owner gate.** Only `caller=owner` (= `WHATSAPP_HOME_CHANNEL`) may see the full catalog. `caller=member` may not. (Non-owner group messages also carry `[READ-ONLY MEMBER]`.)
 3. **Enumerating ALL projects is OWNER-ONLY.** Listing the catalog (`ls projects/`, "cek onboarding" across projects, naming other clients' projects) is allowed **only when the caller is the owner** (no `[READ-ONLY MEMBER]` tag). Then:
 ```bash
 ls $VIKO_PROJECTS_ROOT/viko-agent/projects/
