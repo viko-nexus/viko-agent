@@ -664,10 +664,26 @@ async function startSocket() {
 
 // HTTP server
 const app = express();
-app.use(express.json());
+// Relay containers ship outbound files to admin as base64 in the JSON body. WhatsApp
+// media caps at ~64MB → ~85MB once base64-inflated, and Express defaults to a 100kb
+// body limit — so any file over ~75kb would 413 here and surface to the relay as a
+// generic 503. Lift the ceiling so real documents/videos get through.
+app.use(express.json({ limit: '100mb' }));
 
 if (RELAY_MODE) {
   // Relay mode: proxy all requests to the admin bridge, filtered by port
+
+  // Forward an upstream response preserving its REAL status. `await resp.json()` throws
+  // when admin returns a non-JSON error body (e.g. a 413 on an oversized payload), and
+  // the surrounding catch would then mask it as a generic 503 — hiding the true cause.
+  // Read as text and parse defensively so the actual status/detail reaches the caller.
+  async function _forwardRelay(res, resp) {
+    const text = await resp.text();
+    let body;
+    try { body = text ? JSON.parse(text) : {}; }
+    catch { body = { error: 'relay_upstream', status: resp.status, detail: text.slice(0, 500) }; }
+    res.status(resp.status).json(body);
+  }
 
   // The admin downloads inbound media to absolute paths under its own cache dirs,
   // which this isolated container can't read — and Hermes' SSRF guard blocks the
@@ -709,8 +725,8 @@ if (RELAY_MODE) {
         method: 'POST', headers: _relayHeaders(),
         body: JSON.stringify(req.body)
       });
-      res.status(resp.status).json(await resp.json());
-    } catch (e) { res.status(503).json({ error: 'relay_error' }); }
+      await _forwardRelay(res, resp);
+    } catch (e) { res.status(503).json({ error: 'relay_error', detail: e.message }); }
   });
   app.post('/send-media', async (req, res) => {
     try {
@@ -732,8 +748,8 @@ if (RELAY_MODE) {
         method: 'POST', headers: _relayHeaders(),
         body: JSON.stringify(payload)
       });
-      res.status(resp.status).json(await resp.json());
-    } catch (e) { res.status(503).json({ error: 'relay_error' }); }
+      await _forwardRelay(res, resp);
+    } catch (e) { res.status(503).json({ error: 'relay_error', detail: e.message }); }
   });
   app.post('/edit', async (req, res) => {
     try {
@@ -741,8 +757,8 @@ if (RELAY_MODE) {
         method: 'POST', headers: _relayHeaders(),
         body: JSON.stringify(req.body)
       });
-      res.status(resp.status).json(await resp.json());
-    } catch (e) { res.status(503).json({ error: 'relay_error' }); }
+      await _forwardRelay(res, resp);
+    } catch (e) { res.status(503).json({ error: 'relay_error', detail: e.message }); }
   });
   ['post'].forEach(m => app[m]('/typing', async (req, res) => {
     try {
@@ -763,7 +779,7 @@ if (RELAY_MODE) {
   app.get('/chat/:id', async (req, res) => {
     try {
       const resp = await fetch(`${RELAY_TARGET}/chat/${req.params.id}`, { headers: { Host: 'viko-hermes-admin' } });
-      res.status(resp.status).json(await resp.json());
+      await _forwardRelay(res, resp);
     } catch { res.status(503).json({ error: 'relay_error' }); }
   });
   // Proxy media fetches to the admin (which downloaded the file). Lets this

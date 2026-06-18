@@ -279,3 +279,6 @@ curl -s -X POST http://localhost:3000/send-media \
 - Files generated in `/tmp/` inside the container are ephemeral
 - If a provider returns error 402/credits: ask Eksa to top up that provider's API key in 9Router
 - For sending media: always get `chatId` from the active conversation context — never guess
+- **Resending a file**: when asked to resend/kirim ulang, always include the full file path using
+  `MEDIA:/path/to/file.pdf` in the reply, OR use curl to call the bridge directly. Never just say
+  "Kirim ulang:" without a path — the delivery hook cannot find the file without it.

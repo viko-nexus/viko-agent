@@ -55,7 +55,11 @@ _DELIVERABLE_EXT = {".png", ".jpg", ".jpeg", ".webp", ".pdf", ".docx", ".doc",
                     ".xlsx", ".xls", ".pptx", ".mp4", ".mov", ".m4a", ".ogg", ".csv"}
 _VIDEO_EXT = {".mp4", ".mov"}
 _MAX_AGE = 180
+_MAX_AGE_RESEND = 86400  # 24 h — resend scenarios reference files from earlier in the session
 _WEBM_MAX_AGE = 300  # a browser test can run a few minutes before `browser close` finalizes it
+
+# "kirim ulang / kirim lagi / resend" — user is asking Viko to resend a previously-delivered file
+_RESEND_RE = re.compile(r'kirim\s*(?:ulang|lagi)\b|resend\b', re.IGNORECASE)
 
 
 def _home():
@@ -86,7 +90,7 @@ def _search_dirs():
     return dirs
 
 
-def _recent_deliverable():
+def _recent_deliverable(max_age=_MAX_AGE):
     now = time.time()
     best, best_mt = None, 0.0
     for d in _search_dirs():
@@ -105,7 +109,7 @@ def _recent_deliverable():
                     mt = os.path.getmtime(fp)
                 except OSError:
                     continue
-                if (now - mt) <= _MAX_AGE and mt > best_mt:
+                if (now - mt) <= max_age and mt > best_mt:
                     best, best_mt = fp, mt
     return best
 
@@ -195,8 +199,10 @@ def _resolve_and_send(chat_id, resp):
             if mp4 and mp4 not in paths:
                 paths.append(mp4)
 
-    if not paths and (saw_intent or _CLAIM_RE.search(resp) or _PRESENT_RE.search(resp)):
-        f = _recent_deliverable()
+    is_resend = bool(_RESEND_RE.search(resp))
+    if not paths and (saw_intent or is_resend or _CLAIM_RE.search(resp) or _PRESENT_RE.search(resp)):
+        max_age = _MAX_AGE_RESEND if is_resend else _MAX_AGE
+        f = _recent_deliverable(max_age=max_age)
         if f:
             paths.append(f)
     if not paths:
