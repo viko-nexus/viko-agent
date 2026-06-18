@@ -603,10 +603,14 @@ async function startSocket() {
         continue;
       }
 
+      // Resolve owner ONCE (handles LID↔phone via session mapping files). Reused by the
+      // read-only tag and the scope stamp, and logged so a mis-detected owner is visible.
+      const isOwner = !msg.key.fromMe && OWNER_PHONES.size > 0 && matchesAllowedUser(senderId, OWNER_PHONES, SESSION_DIR);
+
       // Tag group messages from non-owner members so the gateway enforces read-only mode.
       // Owner is identified by WHATSAPP_HOME_CHANNEL. Non-owners can ask questions and
       // check data, but cannot authorize execution, deploys, or infra changes.
-      if (!msg.key.fromMe && isGroup && OWNER_PHONES.size > 0 && !matchesAllowedUser(senderId, OWNER_PHONES, SESSION_DIR)) {
+      if (!msg.key.fromMe && isGroup && OWNER_PHONES.size > 0 && !isOwner) {
         body = `[READ-ONLY MEMBER - hanya boleh tanya dan cek data, tidak bisa authorize execution]\n${body}`;
       }
 
@@ -615,9 +619,11 @@ async function startSocket() {
       // so the gateway scopes replies and gates the cross-project catalog WITHOUT
       // guessing. Covers DMs + unregistered groups (the gaps a rule alone can't close).
       if (!msg.key.fromMe) {
-        const isOwner = OWNER_PHONES.size > 0 && matchesAllowedUser(senderId, OWNER_PHONES, SESSION_DIR);
         const proj = !isGroup ? 'DM' : (_jidToSlug[chatId] || 'UNREGISTERED');
         body = `[CTX project=${proj} caller=${isOwner ? 'owner' : 'member'}]\n${body}`;
+        // Inbound ops log (sender identity + resolved owner) — the bridge logged no
+        // inbound events before, which made owner mis-detection impossible to debug.
+        try { console.log(JSON.stringify({ event: 'inbound', chatId, senderId, owner: isOwner, group: isGroup, proj })); } catch {}
       }
 
       // Append @mentioned phone numbers so Viko can act on them

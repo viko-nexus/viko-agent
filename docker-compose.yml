@@ -120,6 +120,10 @@ services:
       BRIDGE_EXTRA_HOSTS: "viko-hermes"
       # GitHub token for automated deploy key setup during project onboarding
       GITHUB_TOKEN: ${GITHUB_TOKEN:-}
+      # Disable the busy-ack ("Sebentar ya, lagi saya kerjain…"). config.yaml's
+      # display.busy_ack_enabled only takes effect via a reload path, not normal
+      # boot, so the env var (read by gateway run.py) is the reliable switch.
+      HERMES_GATEWAY_BUSY_ACK_ENABLED: "false"
       # Holographic memory — pure local SQLite, no API key needed
       # Dashboard (runs as s6 service alongside gateway)
       HERMES_DASHBOARD: "true"
