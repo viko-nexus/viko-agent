@@ -1,5 +1,0 @@
-name: viko-quick-ack
-description: Deferred "tunggu sebentar" ack — fires only if a turn runs longer than VIKO_ACK_DELAY_SECONDS; cancelled when the reply lands first
-events:
-  - agent:start
-  - agent:end

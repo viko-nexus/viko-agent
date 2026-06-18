@@ -23,7 +23,7 @@ import express from 'express';
 import { Boom } from '@hapi/boom';
 import pino from 'pino';
 import path from 'path';
-import { mkdirSync, readFileSync, writeFileSync, existsSync, readdirSync, unlinkSync, watch, statSync } from 'fs';
+import { mkdirSync, readFileSync, writeFileSync, existsSync, readdirSync, unlinkSync, watch, statSync, appendFileSync } from 'fs';
 import { randomBytes } from 'crypto';
 import { execSync } from 'child_process';
 import { tmpdir } from 'os';
@@ -621,9 +621,12 @@ async function startSocket() {
       if (!msg.key.fromMe) {
         const proj = !isGroup ? 'DM' : (_jidToSlug[chatId] || 'UNREGISTERED');
         body = `[CTX project=${proj} caller=${isOwner ? 'owner' : 'member'}]\n${body}`;
-        // Inbound ops log (sender identity + resolved owner) — the bridge logged no
-        // inbound events before, which made owner mis-detection impossible to debug.
-        try { console.log(JSON.stringify({ event: 'inbound', chatId, senderId, owner: isOwner, group: isGroup, proj })); } catch {}
+        // Inbound ops log (sender identity + resolved owner) → FILE, because the bridge's
+        // runtime stdout isn't captured by docker logs. Lets us debug owner mis-detection.
+        try {
+          appendFileSync('/opt/data/logs/bridge-inbound.log',
+            JSON.stringify({ t: new Date().toISOString(), chatId, senderId, owner: isOwner, group: isGroup, proj }) + '\n');
+        } catch {}
       }
 
       // Append @mentioned phone numbers so Viko can act on them
