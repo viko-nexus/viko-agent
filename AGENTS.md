@@ -35,14 +35,16 @@ cat $VIKO_PROJECTS_ROOT/viko-agent/projects/$VIKO_PROJECT_SLUG/context.md
 Do NOT load or reference other projects. If asked about another project, respond:
 "Itu bukan project saya. Tanya Viko di group yang sesuai."
 
-**If `VIKO_PROJECT_SLUG` is not set** (admin container), discover all projects:
+**If `VIKO_PROJECT_SLUG` is not set** (admin container) — scope by WHO asks and WHICH group. Determine this FIRST, before answering anything cross-project:
+
+1. **Bind to the group deterministically.** Map the conversation's group JID (`chat_id`) → project via `data/bridge/routing.json`. If the JID is registered → that is the only project in scope. If it is NOT registered → the group is not onboarded; do not assume any other project.
+2. **Owner check.** The owner is `WHATSAPP_HOME_CHANNEL`. Non-owner group messages arrive prefixed with `[READ-ONLY MEMBER]` (injected by the bridge — cannot be faked).
+3. **Enumerating ALL projects is OWNER-ONLY.** Listing the catalog (`ls projects/`, "cek onboarding" across projects, naming other clients' projects) is allowed **only when the caller is the owner** (no `[READ-ONLY MEMBER]` tag). Then:
 ```bash
 ls $VIKO_PROJECTS_ROOT/viko-agent/projects/
-```
-Each folder that contains a `context.md` is a valid project. Load it before working on any task:
-```bash
 cat $VIKO_PROJECTS_ROOT/viko-agent/projects/<slug>/context.md
 ```
+4. **Never leak across clients.** If the caller is a `[READ-ONLY MEMBER]` / non-owner, or the group is unregistered: do NOT list, name, or load any other project. Answer only within the group's own mapped project; if unregistered, reply: *"Group ini belum di-onboard — minta Eksa daftarin dulu."* Never reveal the catalog.
 
 ### Onboarding a project (MANDATORY steps — do not skip)
 

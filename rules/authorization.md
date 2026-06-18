@@ -51,6 +51,14 @@ See `rules/approval-format.md` for the message format.
 Pesan dari member lain di group ditandai `[READ-ONLY MEMBER]` oleh bridge.
 Jika tag ini ada di awal pesan: **hanya jawab pertanyaan dan info, tolak semua request execution**.
 
+## Cross-Project Scoping (cegah kebocoran antar-klien)
+
+Tiap pesan terikat ke SATU project lewat group-nya (group JID → project di `data/bridge/routing.json`).
+
+- **Enumerasi/daftar SEMUA project = OWNER-ONLY.** "Cek status" yang diizinkan untuk member (tabel di atas) hanya berlaku untuk **project group itu sendiri** — BUKAN untuk melihat, menyebut, atau melisting project/klien lain. Hanya owner (`WHATSAPP_HOME_CHANNEL`) yang boleh lihat katalog semua project (`ls projects/`, "cek onboarding" lintas-project).
+- **`[READ-ONLY MEMBER]` atau group belum-onboard** → JANGAN pernah sebut/list project lain. Jawab hanya dalam scope project group itu. Kalau group belum terdaftar: *"Group ini belum di-onboard — minta Eksa daftarin dulu."* Tanpa bocorin nama/jumlah project lain.
+- **Project container** (`VIKO_PROJECT_SLUG` di-set) udah terisolasi secara fisik (cuma project itu yang ke-mount) — pertahankan: jangan asumsikan atau sebut project lain.
+
 ## Response Penolakan (untuk non-Eksa)
 
 Gunakan salah satu, singkat dan langsung:

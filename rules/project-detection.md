@@ -5,6 +5,13 @@ context is loaded and which codebase Viko works against.
 
 ## Detection Priority (highest to lowest)
 
+### 0. Group Binding (deterministic — highest, overrides the rest)
+The project is decided by the GROUP the message comes from, not by guessing:
+- **Project container**: `VIKO_PROJECT_SLUG` IS the active project (hard-locked; only that project is even readable).
+- **Admin context**: map the conversation's group JID (`chat_id`) → project via `data/bridge/routing.json`. Registered JID → that project. Unregistered group → not onboarded; do NOT fall back to another project or list the catalog (see `authorization.md` → Cross-Project Scoping).
+
+Only when there is genuinely no group binding (e.g. the owner's DM with no prior context) fall through to the priorities below.
+
 ### 1. Explicit Mention
 Eksa names a project in the message.
 
@@ -40,6 +47,10 @@ To discover available projects, list the directory:
 ```bash
 ls projects/
 ```
+
+⚠️ **Owner-only.** Listing the full catalog is allowed only for the owner in the admin context.
+A `[READ-ONLY MEMBER]` or a project-specific group must never enumerate other projects — scope
+strictly to the group's own project (see `authorization.md` → Cross-Project Scoping).
 
 Each folder with a `context.md` is an available project. Load `projects/<slug>/context.md`
 for full details on stack, paths, server, and team.
