@@ -103,6 +103,15 @@ function sendWithTimeout(chatId, payload, timeoutMs = SEND_TIMEOUT_MS) {
 }
 
 function formatOutgoingMessage(message) {
+  // Strip internal scope/role markers the model may have echoed back. They're injected
+  // into INBOUND messages for the gateway (scope binding, owner-gate) and must NEVER
+  // reach the user — covers both the bracketed tag and any verbalized "CTX". Deterministic
+  // backstop so a leak can't depend on the model honoring a soft rule.
+  message = String(message ?? '')
+    .replace(/\[(?:CTX|READ-ONLY MEMBER|Mentioned)\b[^\]]*\]/gi, '')
+    .replace(/\bCTX\b[:.\s]*/gi, '')
+    .replace(/^[\s:–—-]+/, '');
+  if (/^[a-z]/.test(message)) message = message.charAt(0).toUpperCase() + message.slice(1);
   // In bot mode, messages come from a different number so the prefix is
   // redundant — the sender identity is already clear.  Only prepend in
   // self-chat mode where bot and user share the same number.
