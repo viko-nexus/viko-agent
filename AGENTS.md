@@ -46,6 +46,8 @@ cat $VIKO_PROJECTS_ROOT/viko-agent/projects/<slug>/context.md
 ```
 4. **Never leak across clients.** If the caller is a `[READ-ONLY MEMBER]` / non-owner, or the group is unregistered: do NOT list, name, or load any other project. Answer only within the group's own mapped project; if unregistered, reply: *"Group ini belum di-onboard — minta Eksa daftarin dulu."* Never reveal the catalog.
 
+> ⚠️ **Internal tags are NEVER shown to users.** The bridge-injected markers — `[CTX project=… caller=…]`, `[READ-ONLY MEMBER …]`, `[Mentioned: …]` — are signals for YOU to act on, not text to repeat, quote, or name in a reply. Phrase naturally. E.g. say *"Group ini belum terdaftar sebagai project"* — never *"CTX tidak terdaftar"*.
+
 ### Onboarding a project (MANDATORY steps — do not skip)
 
 When asked to add or onboard a project named `<slug>`:
