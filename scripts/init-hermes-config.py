@@ -129,10 +129,10 @@ DESIRED = {
             }
         },
     },
-    # Skills: expose viko-agent skills as slash commands, review AI-created skills
-    # Path is derived from this script's location — works for any user/machine
+    # Skills: expose shared skills + admin-specific skills (onboarding)
+    # Paths derived from script location — works for any user/machine
     "skills": {
-        "external_dirs": [f"{VIKO_AGENT_ROOT}/skills"],
+        "external_dirs": [f"{VIKO_AGENT_ROOT}/skills", f"{VIKO_AGENT_ROOT}/admin/skills"],
         "guard_agent_created": True,
     },
     # Terminal starts in projects root so Viko can cd into any project
