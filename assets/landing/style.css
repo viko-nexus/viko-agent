@@ -2,8 +2,8 @@
 *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
 
 :root {
-  --black:  #060B14;
-  --card:   #0B1220;
+  --black:  #0A1628;   /* dark navy — distinctly blue, not black */
+  --card:   #0D1E38;   /* elevated card surface */
   --txt:    #F0F4FF;
   --body:   #C8D4F0;
   --dim:    #7080AA;
@@ -11,19 +11,38 @@
   --amb:    #FF9B48;   /* amber accent */
   --red:    #FF3366;   /* crimson — matches logo gradient bottom */
   --blu:    #4FC3F7;   /* ice blue — matches logo gradient top */
-  --border: #1A2140;
+  --border: #1B2E4A;
 }
 
 html { scroll-behavior: smooth; }
 
+/* ── Body: dot-grid vector background + ambient glows ── */
 body {
-  background: var(--black);
+  background-color: var(--black);
+  background-image: radial-gradient(circle, rgba(124,77,255,0.13) 1px, transparent 1px);
+  background-size: 40px 40px;
   color: var(--txt);
   font-family: 'Courier New', Courier, monospace;
   font-size: 17px;
   line-height: 1.75;
   -webkit-font-smoothing: antialiased;
+  position: relative;
 }
+
+/* Ambient colour glows — fixed so they don't scroll with content */
+body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  background:
+    radial-gradient(ellipse 70% 55% at 0% 0%,   rgba(124,77,255,0.09) 0%, transparent 65%),
+    radial-gradient(ellipse 55% 45% at 100% 100%, rgba(79,195,247,0.06) 0%, transparent 65%);
+  pointer-events: none;
+  z-index: 0;
+}
+
+/* Ensure every direct section sits above the fixed glow layer */
+body > * { position: relative; z-index: 1; }
 
 /* ── Scroll reveal ── */
 .reveal {
@@ -76,8 +95,8 @@ body {
 /* ════ HEADER ════ */
 header {
   position: sticky; top: 0; z-index: 100;
-  background: rgba(6,11,20,0.94);
-  backdrop-filter: blur(12px);
+  background: rgba(10,22,40,0.88);
+  backdrop-filter: blur(16px);
   border-bottom: 1px solid var(--border);
   padding: 0 48px; height: 64px;
   display: flex; align-items: center; justify-content: space-between;
@@ -109,17 +128,17 @@ header {
 
 .hero-fade-top {
   position: absolute; top: 0; left: 0; right: 0; height: 80px;
-  background: linear-gradient(to bottom, #060B14, transparent); z-index: 2;
+  background: linear-gradient(to bottom, #0A1628, transparent); z-index: 2;
 }
 .hero-fade-bottom {
   position: absolute; bottom: 0; left: 0; right: 0; height: 140px;
-  background: linear-gradient(to bottom, transparent, #060B14); z-index: 2;
+  background: linear-gradient(to bottom, transparent, #0A1628); z-index: 2;
 }
 
-/* Animated dot grid background */
+/* Animated dot grid canvas — layered on top of body dot grid */
 .hero-grid {
   position: absolute; inset: 0; z-index: 0;
-  opacity: 0.15;
+  opacity: 0.2;
 }
 
 .hero-content {
@@ -189,7 +208,7 @@ header {
   display: flex; flex-direction: column; gap: 10px;
   transition: background 0.2s;
 }
-.feature-card:hover { background: #131C34; }
+.feature-card:hover { background: #162444; }
 .feature-icon { font-size: 20px; color: var(--pri); line-height: 1; }
 .feature-card.amber .feature-icon { color: var(--amb); }
 .feature-card.red   .feature-icon { color: var(--red); }
@@ -197,13 +216,13 @@ header {
 .feature-desc { font-size: 14px; color: var(--body); line-height: 1.7; flex: 1; }
 
 /* ════ ARCHITECTURE ════ */
-.architecture { padding: 96px 64px; background: var(--card); border-bottom: 1px solid var(--border); }
+.architecture { padding: 96px 64px; border-bottom: 1px solid var(--border); }
 .arch-intro { margin-bottom: 48px; }
 .arch-diagram { margin-bottom: 48px; }
 .arch-code {
   font-family: 'Courier New', monospace; font-size: 13px;
   color: var(--body); line-height: 1.8;
-  background: var(--black); border: 1px solid var(--border);
+  background: rgba(13,30,56,0.85); border: 1px solid var(--border);
   padding: 28px 32px; overflow-x: auto;
   border-left: 3px solid var(--pri);
 }
@@ -212,7 +231,7 @@ header {
   gap: 16px;
 }
 .arch-card {
-  padding: 24px 20px; background: var(--black);
+  padding: 24px 20px; background: var(--card);
   border: 1px solid var(--border);
   display: flex; flex-direction: column; gap: 10px;
 }
