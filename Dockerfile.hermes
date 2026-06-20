@@ -1,4 +1,5 @@
 # ─── Stage 1: uv binary ───────────────────────────────────────────────────────
+# Image published as ghcr.io/viko-nexus/viko-agent
 FROM ghcr.io/astral-sh/uv:0.11.6-python3.13-trixie AS uv_source
 
 # ─── Stage 2: Node 22 LTS ─────────────────────────────────────────────────────
