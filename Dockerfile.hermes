@@ -135,9 +135,13 @@ COPY patches/patch-ssh-guard.py /tmp/patch-ssh-guard.py
 COPY patches/patch-model-router.py /tmp/patch-model-router.py
 COPY patches/patch-approval-sql-context.py /tmp/patch-approval-sql-context.py
 COPY patches/isolation-guard.py /opt/hermes/docker/viko-isolation-guard.py
+COPY scripts/init-hermes-config.py /opt/viko/scripts/init-hermes-config.py
 RUN if [ -f /opt/hermes/scripts/whatsapp-bridge/bridge.js ]; then \
         cp /tmp/viko-wa-bridge.js /opt/hermes/scripts/whatsapp-bridge/bridge.js; \
     fi
+# Hermes moved the bridge lookup path from scripts/ to plugins/scripts/ — symlink both.
+RUN mkdir -p /opt/hermes/plugins/scripts && \
+    ln -sf /opt/hermes/scripts/whatsapp-bridge /opt/hermes/plugins/scripts/whatsapp-bridge
 RUN python3 /tmp/indonesian-locale.py
 RUN python3 /tmp/patch-ssh-guard.py
 RUN python3 /tmp/patch-model-router.py
@@ -162,7 +166,10 @@ RUN mkdir -p /etc/cont-init.d /etc/s6-overlay/s6-rc.d && \
     cp -r /opt/hermes/docker/s6-rc.d/. /etc/s6-overlay/s6-rc.d/ && \
     printf '#!/command/with-contenv sh\nexec python3 /opt/hermes/docker/viko-isolation-guard.py\n' \
         > /etc/cont-init.d/03-viko-isolation-guard && \
-    chmod +x /etc/cont-init.d/03-viko-isolation-guard
+    chmod +x /etc/cont-init.d/03-viko-isolation-guard && \
+    printf '#!/command/with-contenv sh\npython3 /opt/viko/scripts/init-hermes-config.py /opt/data/config.yaml\n' \
+        > /etc/cont-init.d/04-viko-hermes-config && \
+    chmod +x /etc/cont-init.d/04-viko-hermes-config
 
 # ── Exec shim (privilege-drop for docker exec) ────────────────────────────────
 RUN mkdir -p /opt/hermes/bin && \
