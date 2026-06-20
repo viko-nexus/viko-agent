@@ -414,12 +414,14 @@ if (RELAY_MODE) {
           // For unregistered groups, only owner messages pass through
           if (isGroup && !isOwner) continue;
 
+          // Stamp unregistered group messages so admin knows to offer onboard format
+          const taggedBody = isGroup ? `[CTX unregistered_group=${chatId}]\n${body}` : body;
           globalQueue.push({
             messageId: msg.key.id,
             chatId,
             senderId: senderJid,
             senderPhone: phone,
-            body,
+            body: taggedBody,
             isGroup,
             isOwner,
             timestamp: msg.messageTimestamp,

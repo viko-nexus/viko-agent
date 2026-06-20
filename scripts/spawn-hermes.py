@@ -39,6 +39,17 @@ SSH_DIR = Path.home() / ".viko" / "ssh"
 SSH_PROJECTS_DIR = SSH_DIR / "projects"
 
 
+def _detect_repos(projects_root: Path, slug: str) -> list[dict]:
+    """Single-repo: slug dir is the repo. Multi-repo: subdirs of slug dir that have .git."""
+    slug_dir = projects_root / slug
+    if not slug_dir.exists() or (slug_dir / ".git").exists():
+        return [{"path": str(slug_dir), "name": slug}]
+    subdirs = sorted(d for d in slug_dir.iterdir() if d.is_dir() and (d / ".git").exists())
+    if subdirs:
+        return [{"path": str(d), "name": d.name} for d in subdirs]
+    return [{"path": str(slug_dir), "name": slug}]
+
+
 def _read_env() -> dict:
     env_path = REPO_DIR / ".env"
     result = {}
@@ -347,19 +358,36 @@ def create_hermes_data_dir(slug: str, port: int, group_jid: str, env: dict) -> P
     home_dir = data_dir / "home"
     home_dir.mkdir(parents=True, exist_ok=True)
 
-    # Agent git config (HOME=/opt/data/home). Trust the mounted repo (else git aborts
-    # with "dubious ownership"), set the Viko identity, and pin the per-project SSH key
-    # so `git pull/commit/push` from the already-cloned repo just works — the agent
-    # must use the repo at {projects_root}/{slug} and never re-clone to /tmp.
+    # Agent git config (HOME=/opt/data/home). Trust all mounted repos, set the Viko
+    # identity, and pin the per-project SSH key so git pull/commit/push just works.
     projects_root = env.get("VIKO_PROJECTS_ROOT", str(Path.home() / "Projects"))
-    repo_path = f"{projects_root}/{slug}"
+    projects_root_path = Path(projects_root)
+    workspace = f"{projects_root}/{slug}"
+    repos = _detect_repos(projects_root_path, slug)
+    safe_dirs = "\n".join(f"\tdirectory = {r['path']}" for r in repos)
     (home_dir / ".gitconfig").write_text(
-        f"[safe]\n\tdirectory = {repo_path}\n"
+        f"[safe]\n{safe_dirs}\n"
         f"[user]\n\tname = Viko\n\temail = viko-{slug}@local\n"
         f"[core]\n\tsshCommand = ssh -i /opt/data/.ssh/id_viko -o IdentitiesOnly=yes "
         f"-o StrictHostKeyChecking=accept-new -o UserKnownHostsFile=/opt/data/.ssh/known_hosts\n"
         f"[init]\n\tdefaultBranch = main\n"
     )
+    if len(repos) == 1 and repos[0]["path"] == workspace:
+        git_section = (
+            f"- Repo project ini SUDAH ke-clone lokal di `{workspace}`. `cd` ke situ buat baca/edit/jalanin/build kode. "
+            f"JANGAN clone ulang, JANGAN ke /tmp.\n"
+            f"- Git udah dikonfigurasi (identity Viko, key `/opt/data/.ssh/id_viko`, repo di-trust). "
+            f"Tinggal `git pull/add/commit/push` dari DALAM repo — jangan bikin key baru / ngarang path key.\n"
+        )
+    else:
+        repo_list = "\n".join(f"  - `{r['path']}/` — **{r['name']}**" for r in repos)
+        git_section = (
+            f"- Workspace project di `{workspace}/` berisi beberapa repo:\n{repo_list}\n"
+            f"  Tentukan repo yang relevan dari konteks task; kalau ambigu, tanya dulu sebelum eksekusi.\n"
+            f"  JANGAN clone ulang, JANGAN ke /tmp.\n"
+            f"- Git dikonfigurasi untuk semua repo (identity Viko, key `/opt/data/.ssh/id_viko`, semua repo di-trust). "
+            f"Tinggal `git pull/add/commit/push` dari DALAM repo masing-masing — jangan bikin key baru / ngarang path key.\n"
+        )
 
     # Write .env
     (data_dir / ".env").write_text(
@@ -421,10 +449,7 @@ def create_hermes_data_dir(slug: str, port: int, group_jid: str, env: dict) -> P
         f"- docx: `import docx`. pptx: `import pptx`. xlsx: `import openpyxl`. Gambar (jpg/png): vision baca langsung.\n"
         f"- Langsung baca filenya — jangan minta user paste/convert manual.\n\n"
         f"## Project & Git (dev)\n"
-        f"- Repo project ini SUDAH ke-clone lokal di `{repo_path}`. `cd` ke situ buat baca/edit/jalanin/build kode. "
-        f"JANGAN clone ulang, JANGAN ke /tmp.\n"
-        f"- Git udah dikonfigurasi (identity Viko, key `/opt/data/.ssh/id_viko`, repo di-trust). "
-        f"Tinggal `git pull/add/commit/push` dari DALAM repo — jangan bikin key baru / ngarang path key.\n"
+        f"{git_section}"
         f"- SSH ke server project: pakai alias `{slug}-prod` (config + key `/opt/data/.ssh/id_viko` udah siap). "
         f"Contoh: `ssh {slug}-prod 'perintah'`. Jangan ngarang host/user/key.\n"
         f"- **Akses DB lewat SSH TUNNEL** (DB gak ke-expose publik, jangan konek langsung): "
@@ -442,7 +467,7 @@ def create_hermes_data_dir(slug: str, port: int, group_jid: str, env: dict) -> P
         f"kalau baris MEDIA: itu gak ada di balasan. JANGAN kirim via curl/subprocess/script ke bridge — gak jalan, "
         f"cuma tag MEDIA: yang ngirim. Self-check sebelum ngaku terkirim: ada baris MEDIA: gak di balasan ini?\n"
         f"- Contoh abis convert ke PDF: `Quotation-nya udah jadi PDF 👇` lalu baris baru "
-        f"`MEDIA:{repo_path}/docs/quotation/QUOTATION_FINAL.pdf`\n"
+        f"`MEDIA:{workspace}/docs/quotation/QUOTATION_FINAL.pdf`\n"
         f"- Kirim SCREENSHOT halaman web: kamu HARUS beneran panggil tool `browser_screenshot` "
         f"(dia balikin `screenshot_path`), lalu tulis `MEDIA:<screenshot_path>`. Snapshot teks/accessibility itu "
         f"buat ANALISIS kamu doang — JANGAN ngaku/jelasin screenshot yang gak kamu capture.\n"
@@ -455,7 +480,7 @@ def create_hermes_data_dir(slug: str, port: int, group_jid: str, env: dict) -> P
         f"- Excel `openpyxl`, PPT `python-pptx`. Office doc -> PDF via soffice. JANGAN bilang 'cuma bisa docx'.\n"
         f"- Dokumen formal/buat klien: RAPI & profesional — heading & bullet beneran, no markdown mentah, "
         f"no emoji/checkbox hiasan (jadi kotak kosong di PDF). Hasilnya kirim pakai `MEDIA:<path>`.\n"
-        f"- File yang kamu bikin tersimpan di disk (`{repo_path}/docs/` dll). Kalau diminta convert/resend/ulang "
+        f"- File yang kamu bikin tersimpan di disk (`{workspace}/docs/` dll). Kalau diminta convert/resend/ulang "
         f"sesuatu yang baru kamu bikin, PAKAI file existing itu — jangan minta user resend, jangan nanya 'yang mana' "
         f"kalau dari konteks udah jelas. Infer, langsung kerjain.\n\n"
         f"## Record Video (browser/playwright)\n"

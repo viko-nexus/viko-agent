@@ -149,6 +149,8 @@ def main():
     parser.add_argument("slug", help="Project slug (e.g. siprodev)")
     parser.add_argument("group_jid", help="WhatsApp group JID")
     parser.add_argument("github_url", help="GitHub repo URL")
+    parser.add_argument("--repo-subdir", default="",
+                        help="Clone into {slug}/{subdir}/ instead of {slug}/ (multi-repo projects)")
     parser.add_argument("--vps-host", default="", help="VPS hostname or IP for this project")
     parser.add_argument("--vps-user", default="viko-exec", help="SSH username on the project VPS")
     parser.add_argument("--members", default="", help="Comma-separated phone numbers for DM access")
@@ -157,6 +159,7 @@ def main():
     slug = args.slug.lower().strip()
     group_jid = args.group_jid.strip()
     github_url = args.github_url.strip()
+    repo_subdir = args.repo_subdir.strip()
     vps_host = args.vps_host.strip()
     vps_user = args.vps_user.strip()
     member_phones = [p.strip().lstrip("+") for p in args.members.split(",") if p.strip()]
@@ -164,12 +167,14 @@ def main():
     # Resolve VIKO_PROJECTS_ROOT
     projects_root_str = _get_env_val(REPO_DIR / ".env", "VIKO_PROJECTS_ROOT")
     projects_root = Path(projects_root_str) if projects_root_str else REPO_DIR.parent
-    project_dir = projects_root / slug
+    project_dir = projects_root / slug / repo_subdir if repo_subdir else projects_root / slug
 
     print(f"\n=== Viko onboarding: {slug} ===")
     print(f"  Group JID : {group_jid}")
     print(f"  GitHub    : {github_url}")
     print(f"  Clone to  : {project_dir}")
+    if repo_subdir:
+        print(f"  Subdir    : {repo_subdir}")
     if vps_host:
         print(f"  VPS host  : {vps_host}")
     if member_phones:
