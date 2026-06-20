@@ -86,12 +86,14 @@ DESIRED = {
         "extract_backend": "https://r.jina.ai/",
     },
     # WhatsApp: require @mention in groups, ignore unknown DMs
-    # channel_prompts: deployment-specific (Group JID → context string).
-    # Configure directly in data/hermes/config.yaml after first start — do NOT add here
-    # to avoid committing group JIDs or project names to the repository.
+    # channel_prompts.default applies to all chats — safe to set here.
+    # Per-group JID prompts are deployment-specific → configure directly in config.yaml.
     "whatsapp": {
         "require_mention": True,
         "unauthorized_dm_behavior": "ignore",
+        "channel_prompts": {
+            "default": "Balas dalam Bahasa Indonesia. Jika pengguna menulis dalam English, balas dalam English. Jawa/Sunda → Indonesia.",
+        },
     },
     # Pre-approved commands — no approval prompt needed for these operations
     "command_allowlist": [
