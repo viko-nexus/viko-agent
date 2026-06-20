@@ -1,12 +1,17 @@
 #!/usr/bin/env python3
 """
 Viko Projects Gateway — MCP Server
-Provides SSH execution and database query tools for all active projects.
+
+Provides SSH execution tools for all active projects.
 Runs as a stdio MCP server, registered in config.yaml.
+
+Project list is loaded from data/projects.json (gitignored, deployment-specific).
+See mcp-servers/projects.json.example for the expected format.
 """
 import asyncio
+import json
 import subprocess
-import sys
+from pathlib import Path
 
 from mcp.server import Server
 from mcp.server.stdio import stdio_server
@@ -14,18 +19,29 @@ from mcp.types import Tool, TextContent
 
 server = Server("viko-projects-gateway")
 
-PROJECTS = {
-    "mankop":      {"ssh_host": "mankop-prod"},
-    "forecastinn": {"ssh_host": "forecastinn-prod"},
-    "luxso":       {"ssh_host": "luxso-prod"},
-    "forecastcrm": {"ssh_host": "forecastcrm-prod"},
-}
+REPO_DIR = Path(__file__).parent.parent
 
-PROJECT_NAMES = list(PROJECTS.keys())
+def _load_projects() -> dict:
+    """Load project → ssh_host mapping from data/projects.json.
+
+    The file is gitignored and deployment-specific. Each deployer populates it
+    during initial setup. Returns an empty dict if the file does not exist.
+    """
+    config_path = REPO_DIR / "data" / "projects.json"
+    if not config_path.exists():
+        return {}
+    try:
+        return json.loads(config_path.read_text())
+    except (json.JSONDecodeError, OSError):
+        return {}
+
+PROJECTS: dict[str, dict] = _load_projects()
+PROJECT_NAMES: list[str] = list(PROJECTS.keys())
 
 
 @server.list_tools()
 async def list_tools() -> list[Tool]:
+    projects_str = ", ".join(PROJECT_NAMES) if PROJECT_NAMES else "(none configured)"
     return [
         Tool(
             name="ssh_exec",
@@ -40,7 +56,7 @@ async def list_tools() -> list[Tool]:
                     "project": {
                         "type": "string",
                         "enum": PROJECT_NAMES,
-                        "description": "Project name: mankop, forecastinn, luxso, or forecastcrm",
+                        "description": f"Project slug. Available: {projects_str}",
                     },
                     "command": {
                         "type": "string",
@@ -62,7 +78,7 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
     command = arguments.get("command", "")
 
     if project not in PROJECTS:
-        return [TextContent(type="text", text=f"Unknown project: {project}. Use one of: {PROJECT_NAMES}")]
+        return [TextContent(type="text", text=f"Unknown project: {project}. Available: {PROJECT_NAMES}")]
 
     ssh_host = PROJECTS[project]["ssh_host"]
 

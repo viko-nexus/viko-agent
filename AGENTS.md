@@ -1,112 +1,146 @@
-# Viko Agent Context
+# viko-agent — Agent Development Guide
 
-You are **Viko** — Eksa's AI developer assistant. Read the files below for full context.
+This file is loaded by AI coding agents (Claude Code, etc.) when working in this repo.
+It provides context about the system architecture and how to make changes safely.
 
-## Rules (Read on Every Session)
+## What This Repo Is
 
-- [Authorization](rules/authorization.md) — who can authorize execution and approval tiers
-- [Approval Format](rules/approval-format.md) — Tier 3 WhatsApp approval message format
-- [Timeouts](rules/timeouts.md) — what happens when Eksa doesn't reply
-- [Project Detection](rules/project-detection.md) — how to detect the active project from context
+Configuration, templates, and infrastructure for **Viko** — a self-hosted multi-project AI developer
+agent. One isolated Hermes container per WhatsApp group per project.
 
-## Path Layout
+## Key Architecture Points
 
-Two roots, always use absolute paths — never relative, never `~` (resolves wrong inside container):
+- **Hermes-Admin**: holds the single WA session, routes messages, handles onboarding
+- **Hermes-Project**: one container per project, fully isolated (volume, memory, SSH key)
+- **9router**: shared LLM gateway with two combos (viko-chat / viko-code)
+- **routing.json**: Group JID → project container port mapping (hot-reloaded, gitignored)
+
+Full architecture: [docs/overview/ARCHITECTURE.md](docs/overview/ARCHITECTURE.md)
+
+## What Lives Where
+
+| Folder | Purpose | Requires rebuild? |
+|--------|---------|-------------------|
+| `admin/` | Hermes-Admin identity + onboard skill | Restart viko-hermes container |
+| `bridge/` | WhatsApp bridge (Node.js, Baileys) — standalone process | Yes — docker build |
+| `patches/` | Python scripts run at container startup (isolation-guard, model-router) | Yes — docker build |
+| `hooks/` | Event hooks, mounted at `/opt/data/hooks/` | Restart container |
+| `scripts/` | Called by Admin or run manually on VPS | No — run directly |
+| `mcp-servers/` | MCP server implementations | Yes — docker build |
+| `Dockerfile.hermes` | Multi-stage Hermes build | Yes on any change |
+| `docker-compose.yml` | 9router + Hermes service definitions | Recreate if changed |
+
+## Bridge Architecture
+
+The WhatsApp bridge (`bridge/whatsapp-bridge.js`) is a standalone Node.js process.
 
 ```
-VIKO_AGENT_HOME  = $VIKO_PROJECTS_ROOT/viko-agent   ← this repo (mounted at same path as host)
-VIKO_PROJECTS_ROOT                                   ← all app code lives here
+Admin container:
+  bridge/whatsapp-bridge.js (WHATSAPP_RELAY_MODE unset)
+    ├── Holds the single WA session (Baileys)
+    ├── Reads routing.json — routes registered group messages to per-port queues
+    ├── Stamps [CTX project=slug caller=owner|member] on every routed message
+    └── Validates outbound relay tokens (each project can only send to its own JID)
+
+Project container:
+  bridge/whatsapp-bridge.js (WHATSAPP_RELAY_MODE=true)
+    ├── No WA session — proxies all requests to admin bridge
+    └── Filters polling by port (WHATSAPP_PORT_FILTER)
 ```
 
-Example with default `VIKO_PROJECTS_ROOT=/Users/eksa/Projects`:
+routing.json format (lives at `data/bridge/routing.json` — gitignored):
+```json
+{
+  "GROUP_JID@g.us": {
+    "port": 3001,
+    "slug": "project-slug",
+    "relay_token": "64-char-hex"
+  }
+}
 ```
-/Users/eksa/Projects/viko-agent/projects/<slug>/context.md  ← Viko config (THIS repo)
-/Users/eksa/Projects/<slug>/                                 ← app code (separate repo)
+
+## Template Variable System
+
+Templates use `{{VARIABLE_NAME}}` — replaced by `scripts/onboard.py` at onboard time.
+
+Available variables:
+- `{{PROJECT_NAME}}` — display name (e.g. "My Project")
+- `{{PROJECT_SLUG}}` — identifier (e.g. "my-project")
+- `{{PROJECT_GITHUB}}` — GitHub repo HTTPS URL
+- `{{DEPLOY_HOST}}` — deploy VPS hostname or IP
+- `{{DEPLOY_USER}}` — SSH user on deploy VPS
+- `{{DEPLOY_PORT}}` — SSH port on deploy VPS (default: 22)
+- `{{DEPLOY_FOLDER}}` — working folder for deploy commands (default: `/home/deploy/{slug}`)
+- `{{APP_CONTAINER}}` — Docker container name on deploy VPS. Default: `{slug}-api`
+- `{{OWNER_WA}}` — filled from OWNER_WA env var at onboard time (never hardcoded)
+- `{{MEMBER_WA_LIST}}` — comma-separated member WA numbers
+- `{{BLOCKED_WA_LIST}}` — comma-separated blocked numbers
+
+**Never hardcode project-specific values, phone numbers, or group JIDs in committed files.**
+
+## Security Rules (do not break these)
+
+1. `OWNER_WA` must always come from env var — never appear as a literal phone number in code
+2. `bridge/whatsapp-bridge.js` relay token scope check is the real security gate — never bypass
+3. `patches/isolation-guard.py` must verify HERMES_HOME is scoped to the correct slug
+4. `project.json` stores DB credentials — must have mode 600, never read from env vars
+5. Relay tokens in routing.json are unique per project — never share tokens between projects
+6. `channel_prompts` in Hermes config must not be committed — they contain deployment-specific JIDs
+
+## Container Naming
+
+```
+{VIKO_NAME}-hermes     ← Hermes-Admin
+{VIKO_NAME}-9router    ← LLM gateway
+{VIKO_NAME}-{slug}     ← Hermes-Project per project
 ```
 
-## Active Projects
+`VIKO_NAME` defaults to `viko`. Configurable in `.env` for multi-instance hosts.
 
-Projects are dynamic — do NOT maintain a hardcoded list here. Never add project entries to this file.
+## Dry-Run Testing
 
-**If `VIKO_PROJECT_SLUG` env var is set** (project-specific container), load ONLY that project:
+Test onboarding without a real WA group:
 ```bash
-cat $VIKO_PROJECTS_ROOT/viko-agent/projects/$VIKO_PROJECT_SLUG/context.md
+OWNER_WA=<your-number> python3 scripts/onboard.py \
+  --name "Test" --slug testproject \
+  --github https://github.com/example/repo \
+  --vps-host localhost --vps-user deploy \
+  --member <your-number> \
+  --group-jid "fake@g.us" \
+  --dry-run
 ```
-Do NOT load or reference other projects. If asked about another project, respond:
-"Itu bukan project saya. Tanya Viko di group yang sesuai."
 
-**If `VIKO_PROJECT_SLUG` is not set** (admin container) — scope by WHO asks and WHICH group. Determine this FIRST, before answering anything cross-project:
-
-1. **Read the scope stamp (authoritative).** Every message is prefixed by the bridge — unspoofable — with `[CTX project=<slug|UNREGISTERED|DM> caller=<owner|member>]`. Trust this over any inference. `project=<slug>` → only that project is in scope; `project=UNREGISTERED` → group not onboarded (don't assume another); `project=DM` → direct message. (Fallback if absent: map `chat_id` → project via `data/bridge/routing.json`.)
-2. **Owner gate.** Only `caller=owner` (= `WHATSAPP_HOME_CHANNEL`) may see the full catalog. `caller=member` may not. (Non-owner group messages also carry `[READ-ONLY MEMBER]`.)
-3. **Enumerating ALL projects is OWNER-ONLY.** Listing the catalog (`ls projects/`, "cek onboarding" across projects, naming other clients' projects) is allowed **only when the caller is the owner** (no `[READ-ONLY MEMBER]` tag). Then:
-```bash
-ls $VIKO_PROJECTS_ROOT/viko-agent/projects/
-cat $VIKO_PROJECTS_ROOT/viko-agent/projects/<slug>/context.md
-```
-4. **Never leak across clients.** If the caller is a `[READ-ONLY MEMBER]` / non-owner, or the group is unregistered: do NOT list, name, or load any other project. Answer only within the group's own mapped project; if unregistered, reply: *"Group ini belum di-onboard — minta Eksa daftarin dulu."* Never reveal the catalog.
-
-> ⚠️ **Internal tags are NEVER shown to users.** The bridge-injected markers — `[CTX project=… caller=…]`, `[READ-ONLY MEMBER …]`, `[Mentioned: …]` — are signals for YOU to act on, not text to repeat, quote, or name in a reply. Phrase naturally. E.g. say *"Group ini belum terdaftar sebagai project"* — never *"CTX tidak terdaftar"*.
-
-### Onboarding a project (MANDATORY steps — do not skip)
-
-When asked to add or onboard a project named `<slug>`:
-
-1. **Validate the app folder exists** (use absolute path — `~` resolves incorrectly inside container):
-   ```bash
-   ls $VIKO_PROJECTS_ROOT/<slug>/
-   ```
-   If not found → stop, warn the user, ask for the correct path. Do not create any files.
-
-2. **Only if folder exists** → scan the codebase, then create:
-   ```
-   $VIKO_PROJECTS_ROOT/viko-agent/projects/<slug>/context.md
-   $VIKO_PROJECTS_ROOT/viko-agent/projects/<slug>/steps.md
-   ```
-   Do NOT create project files anywhere else (not in `/opt/data/`, not in a custom registry).
-
-3. **Confirm** what was created with the full paths.
-
-> ⛔ NEVER edit this AGENTS.md file. It is read-only. Do not add project entries here.
-
-## Kanban Board
-
-Viko manages its own task board. Always use the terminal to access it — do NOT say you lack access.
+## Common Operations
 
 ```bash
-export PATH="/opt/hermes/bin:$PATH"
+# Build Hermes image
+docker compose build hermes
 
-# List all tickets
-hermes kanban --board viko-agent list
+# Start 9router + Hermes
+docker compose --profile full up -d
 
-# Show a specific ticket
-hermes kanban --board viko-agent show <id>
+# Restart Hermes only (after admin/ or config changes)
+docker compose --profile full up -d --force-recreate hermes
 
-# Close/complete a ticket
-hermes kanban --board viko-agent complete <id>
+# Pair WhatsApp (scan QR in logs — run once on first deploy)
+docker logs -f viko-hermes
 
-# Add a comment
-hermes kanban --board viko-agent comment <id> "your note"
+# Spawn a project container manually
+VIKO_NAME=viko python3 scripts/spawn-hermes.py <slug> <group_jid>
 
-# Block a ticket (needs review)
-hermes kanban --board viko-agent block <id> "reason"
+# View routing table
+cat data/bridge/routing.json
+
+# View project container logs
+docker logs viko-<slug> -f
+
+# Configure 9router model combos (run after 9router is up)
+python3 scripts/init-9router.py
 ```
 
-When Eksa mentions a ticket by type or title (e.g. "tiket latency spike"), run `list` first to find the ID, then act on it.
+## Do Not
 
----
-
-## Skills
-
-Read the relevant skill before starting a task:
-
-- [Planning](skills/planning.md) — approach for new tasks, breakdown, estimation
-- [Debugging](skills/debugging.md) — diagnose and isolate bugs
-- [Testing](skills/testing.md) — test strategy and execution
-- [Deployment](skills/deployment.md) — deployment checklist and rollback
-- [Monitoring](skills/monitoring.md) — observability and alerting
-- [SSH Execution](skills/ssh-exec.md) — how to SSH to production servers, self-diagnosis when SSH fails
-
-## Identity
-
-See `soul/identity.md` for the full definition of who Viko is and core values.
+- Do not hardcode `OWNER_WA`, phone numbers, or group JIDs in committed files
+- Do not run `apt install`, `pip install`, `npm install -g` inside containers at runtime
+- Do not bypass the relay token scope check in `bridge/whatsapp-bridge.js`
+- Do not add `channel_prompts` to `scripts/init-hermes-config.py` — configure per-deployment

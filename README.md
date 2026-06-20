@@ -1,149 +1,119 @@
 # viko-agent
 
-Configuration and infrastructure for **Viko** — a local AI developer assistant that handles
-the full development lifecycle: answering questions on WhatsApp, planning, coding, testing,
-deploying, and monitoring.
+Configuration, templates, and infrastructure for **Viko** — a self-hosted multi-project AI developer
+agent powered by [Hermes](https://github.com/NousResearch/hermes-agent) (agent runtime) and
+9router (LLM gateway with fallback routing).
 
 ---
 
 ## How It Works
 
 ```
-WhatsApp / Google Chat
+WhatsApp group message
         │
         ▼
-    Hermes (brain)          ← reads soul/, rules/, skills/, projects/
+  Hermes-Admin (one WA session)
         │
-        ├── 9router ──────► Gemini Flash (primary)
-        │                   Groq Llama (fallback)
-        │
-        ├── ChromaDB ──────► persistent memory (decisions, errors, summaries)
-        │
-        └── tools ─────────► git, code editor, browser (Playwright), CI/CD
+        ├── registered group → Hermes-Project-{slug} (isolated container per project)
+        └── unregistered group → onboarding flow
+                │
+                ├── 9router ──── Claude Haiku / Sonnet (via Anthropic API)
+                │               Groq Llama (fallback)
+                │
+                └── tools ──── git, code editor, browser, SSH deploy
 ```
 
-**Lifecycle:** Message → Plan → Code → Test → Deploy → Monitor → Alert → Plan
+Each project gets its own isolated Hermes container with separate memory, SSH keypair,
+and config. The admin holds the single WhatsApp session and routes group messages.
 
 ---
 
 ## Stack
 
-| Component | Role | Image |
-|-----------|------|-------|
-| Hermes | AI orchestrator — single brain | `HERMES_IMAGE` (set in `.env`) |
-| 9router | LLM gateway with fallback | `NINEROUTER_IMAGE` (set in `.env`) |
-| ChromaDB | Vector DB for persistent memory | `chromadb/chroma:latest` |
+| Component | Role |
+|-----------|------|
+| Hermes | AI orchestrator — one container per project |
+| WhatsApp bridge | Standalone Node.js/Baileys process (admin + relay modes) |
+| 9router | LLM gateway — handles model selection and API key management |
 
-All services run in Docker locally. Data is stored in `./data/` on your laptop —
-never inside the container.
+All services run in Docker. Runtime data lives in `./data/` (gitignored).
 
 ---
 
 ## Quick Start
 
 ```bash
-# 1. Clone and enter the repo
-git clone <repo-url>
+git clone git@github.com:viko-nexus/viko-agent.git
 cd viko-agent
 
-# 2. Set up environment
+# Set up environment
 cp .env.example .env
-# Edit .env — add API keys and Docker image names
+# Edit .env — add API keys, WhatsApp owner number, GitHub token
 
-# 3. Start services
-docker compose up -d
+# Build and start
+docker compose build hermes
+docker compose --profile full up -d
 
-# 4. Verify
-curl http://localhost:8000/api/v1/heartbeat   # ChromaDB
-curl http://localhost:8080/health              # 9router
+# Verify
+docker ps --filter name=viko --format 'table {{.Names}}\t{{.Status}}'
+
+# Initialize 9router model combos (run once after first start)
+python3 scripts/init-9router.py
+
+# Initialize Hermes config (run once after Hermes has started once)
+python3 scripts/init-hermes-config.py
 ```
 
 ---
 
-## Repo Structure
+## Repository Structure
 
 ```
 viko-agent/
-│
-├── soul/                  ← Who Viko is (identity, values, communication style)
-├── rules/                 ← How Viko behaves (authorization, approvals, timeouts)
-├── skills/                ← Domain knowledge (planning, debugging, deploy, test, monitor)
-├── projects/              ← Per-project context — NOT the app code itself
-│   └── <project>/
-│       ├── context.md     ← team, stack, paths, session init
-│       ├── steps.md       ← project-specific dev steps (Viko updates over time)
-│       └── plans/         ← approved implementation plans
-├── memory/                ← Memory architecture docs (data lives in ./data/chromadb)
-├── config/                ← Infrastructure docs and service-specific configs
-├── patches/               ← Custom patches applied to Hermes at container build time
-├── hooks/                 ← Hermes event hooks (e.g. startup notification)
-├── docker-compose.yml
-├── .env.example
-└── LICENSE
-```
-
-> **Key distinction:** `projects/<name>/` contains Viko's *knowledge about* a project
-> (context, steps, plans). The actual app code lives elsewhere on your machine.
-
----
-
-## Adding a New Project
-
-1. Create the project folder and files:
-   ```bash
-   mkdir -p projects/<slug>/plans
-   touch projects/<slug>/context.md
-   touch projects/<slug>/steps.md
-   touch projects/<slug>/plans/.gitkeep
-   ```
-
-2. Fill in `context.md` — minimum required:
-   - Project overview and goal
-   - App root path on your machine
-   - Team members and roles
-   - Session init instructions (what Viko reads first)
-
-3. Add the project slug to `rules/project-detection.md`.
-
-4. Create `AGENTS.md` (or `CLAUDE.md`) inside the actual app folder for the executor.
-
----
-
-## Authorization Model
-
-Viko operates on three tiers — see `rules/authorization.md` for full details.
-
-| Tier | Examples | Action |
-|------|----------|--------|
-| Free | Read logs, draft plans, send info | Execute, no notification |
-| Report | Create branch, install packages, write files | Execute, then notify |
-| Ask | Deploy, push, delete data | Send WA approval, wait |
-
-All approvals go to Eksa via WhatsApp in the format:
-```
-[Action] what Viko wants to do
-[Risk]   consequence if something goes wrong
-[Choice] Yes / No / Postpone
+├── admin/          ← Hermes-Admin identity + onboarding skill
+├── bridge/         ← WhatsApp bridge (Node.js/Baileys, standalone)
+├── patches/        ← Python scripts applied to Hermes image at build time
+├── hooks/          ← Event hooks mounted at /opt/data/hooks/
+├── scripts/        ← Onboarding, spawning, and init automation
+├── mcp-servers/    ← MCP server implementations (registered in config.yaml)
+├── skills/         ← Skill files exposed to Hermes-Admin
+├── docs/
+│   └── overview/   ← Architecture, development, deployment, security docs
+├── Dockerfile.hermes      ← Multi-stage build (Hermes + patches + bridge)
+├── docker-compose.yml     ← 9router + Hermes services with profiles
+├── .env.example           ← Environment variable reference
+└── AGENTS.md              ← Hermes-Admin entry point (read by AI agents)
 ```
 
 ---
 
-## Data Persistence
+## Key Design Decisions
 
-All Docker volume data is stored as bind mounts in `./data/` — on your laptop:
+**One WA number, many projects.** Hermes-Admin holds the single WhatsApp session and routes
+messages to the correct Hermes-Project via `data/bridge/routing.json` (Group JID → port).
 
-```
-data/
-├── chromadb/    ← Viko's memory (decisions, errors, project summaries)
-├── hermes/      ← Hermes session state
-└── 9router/     ← Gateway cache and config
-```
+**After onboarding, Admin is permanently blind to that group.** The routing check happens first —
+if the JID is registered, Admin forwards and stays silent. No exception.
 
-This folder is gitignored. It survives container restarts and `docker compose down`.
-Only `docker compose down -v` or manual deletion removes it.
+**Per-project isolation.** Each Hermes-Project container mounts only its own `/home/deploy/{slug}/`
+folder. Separate memory DB, SSH keypair, and config.
+
+**Owner WA number is always from env.** `OWNER_WA` is set via environment variable — never
+hardcoded in code or templates. This makes the system self-hostable.
+
+---
+
+## Docs
+
+- [docs/overview/ARCHITECTURE.md](docs/overview/ARCHITECTURE.md) — system design, component breakdown
+- [docs/overview/DEVELOPMENT.md](docs/overview/DEVELOPMENT.md) — local dev setup, building, patching
+- [docs/overview/DEPLOYMENT.md](docs/overview/DEPLOYMENT.md) — VPS setup, CI/CD, first deploy
+- [docs/overview/CONTRIBUTING.md](docs/overview/CONTRIBUTING.md) — contribution guidelines
+- [docs/overview/SECURITY.md](docs/overview/SECURITY.md) — security model, responsible disclosure
 
 ---
 
 ## License
 
-Non-commercial use only. See [LICENSE](LICENSE).
+[PolyForm Noncommercial License 1.0.0](LICENSE) — free for personal, educational, and non-commercial use.
+© 2026 Viko Nexus

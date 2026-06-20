@@ -2,7 +2,7 @@
 """
 Spawn a new isolated Hermes container for a project.
 
-Run on trahku as viko user:
+Run on the deploy VPS:
   python3 ~/projects/viko-agent/scripts/spawn-hermes.py <slug> <group_jid>
 
 What this does:
@@ -18,8 +18,6 @@ Docker network: viko_default (created by docker compose)
 Image: viko-viko-hermes (built by docker compose build hermes)
 """
 
-import sys
-import os
 import re
 import json
 import shutil
@@ -229,7 +227,7 @@ def preflight(slug: str, projects_root: Path, proj_ssh_dir: Path, vps_host: str)
         errors.append(f"per-project ssh config missing: {cfg}")
     else:
         # Exactly one Host line, and every alias on it must belong to this slug.
-        host_lines = [l for l in cfg.read_text().splitlines() if l.strip().lower().startswith("host ")]
+        host_lines = [ln for ln in cfg.read_text().splitlines() if ln.strip().lower().startswith("host ")]
         if vps_host and len(host_lines) != 1:
             errors.append(f"ssh config must have exactly 1 Host block, found {len(host_lines)}")
         for hl in host_lines:
@@ -523,30 +521,30 @@ def spawn_container(slug: str, port: int, data_dir: Path, env: dict, proj_ssh_di
         # Environment
         "-e", f"HERMES_UID={uid}",
         "-e", f"HERMES_GID={gid}",
-        "-e", f"OPENAI_BASE_URL=http://viko-9router:20128/v1",
+        "-e", "OPENAI_BASE_URL=http://viko-9router:20128/v1",
         "-e", f"OPENAI_API_KEY={ninerouter_key}",
         "-e", f"WHATSAPP_HOME_CHANNEL={home_channel}",
-        "-e", f"WHATSAPP_RELAY_MODE=true",
-        "-e", f"WHATSAPP_RELAY_TARGET=http://viko-hermes:3000",
+        "-e", "WHATSAPP_RELAY_MODE=true",
+        "-e", "WHATSAPP_RELAY_TARGET=http://viko-hermes:3000",
         "-e", f"WHATSAPP_PORT_FILTER={port}",
         # Relay scope token — admin bridge maps this → the one JID this container
         # may send to. Outbound to any other chat is 403 (surface #1).
         "-e", f"HERMES_RELAY_TOKEN={relay_token}",
         # GITHUB_TOKEN deliberately NOT injected — a broad PAT would let the
         # container clone any repo. Cloning is the admin Hermes's job.
-        "-e", f"NINEROUTER_URL=http://viko-9router:20128",
+        "-e", "NINEROUTER_URL=http://viko-9router:20128",
         "-e", f"NINEROUTER_KEY={ninerouter_key}",
         "-e", f"VIKO_PROJECTS_ROOT={projects_root}",
         "-e", f"VIKO_PROJECT_SLUG={slug}",
         # Boot isolation guard: warn (log+tombstone) | enforce (inert on fail) | off.
         # Default warn — flip to enforce in .env once proven across real boots.
         "-e", f"VIKO_ISOLATION_GUARD={env.get('VIKO_ISOLATION_GUARD', 'warn')}",
-        "-e", f"SSL_CERT_FILE=/opt/hermes/.venv/lib/python3.13/site-packages/certifi/cacert.pem",
-        "-e", f"REQUESTS_CA_BUNDLE=/opt/hermes/.venv/lib/python3.13/site-packages/certifi/cacert.pem",
-        "-e", f"HERMES_DASHBOARD=true",
-        "-e", f"HERMES_DASHBOARD_INSECURE=true",
-        "-e", f"HERMES_DASHBOARD_HOST=127.0.0.1",
-        "-e", f"HERMES_DASHBOARD_PORT=9119",
+        "-e", "SSL_CERT_FILE=/opt/hermes/.venv/lib/python3.13/site-packages/certifi/cacert.pem",
+        "-e", "REQUESTS_CA_BUNDLE=/opt/hermes/.venv/lib/python3.13/site-packages/certifi/cacert.pem",
+        "-e", "HERMES_DASHBOARD=true",
+        "-e", "HERMES_DASHBOARD_INSECURE=true",
+        "-e", "HERMES_DASHBOARD_HOST=127.0.0.1",
+        "-e", "HERMES_DASHBOARD_PORT=9119",
         HERMES_IMAGE,
         "gateway", "run",
     ]
@@ -614,7 +612,7 @@ def main():
         save_routing(routing)
         spawn_container(slug, port, data_dir, env, proj_ssh_dir, relay_token)
         _wait_healthy(container_name)
-        print(f"  ✓ Container re-spawned and healthy (relay token rotated)")
+        print("  ✓ Container re-spawned and healthy (relay token rotated)")
         print(f"\nHermes-{slug} running on port {port}")
         print(f"SPAWN_COMPLETE port={port}")
         return
@@ -627,7 +625,7 @@ def main():
 
     routing[group_jid] = {"port": port, "slug": slug, "relay_token": relay_token}
     save_routing(routing)
-    print(f"  ✓ routing.json updated (bridge hot-reloads automatically)")
+    print("  ✓ routing.json updated (bridge hot-reloads automatically)")
 
     container_id = spawn_container(slug, port, data_dir, env, proj_ssh_dir, relay_token)
     print(f"  ✓ Container started: {container_id[:12]}")

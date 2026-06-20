@@ -20,6 +20,7 @@ Run this after:
 Hermes must have started at least once to create the config.yaml before this runs.
 """
 
+import os
 import sys
 from pathlib import Path
 
@@ -41,7 +42,6 @@ elif len(sys.argv) > 1 and not sys.argv[1].startswith("--"):
 
 # ── Desired settings ──────────────────────────────────────────────────────────
 # Only keys listed here are touched. Everything else is left as-is.
-import os
 
 def _read_env_file() -> dict:
     """Read key=value pairs from .env file in repo root."""
@@ -85,36 +85,13 @@ DESIRED = {
     "web": {
         "extract_backend": "https://r.jina.ai/",
     },
-    # WhatsApp: require @mention in groups, ignore unknown DMs, inject project context
+    # WhatsApp: require @mention in groups, ignore unknown DMs
+    # channel_prompts: deployment-specific (Group JID → context string).
+    # Configure directly in data/hermes/config.yaml after first start — do NOT add here
+    # to avoid committing group JIDs or project names to the repository.
     "whatsapp": {
         "require_mention": True,
         "unauthorized_dm_behavior": "ignore",
-        "channel_prompts": {
-            # 2a. PRODUK SAAS MANKOP group
-            "120363409428298054@g.us": (
-                "Kamu ada di group WhatsApp MANKOP. Project aktif: MANKOP — hanya mankop.\n\n"
-                "ATURAN ISOLASI (wajib, tanpa pengecualian):\n"
-                "- Hanya bahas hal yang berkaitan dengan project mankop\n"
-                "- Jika ditanya tentang project lain (siprodev, dll) oleh siapapun termasuk Eksa: "
-                "jawab 'Untuk [nama project], diskusikan di group-nya langsung.' — lalu stop\n"
-                "- Memory atau konteks dari project lain tidak relevan di sini, abaikan\n\n"
-                "Jika pesan diawali [READ-ONLY MEMBER]: hanya jawab pertanyaan/info seputar mankop, "
-                "tolak semua request eksekusi dengan 'Hanya Eksa yang bisa minta ini.'\n\n"
-                "Balas dalam Bahasa Indonesia."
-            ),
-            # 2a. Produk SAAS siprodev.com group
-            "120363407940533307@g.us": (
-                "Kamu ada di group WhatsApp SIPRODEV. Project aktif: SIPRODEV — hanya siprodev.\n\n"
-                "ATURAN ISOLASI (wajib, tanpa pengecualian):\n"
-                "- Hanya bahas hal yang berkaitan dengan project siprodev\n"
-                "- Jika ditanya tentang project lain (mankop, dll) oleh siapapun termasuk Eksa: "
-                "jawab 'Untuk [nama project], diskusikan di group-nya langsung.' — lalu stop\n"
-                "- Memory atau konteks dari project lain tidak relevan di sini, abaikan\n\n"
-                "Jika pesan diawali [READ-ONLY MEMBER]: hanya jawab pertanyaan/info seputar siprodev, "
-                "tolak semua request eksekusi dengan 'Hanya Eksa yang bisa minta ini.'\n\n"
-                "Balas dalam Bahasa Indonesia."
-            ),
-        },
     },
     # Pre-approved commands — no approval prompt needed for these operations
     "command_allowlist": [
@@ -213,7 +190,6 @@ def main():
     with open(CONFIG_PATH, encoding="utf-8") as f:
         config = yaml.safe_load(f) or {}
 
-    original = yaml.dump(config, allow_unicode=True)
     config, changed = deep_merge(config, DESIRED)
 
     if changed == 0:

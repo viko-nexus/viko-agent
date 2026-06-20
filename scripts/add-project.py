@@ -2,7 +2,7 @@
 """
 Onboard a new project into Viko.
 
-Run this on trahku as the viko user (Viko does this via SSH):
+Run this on the deploy VPS (Viko does this via SSH):
   python3 ~/projects/viko-agent/scripts/add-project.py \\
     <slug> <group_jid> <github_url> [--vps-host HOST] [--members PHONES]
 
@@ -219,16 +219,16 @@ def main():
             f"## Stack\n(Scan codebase dulu — jalankan: `cat {project_dir}/package.json` atau `ls {project_dir}/`)\n\n"
             f"## Notes\n(Tambahkan konteks project di sini)\n"
         )
-        print(f"      Created context.md")
+        print("      Created context.md")
     else:
-        print(f"      context.md exists, skipping.")
+        print("      context.md exists, skipping.")
 
     steps_file = context_dir / "steps.md"
     if not steps_file.exists():
         steps_file.write_text(f"# Steps: {slug}\n\n## Active Tasks\n(Belum ada — tambahkan saat mulai kerja)\n")
-        print(f"      Created steps.md")
+        print("      Created steps.md")
     else:
-        print(f"      steps.md exists, skipping.")
+        print("      steps.md exists, skipping.")
 
     # ── 3. Spawn isolated Hermes container for this project ───────────────────
     print("\n[3/4] Spawning Hermes instance...")
@@ -267,12 +267,12 @@ def main():
         print("\n[4/4] No members specified — skipping WHATSAPP_ALLOWED_USERS update.")
 
     print(f"\n✓ Onboarding {slug} selesai.")
-    print(f"\nLangkah Viko berikutnya:")
+    print("\nLangkah Viko berikutnya:")
     print(f"  1. Scan codebase: ls {project_dir}/ dan baca file utama")
     print(f"  2. Update {context_dir}/context.md dengan stack dan info project")
-    print(f"  3. Restart hermes (admin instance) jika WHATSAPP_ALLOWED_USERS diubah:")
-    print(f"     cd ~/projects/viko-agent && docker compose --profile full up -d --force-recreate hermes-admin")
-    print(f"  (spawn-hermes.py output above shows status of isolated Hermes instance)")
+    print("  3. Restart hermes (admin instance) jika WHATSAPP_ALLOWED_USERS diubah:")
+    print("     cd ~/projects/viko-agent && docker compose --profile full up -d --force-recreate hermes-admin")
+    print("  (spawn-hermes.py output above shows status of isolated Hermes instance)")
 
 
 if __name__ == "__main__":

@@ -9,7 +9,6 @@ content exfiltration (cat/echo/curl of key files), not SSH connections.
 The real exfiltration risk (cat key | curl) is already covered by exfil_curl.
 """
 
-import re
 import sys
 from pathlib import Path
 

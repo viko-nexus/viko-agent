@@ -1,204 +1,113 @@
-# viko-agent
+# CLAUDE.md — viko-agent Developer Guide
 
-Configuration and infrastructure for **Viko** — AI developer assistant powered by
-Hermes (brain) and 9router (LLM gateway). All services run in Docker locally.
+This file tells Claude Code how to work in this repository.
 
-## Repository Purpose
+## Repository
 
-This repo is Viko's "home" — it defines who Viko is, what Viko can do, and what Viko
-knows about each project. Read by the orchestrator (Hermes). Not app code.
+`https://github.com/viko-nexus/viko-agent`
 
-Exception: `patches/` and `hooks/` are operational — applied to Hermes at container
-build time or loaded as event hooks. `scripts/` contains setup automation.
+## What This Repo Is
+
+Source of truth for **Viko** — a self-hosted multi-project AI developer agent. It contains:
+- Hermes-Admin identity and onboarding skill (`admin/`)
+- WhatsApp bridge source (`bridge/`)
+- Patches applied to the Hermes image at build time (`patches/`)
+- Event hooks and MCP servers (`hooks/`, `mcp-servers/`)
+- Onboarding and init scripts (`scripts/`)
+- Docker build and service configs (`Dockerfile.hermes`, `docker-compose.yml`)
+
+This is **not** app code. Project source code lives at `/home/deploy/{slug}/repo/` on the VPS.
+
+## Architecture
+
+```
+VPS (Central)
+├── viko-hermes     — Hermes-Admin + standalone WA bridge (port 3000)
+├── viko-9router    — LLM gateway (port 20128)
+└── viko-{slug}     — one isolated Hermes-Project per active project group
+
+/home/deploy/{slug}/
+├── .ssh/id_ed25519         ← per-project SSH key (generated at onboard)
+├── config/                 ← Hermes-Project data dir (SOUL.md, rules/, skills/)
+└── repo/                   ← git clone of project's GitHub repo
+```
 
 ## Repository Structure
 
 ```
 viko-agent/
-│
-├── soul/                  ← Who Viko is (identity, values, communication style)
-│   └── identity.md
-│
-├── rules/                 ← How Viko behaves (authorization, approval, timeouts)
-│   ├── authorization.md
-│   ├── approval-format.md
-│   ├── timeouts.md
-│   └── project-detection.md
-│
-├── skills/                ← Domain knowledge per lifecycle stage
-│   ├── planning.md
-│   ├── debugging.md
-│   ├── deployment.md
-│   ├── testing.md
-│   ├── monitoring.md
-│   ├── self-monitoring.md
-│   ├── web-research.md
-│   └── media.md
-│
-├── projects/              ← Per-project context (dossier, not app code)
-│   │                        gitignored except projects/viko-agent/
-│   └── <slug>/
-│       ├── context.md     ← team, paths, stack, session init
-│       ├── steps.md       ← project-specific steps (Viko updates over time)
-│       └── plans/         ← approved implementation plans
-│
-├── patches/               ← Applied to Hermes at container build time
-│   ├── whatsapp-bridge.js
-│   ├── apply-run-py.py
-│   ├── apply-agent-msgs.py
-│   ├── patch-ssh-guard.py
-│   └── patch-model-router.py
-│
-├── hooks/                 ← Hermes event hooks (mounted into /opt/data/hooks at runtime)
-│   └── viko-startup/      ← Send WA notification when Viko comes online
-│
-├── scripts/               ← Setup and restore automation
-│   ├── init-9router.py    ← Idempotent combo setup for 9router
-│   ├── init-hermes-config.py  ← Idempotent config restore for Hermes
-│   ├── spawn-hermes.py    ← Spawn isolated Hermes container per project (Option B)
-│   └── setup-keys.py     ← Generate SSH keys + GitHub deploy key for onboarding
-│
-├── docs/                  ← Setup and operational documentation
-│   ├── 9router/setup.md
-│   └── hermes/setup.md
-│
-├── docker-compose.yml     ← Hermes + 9router + 9router-init
-├── Dockerfile.hermes      ← Hermes image with patches applied
-├── .env.example           ← Secrets template (copy to .env, never commit)
-└── data/                  ← Bind-mount targets — gitignored, persists on laptop
-    ├── hermes/            ← HERMES_HOME: config.yaml, SOUL.md, state.db, memory
-    ├── 9router/
-    ├── bridge/            ← routing.json: group JID → Hermes port mapping
-    ├── hermes-admin/      ← Admin Hermes: DMs + onboarding (HERMES_HOME)
-    └── hermes-{slug}/     ← Per-project Hermes instances (created by spawn-hermes.py)
+├── admin/              ← Hermes-Admin identity (SOUL.md, rules/, skills/)
+├── bridge/             ← Standalone WA bridge (Node.js/Baileys)
+├── patches/            ← Python scripts applied to Hermes image at build time
+├── hooks/              ← Event hooks mounted at /opt/data/hooks/
+├── mcp-servers/        ← MCP server implementations
+├── scripts/            ← Onboarding, spawning, init automation
+├── skills/             ← Skill files exposed to Hermes-Admin
+├── docs/overview/      ← Architecture, development, deployment docs
+├── Dockerfile.hermes   ← Multi-stage build (Hermes source + patches + bridge)
+├── docker-compose.yml  ← 9router + Hermes services (profiles: gateway, full)
+└── .env.example        ← Environment variable reference
 ```
 
-## Viko Startup Sequence
+## Code Conventions
 
-Hermes reads in this order on each session:
-1. `AGENTS.md` — entry point: loads identity, rules, and skill references
-2. `soul/identity.md` — who Viko is
-3. `rules/` — all files (authorization, approval, timeouts, project detection)
-4. `skills/` — relevant to the current task (exposed as slash commands via `skills.external_dirs`)
-5. `projects/<active>/context.md` — discovered dynamically via `ls projects/`
-6. Long-term memory from Holographic (`data/hermes/memory_store.db`)
-
-## Memory
-
-Viko uses **Holographic** (pure local) for persistent memory across sessions:
-- No API key or external service — SQLite-backed, runs entirely inside container
-- Entity resolution, trust scoring, and HRR-based compositional retrieval
-- Data persists in `data/hermes/memory_store.db` (gitignored, survives restarts)
-- Activated via `memory.provider: holographic` in `data/hermes/config.yaml`
-
-## Model Routing
-
-Each message is automatically routed to the right model before the LLM is called:
-
-| Trigger | Combo | Primary Model |
-|---------|-------|---------------|
-| Code keywords (`debug`, `fix`, `api`, `deploy`, …) | `viko-code` | Claude Sonnet |
-| Everything else | `viko-chat` | Claude Haiku |
-| Manual `/model` override | preserved until `/new` or `/reset` | — |
-
-Each combo has Groq fallback: `sonnet/haiku → groq/llama-3.3 → groq/maverick`.
-Implemented in `patches/patch-model-router.py`.
-
-## Project Isolation (Option B)
-
-Each WhatsApp group runs its own Hermes instance with isolated memory:
-
-```
-WA (1 number)
-    └── hermes (admin) — bridge exposed on Docker network at :3000
-            ├── queue[personal_jid / unregistered] → handled by admin
-            ├── queue[project_jid_1] → Hermes-Mankop  (RELAY_MODE)
-            └── queue[project_jid_2] → Hermes-Siprodev (RELAY_MODE)
-```
-
-- **Admin Hermes** (viko-hermes): handles DMs, unregistered groups, onboarding
-- **Project Hermes** (viko-hermes-{slug}): spawned by spawn-hermes.py, memory-isolated
-- **Routing**: data/bridge/routing.json maps group JIDs to Hermes ports, hot-reloaded
-- **Relay mode**: project containers set WHATSAPP_RELAY_MODE=true, proxy to admin bridge
-
-## Projects
-
-Projects are **dynamic and local** — not committed to git (except `projects/viko-agent/`).
-
-- Each user maintains their own `projects/` directory locally
-- Viko discovers available projects by running `ls projects/`
-- To onboard an existing project: tell Viko "add project <name> to viko"
-  Viko will validate the folder exists, scan the codebase, and generate `context.md`
-
-App code lives outside this repo, mounted at the same path inside Docker:
-```yaml
-volumes:
-  - ${HOME}/Projects:${HOME}/Projects:rw
-```
-
-Set `VIKO_PROJECTS_ROOT` in `.env` to tell Viko where your projects root is.
-
-## What Lives Where
-
-| Content | Location |
-|---------|----------|
-| Identity and values | `soul/` |
-| Behavior rules | `rules/` |
-| Domain skills | `skills/` — exposed as `/skill-name` slash commands |
-| Project context and steps | `projects/<slug>/` — gitignored, local only |
-| Long-term memory | `data/hermes/memory_store.db` — gitignored |
-| Event hooks | `hooks/` — mounted at runtime into `/opt/data/hooks/` |
-| Hermes patches | `patches/` — applied at `docker compose build hermes` |
-| Setup scripts | `scripts/` — run manually or via docker-compose service |
-| App code | `$VIKO_PROJECTS_ROOT/<name>/` — mounted read-write at same path |
-| Secrets | `.env` — never committed |
+- **Language**: All code, comments, docstrings, variable names → **English**
+- **No hardcoded values**: `OWNER_WA`, phone numbers, group JIDs, project slugs → always from env vars or config files
+- **No comments explaining obvious code** — only add WHY a non-obvious choice was made
+- **Never commit**: `.env`, `data/`, `backups/`, `projects/*/` (except viko-agent itself)
 
 ## Docker Operations
 
 ```bash
-# Build image (required after Dockerfile.hermes or patches/ changes)
+# Build Hermes image (required after patches/ or bridge/ changes)
 docker compose build hermes
 
-# Start all services
+# Start everything (9router + Hermes)
 docker compose --profile full up -d
 
-# Restart hermes only (picks up config.yaml and hooks changes)
+# Restart Hermes only (after admin/ or config changes)
 docker compose --profile full up -d --force-recreate hermes
+
+# Start only 9router
+docker compose --profile gateway up -d
 
 # View logs
-docker compose logs -f hermes
+docker logs viko-hermes -f
+docker logs viko-{slug} -f
 
 # Stop all
-docker compose down
-
-# Spawn new project Hermes instance
-ssh viko-vps python3 ~/projects/viko-agent/scripts/spawn-hermes.py <slug> <group_jid>
-
-# Initialize admin Hermes config (after fresh setup or data/ wipe)
-python3 scripts/init-hermes-config.py --target admin
-
-# View routing table
-cat data/bridge/routing.json
-
-# View per-project container
-docker logs viko-hermes-<slug> -f
+docker compose --profile full down
 ```
 
-## After a Reset
-
-See `config/README.md` for full recovery steps.
-Quick reference:
+## First-Time Setup (after first Hermes start)
 
 ```bash
-# 9router combos — auto-restored on next docker compose up
-# Hermes config — restore manually:
-python3 scripts/init-hermes-config.py
-docker compose --profile full up -d --force-recreate hermes
+# 1. Initialize 9router model combos
+python3 scripts/init-9router.py
 
-# Re-spawn all project containers (routing.json has the JIDs)
-cat data/bridge/routing.json  # see all projects + ports
-python3 scripts/spawn-hermes.py <slug> <jid>  # repeat per project
+# 2. Apply Hermes config overrides
+python3 scripts/init-hermes-config.py
+
+# 3. Pair WhatsApp (scan QR from logs)
+docker logs -f viko-hermes
 ```
+
+## Key Files
+
+| File | Purpose |
+|------|---------|
+| `admin/SOUL.md` | Hermes-Admin personality and behavior |
+| `admin/rules/authorization.md` | Who can do what |
+| `admin/skills/onboarding.md` | Onboarding skill (slash command) |
+| `patches/isolation-guard.py` | Boot-time isolation check (fail-closed) |
+| `patches/patch-model-router.py` | Auto-routes messages to viko-chat or viko-code combo |
+| `bridge/whatsapp-bridge.js` | Admin + relay mode WA bridge; security gate |
+| `scripts/init-9router.py` | Creates viko-chat + viko-code combos in 9router |
+| `scripts/init-hermes-config.py` | Applies Hermes config overrides (idempotent) |
+| `scripts/spawn-hermes.py` | Spawns an isolated Hermes-Project container |
+| `scripts/add-project.py` | Full onboarding: clone repo + spawn container + register routing |
+| `scripts/provision-env.sh` | VPS .env provisioning from CI secrets (used by deploy workflow) |
+| `mcp-servers/projects-gateway.py` | SSH exec MCP server (loads projects from data/projects.json) |
 
 ## Environment Variables
 
@@ -206,8 +115,37 @@ See `.env.example` for the full list. Key variables:
 
 | Variable | Purpose |
 |----------|---------|
-| `OPENAI_API_KEY` | 9router API key for Hermes |
-| `OPENAI_BASE_URL` | 9router URL (default: `http://viko-9router:20128/v1`) |
-| `WHATSAPP_HOME_CHANNEL` | JID Viko sends startup notifications to |
-| `VIKO_PROJECTS_ROOT` | Root folder for all your app projects (e.g. `~/Projects`) |
-| `GITHUB_TOKEN` | Classic PAT (repo scope) for automated GitHub deploy key setup |
+| `OWNER_WA` | Owner's WA number — only this number can issue commands. Never hardcode. |
+| `VIKO_NAME` | Container/network prefix (default: `viko`) |
+| `OPENAI_API_KEY` | 9router client API key (for Hermes to call 9router) |
+| `OPENAI_BASE_URL` | 9router endpoint (`http://viko-9router:20128/v1`) |
+| `WHATSAPP_HOME_CHANNEL` | Group JID for startup notifications |
+| `GITHUB_TOKEN` | Fine-grained PAT for onboarding (repo clone + deploy key setup) |
+| `NINEROUTER_JWT_SECRET` | 9router internal JWT secret |
+| `NINEROUTER_INITIAL_PASSWORD` | 9router admin password |
+| `NINEROUTER_API_KEY_SECRET` | 9router API key signing secret |
+
+## Security Rules (never break these)
+
+1. `OWNER_WA` must always come from env var — never a literal phone number in code
+2. `bridge/whatsapp-bridge.js` relay token scope check is the real security gate — do not bypass
+3. `patches/isolation-guard.py` verifies per-project isolation at boot — must run before gateway
+4. `project.json` stores per-project DB credentials at mode 600 — never read from env vars
+5. Relay tokens in `routing.json` are unique per project — never reuse or share between projects
+
+## What NOT to Do
+
+- Do not hardcode phone numbers, group JIDs, or project slugs in committed files
+- Do not add `channel_prompts` to `scripts/init-hermes-config.py` (group JIDs are deployment-specific)
+- Do not run `apt install`, `pip install -g`, or `npm install -g` inside containers at runtime
+- Do not bypass the relay token scope check in the bridge — that's the security enforcement layer
+- Do not commit `data/`, `backups/`, `.env`, or any `projects/*/` files other than `projects/viko-agent/`
+- Do not use relative paths — always use `Path(__file__).parent.parent.resolve()` for the repo root
+
+## Docs
+
+- [docs/overview/ARCHITECTURE.md](docs/overview/ARCHITECTURE.md) — full system design
+- [docs/overview/DEVELOPMENT.md](docs/overview/DEVELOPMENT.md) — local dev setup, building, patching
+- [docs/overview/DEPLOYMENT.md](docs/overview/DEPLOYMENT.md) — VPS setup, CI/CD pipeline
+- [docs/overview/CONTRIBUTING.md](docs/overview/CONTRIBUTING.md) — contribution guidelines
+- [docs/overview/SECURITY.md](docs/overview/SECURITY.md) — security model, disclosure policy

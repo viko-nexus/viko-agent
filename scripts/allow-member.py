@@ -2,8 +2,8 @@
 """
 Allow a phone number to DM Viko directly.
 
-Run this on trahku (Viko does this via SSH):
-  python3 ~/projects/viko-agent/scripts/allow-member.py <phone> [phone2 ...]
+Run this on the deploy VPS (Viko does this via SSH):
+  python3 ~/viko-agent/scripts/allow-member.py <phone> [phone2 ...]
 
 Phone format: with or without + prefix (e.g. 6287820001010 or +6287820001010).
 Safe to run multiple times — only missing entries are added.
@@ -71,8 +71,8 @@ def main():
     _update_env(HERMES_ENV_PATH, {"WHATSAPP_ALLOWED_USERS": ",".join(allowed)})
     print(f"✓ Ditambahkan ke WHATSAPP_ALLOWED_USERS: {', '.join(added)}")
     print(f"  Full list: {','.join(allowed)}")
-    print(f"\nRestart hermes untuk apply:")
-    print(f"  cd ~/projects/viko-agent && docker compose --profile full up -d --force-recreate hermes")
+    print("\nRestart hermes untuk apply:")
+    print("  cd ~/projects/viko-agent && docker compose --profile full up -d --force-recreate hermes")
 
 
 if __name__ == "__main__":

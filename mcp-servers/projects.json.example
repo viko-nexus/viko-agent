@@ -1,0 +1,4 @@
+{
+  "my-project": { "ssh_host": "my-project-prod" },
+  "another-project": { "ssh_host": "another-prod" }
+}

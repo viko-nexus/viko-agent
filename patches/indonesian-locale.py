@@ -3,7 +3,6 @@
 Patch: Add Indonesian locale and translate hardcoded system messages.
 Applied at Docker build time.
 """
-import re
 import sys
 from pathlib import Path
 

@@ -16,7 +16,6 @@ import json
 import subprocess
 import sys
 import os
-import tempfile
 from pathlib import Path
 
 from mcp.server import Server

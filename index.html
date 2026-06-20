@@ -1,0 +1,222 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="viko-agent — Self-hosted multi-project AI developer agent. One WhatsApp number, fully isolated Hermes containers per project, 9router LLM gateway.">
+  <title>viko-agent — Self-Hosted AI Developer Agent Infrastructure</title>
+  <link rel="icon" href="docs/assets/logo.png" type="image/png">
+  <link rel="stylesheet" href="assets/landing/style.css">
+</head>
+<body>
+
+  <header>
+    <div class="nav-brand">
+      <img class="nav-logo" src="docs/assets/logo.png" alt="viko-agent">
+      <span class="nav-name">VIKO<span class="nav-sub">AGENT</span></span>
+    </div>
+    <nav class="nav-links">
+      <a class="nav-link" href="#features">Features</a>
+      <a class="nav-link" href="#architecture">Architecture</a>
+      <a class="nav-link" href="#github">GitHub</a>
+      <a class="nav-cta" href="https://github.com/viko-nexus/viko-agent">VIEW ON GITHUB →</a>
+    </nav>
+  </header>
+
+  <section class="hero">
+    <div class="hero-fade-top"></div>
+    <div class="hero-fade-bottom"></div>
+    <div class="hero-grid" id="heroGrid"></div>
+    <div class="hero-content">
+      <div class="hero-eyebrow">▶ Self-Hosted AI Agent Infrastructure</div>
+      <div class="hero-title">VIKO<br><span>AGENT</span></div>
+      <div class="hero-tagline">One number. Many projects. Full isolation.</div>
+      <div class="hero-desc">
+        Deploy an AI developer agent for every project — each one fully isolated,
+        communicating via WhatsApp, powered by Claude and Groq.
+        Self-hosted. Open architecture.
+      </div>
+      <div class="hero-cta">
+        <a class="btn-primary" href="https://github.com/viko-nexus/viko-agent">VIEW ON GITHUB →</a>
+        <a class="btn-outline" href="#features">EXPLORE FEATURES ↓</a>
+      </div>
+    </div>
+  </section>
+
+  <section class="story">
+    <div class="story-text reveal">
+      <div class="label">Why viko-agent</div>
+      <div class="sep"></div>
+      <div class="story-title">
+        An AI agent for every project —<br>
+        all from a single <em>WhatsApp number</em>.
+      </div>
+      <div class="story-body">
+        <p>Most AI developer tools are cloud-locked, single-project, or require switching between UIs. viko-agent was built to solve a real problem: coordinating multiple active software projects from one place, with zero vendor lock-in.</p>
+        <p>One WhatsApp number. One admin container. Dozens of isolated project agents — each one knowing only its own codebase, deploy VPS, and team members.</p>
+        <p>When you onboard a new project, the system generates an SSH keypair, clones the repo, spawns an isolated container, and hands control over to that project's agent. Admin never interferes again.</p>
+      </div>
+    </div>
+    <div class="story-stats reveal">
+      <div class="stat-block">
+        <div class="stat-number">1</div>
+        <div class="stat-label">WhatsApp number for all projects — admin routes everything</div>
+      </div>
+      <div class="stat-block amber">
+        <div class="stat-number">N</div>
+        <div class="stat-label">Isolated containers — one per project group, no cross-talk</div>
+      </div>
+      <div class="stat-block red">
+        <div class="stat-number">0</div>
+        <div class="stat-label">Hardcoded values — fully self-hostable, configure via env</div>
+      </div>
+    </div>
+  </section>
+
+  <section class="features" id="features">
+    <div class="features-intro reveal">
+      <div class="label">Capabilities</div>
+      <div class="sep"></div>
+      <div class="section-title">What viko-agent does</div>
+      <div class="section-sub">Infrastructure, isolation, and LLM routing — production-grade from day one.</div>
+    </div>
+    <div class="features-grid reveal">
+      <div class="feature-card">
+        <div class="feature-icon">◉</div>
+        <div class="feature-name">WHATSAPP NATIVE</div>
+        <div class="feature-desc">Standalone Node.js/Baileys bridge. Admin mode holds the session; project containers relay through it with token-scoped security.</div>
+      </div>
+      <div class="feature-card amber">
+        <div class="feature-icon">◈</div>
+        <div class="feature-name">FULL ISOLATION</div>
+        <div class="feature-desc">Each project container has its own memory DB, SSH keypair, config, and relay token. A compromised project cannot reach others.</div>
+      </div>
+      <div class="feature-card red">
+        <div class="feature-icon">◑</div>
+        <div class="feature-name">9ROUTER GATEWAY</div>
+        <div class="feature-desc">LLM gateway with combo routing. viko-chat → Claude Haiku; viko-code → Claude Sonnet. Auto-selected per message. Groq fallback.</div>
+      </div>
+      <div class="feature-card">
+        <div class="feature-icon">◎</div>
+        <div class="feature-name">AUTO ONBOARDING</div>
+        <div class="feature-desc">Send one command in a new WA group. Admin generates SSH key, clones repo, spawns container, updates routing — hands off in seconds.</div>
+      </div>
+      <div class="feature-card amber">
+        <div class="feature-icon">◇</div>
+        <div class="feature-name">SECURITY FIRST</div>
+        <div class="feature-desc">OWNER_WA always from env — never hardcoded. Boot-time isolation guard (fail-closed). Relay token scope check in bridge code, not LLM.</div>
+      </div>
+      <div class="feature-card red">
+        <div class="feature-icon">◆</div>
+        <div class="feature-name">CI/CD BUILT IN</div>
+        <div class="feature-desc">3-job GitHub Actions workflow: quality check → Docker build → VPS deploy. Registry layer cache for fast incremental image rebuilds.</div>
+      </div>
+      <div class="feature-card">
+        <div class="feature-icon">◌</div>
+        <div class="feature-name">HERMES POWERED</div>
+        <div class="feature-desc">Built on NousResearch Hermes — full agent runtime with tools, memory, hooks, MCP servers, and a WhatsApp-native messaging platform.</div>
+      </div>
+      <div class="feature-card amber">
+        <div class="feature-icon">◐</div>
+        <div class="feature-name">SELF-HOSTABLE</div>
+        <div class="feature-desc">No cloud account required beyond API keys. Runs on any VPS with Docker. Configure once, deploy anywhere. PolyForm NC license.</div>
+      </div>
+    </div>
+  </section>
+
+  <section class="architecture" id="architecture">
+    <div class="arch-intro reveal">
+      <div class="label">Architecture</div>
+      <div class="sep"></div>
+      <div class="section-title">How it works</div>
+      <div class="section-sub">The admin routes, the agents deliver. Each project stays in its own lane.</div>
+    </div>
+    <div class="arch-diagram reveal">
+      <pre class="arch-code">WhatsApp message
+       │
+       ▼
+ ┌─────────────────────────────────────────┐
+ │  viko-hermes (Admin container)          │
+ │                                         │
+ │  bridge: routing.json check             │
+ │    known JID   → relay to project ─────►│─── viko-{slug}
+ │    unknown JID → Admin LLM              │
+ └─────────────────────────────────────────┘
+                   │
+                   │ OpenAI-compat API
+                   ▼
+          ┌─────────────────┐
+          │  viko-9router   │
+          │                 │
+          │  viko-chat      │ → Claude Haiku
+          │  viko-code      │ → Claude Sonnet
+          │  (fallback)     │ → Groq Llama
+          └─────────────────┘</pre>
+    </div>
+    <div class="arch-cards reveal">
+      <div class="arch-card">
+        <div class="arch-card-icon">01</div>
+        <div class="arch-card-title">OWNER SENDS COMMAND</div>
+        <div class="arch-card-desc">In a new WA group: <code>viko onboard project &lt;name&gt; slug &lt;slug&gt; github &lt;url&gt; vps &lt;host&gt; &lt;user&gt;</code></div>
+      </div>
+      <div class="arch-card">
+        <div class="arch-card-icon">02</div>
+        <div class="arch-card-title">ADMIN ONBOARDS</div>
+        <div class="arch-card-desc">Generates SSH keypair → verifies VPS access → clones repo → generates config → spawns container</div>
+      </div>
+      <div class="arch-card">
+        <div class="arch-card-icon">03</div>
+        <div class="arch-card-title">ROUTING UPDATED</div>
+        <div class="arch-card-desc">Group JID registered in routing.json. Admin is now permanently blind to that group. Project agent takes over.</div>
+      </div>
+      <div class="arch-card">
+        <div class="arch-card-icon">04</div>
+        <div class="arch-card-title">FULLY ISOLATED</div>
+        <div class="arch-card-desc">Project agent has its own memory, SSH key, and config. Relay token ensures it can only message its own group.</div>
+      </div>
+    </div>
+  </section>
+
+  <section class="github-cta" id="github">
+    <div class="label reveal">Open Source</div>
+    <div class="github-cta-title reveal">
+      Deploy your own<br><span>AI agent fleet →</span>
+    </div>
+    <div class="github-cta-sub reveal">
+      Full source code, setup guide, architecture docs, and security model.
+      Everything you need to run viko-agent on your own infrastructure.
+    </div>
+    <div class="github-tech reveal">
+      <span class="tech-pill violet">Hermes</span>
+      <span class="tech-pill">Node.js / Baileys</span>
+      <span class="tech-pill violet">Claude Sonnet</span>
+      <span class="tech-pill amber">Groq Llama</span>
+      <span class="tech-pill">9router</span>
+      <span class="tech-pill">Docker Compose</span>
+      <span class="tech-pill violet">GitHub Actions</span>
+      <span class="tech-pill">Traefik</span>
+    </div>
+    <a class="btn-primary reveal" href="https://github.com/viko-nexus/viko-agent" style="margin-top:8px;font-size:14px;padding:14px 36px">
+      VIEW ON GITHUB →
+    </a>
+  </section>
+
+  <footer>
+    <div class="footer-brand">
+      <img class="footer-logo" src="docs/assets/logo.png" alt="viko-agent" onerror="this.style.display='none'">
+      <span class="footer-name">VIKO<span class="footer-sub">AGENT</span></span>
+    </div>
+    <div class="footer-center">
+      <div class="footer-links">
+        <a class="footer-link" href="https://github.com/viko-nexus/viko-agent">GitHub</a>
+        <a class="footer-link" href="https://github.com/viko-nexus/viko-agent/blob/main/LICENSE">License</a>
+        <a class="footer-link" href="https://github.com/viko-nexus/viko-agent#readme">Docs</a>
+      </div>
+      <a class="footer-email" href="mailto:eksant@gmail.com">eksant@gmail.com</a>
+    </div>
+    <div class="footer-copy">Non-commercial · © 2026 Viko Nexus</div>
+  </footer>
+
+  <script src="assets/landing/main.js"></script>
+</body>
+</html>

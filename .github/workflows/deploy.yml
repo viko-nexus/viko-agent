@@ -1,4 +1,4 @@
-name: Deploy to VPS
+name: CI/CD
 
 on:
   push:
@@ -15,9 +15,34 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  # ── Job 1: Build image on runner + push to GHCR ──────────────────────────────
+  # ── Job 1: Code quality checks ────────────────────────────────────────────────
+  quality:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install ruff
+        run: pip install ruff
+
+      - name: Lint Python (scripts, patches, mcp-servers)
+        run: ruff check scripts/ patches/ mcp-servers/
+
+      - name: Check JavaScript (bridge)
+        run: |
+          for f in bridge/whatsapp-bridge.js bridge/allowlist.js; do
+            [ -f "$f" ] && node --check "$f" && echo "OK: $f"
+          done
+
+  # ── Job 2: Build image on runner + push to GHCR ──────────────────────────────
   build:
     runs-on: ubuntu-latest
+    needs: quality
     outputs:
       rebuilt: ${{ steps.changed.outputs.result }}
 
@@ -30,25 +55,23 @@ jobs:
         id: changed
         run: |
           # Rebuild ONLY when THIS push touched Dockerfile.hermes or patches/.
-          # (Old bug: `git log -10` re-triggered an 8GB rebuild+pull for unrelated
-          #  pushes because old patches/ commits stayed inside the 10-commit window.)
+          # Avoids re-pulling a large image for unrelated pushes (docs, config, scripts).
           BEFORE='${{ github.event.before }}'
           SHA='${{ github.sha }}'
           if [ -z "$BEFORE" ] || [ "$BEFORE" = "0000000000000000000000000000000000000000" ]; then
-            CHANGED=$(git show --name-only --pretty=format: "$SHA")   # manual dispatch / first push
+            CHANGED=$(git show --name-only --pretty=format: "$SHA")
           else
             CHANGED=$(git diff --name-only "$BEFORE" "$SHA")
           fi
           echo "Changed files in this push:"; echo "$CHANGED"
-          if echo "$CHANGED" | grep -qE '^(Dockerfile\.hermes|patches/)'; then
+          if echo "$CHANGED" | grep -qE '^(Dockerfile\.hermes|patches/|bridge/)'; then
             echo "result=true" >> $GITHUB_OUTPUT
           else
             echo "result=false" >> $GITHUB_OUTPUT
           fi
 
       - name: Set up Buildx
-        # Registry layer cache (cache-to type=registry) requires the
-        # docker-container driver — the default docker driver can't export cache.
+        # Registry layer cache (cache-to type=registry) requires docker-container driver.
         if: steps.changed.outputs.result == 'true'
         uses: docker/setup-buildx-action@v3
 
@@ -68,22 +91,21 @@ jobs:
           file: Dockerfile.hermes
           push: true
           tags: ghcr.io/${{ github.repository_owner }}/viko-hermes:latest
-          # Registry layer cache: rebuilt images keep unchanged layer digests, so the
-          # VPS pull only fetches changed layers (not the full ~8GB) on legit rebuilds.
+          # Registry layer cache: unchanged layers are not re-pulled on the VPS.
           cache-from: type=registry,ref=ghcr.io/${{ github.repository_owner }}/viko-hermes:buildcache
           cache-to: type=registry,ref=ghcr.io/${{ github.repository_owner }}/viko-hermes:buildcache,mode=max
-          # UID/GID 1000 = viko user on trahku. Other VPSes: container auto-chowns at first start.
+          # HERMES_UID/GID: deploy user on the VPS (UID 1000). Container auto-chowns at first start.
           build-args: |
             HERMES_UID=1000
             HERMES_GID=1000
 
-  # ── Job 2: Deploy to VPS — pull image + restart ───────────────────────────────
+  # ── Job 3: Deploy to VPS — pull image + restart ───────────────────────────────
   deploy:
     runs-on: ubuntu-latest
     needs: build
 
     steps:
-      - name: Deploy to trahku
+      - name: Deploy to VPS
         uses: appleboy/ssh-action@v1
         env:
           GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -108,7 +130,7 @@ jobs:
           command_timeout: 25m
           script: |
             set -e
-            cd ~/projects/viko-agent
+            cd ~/viko-agent
 
             # Always mirror repo exactly — discard any local edits on VPS
             git fetch origin main
@@ -119,19 +141,17 @@ jobs:
             bash scripts/provision-env.sh
 
             # Pull from GHCR FIRST (admin stays up during the pull) — only when the
-            # image was rebuilt this run. A slow/failed pull must not take admin down,
-            # so we do NOT remove the running container before the pull completes.
+            # image was rebuilt this run. A slow/failed pull must not take admin down.
             if [ "$REBUILT" = "true" ]; then
               echo "Pulling latest image from GHCR..."
               echo "$GHCR_TOKEN" | docker login ghcr.io -u "$GHCR_ACTOR" --password-stdin
-              docker pull ghcr.io/eksant/viko-hermes:latest
-              docker tag ghcr.io/eksant/viko-hermes:latest viko-hermes:latest
+              docker pull ghcr.io/${{ github.repository_owner }}/viko-hermes:latest
+              docker tag ghcr.io/${{ github.repository_owner }}/viko-hermes:latest viko-hermes:latest
               docker logout ghcr.io
             fi
 
-            # Recreate admin ONLY when the image was rebuilt; otherwise let compose
-            # recreate it only if compose/.env config actually changed. This avoids a
-            # needless ~30s WhatsApp blip on scripts-only deploys.
+            # Recreate Hermes ONLY when the image was rebuilt; otherwise let compose
+            # recreate only if compose config changed. Avoids a needless WA session drop.
             if [ "$REBUILT" = "true" ]; then
               docker rm -f viko-hermes 2>/dev/null || true
               docker compose --profile full up -d --force-recreate hermes

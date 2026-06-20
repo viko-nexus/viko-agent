@@ -1,8 +1,11 @@
 # Data volumes (bind-mounted into Docker — never committed, persists on laptop)
 data/
 
-# Claude Code local state (may contain command history with absolute paths)
-.claude/
+# Backups
+backups/
+
+# Claude Code local config — settings are user-specific, skills are tracked
+.claude/settings.json
 
 # macOS
 .DS_Store

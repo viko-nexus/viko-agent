@@ -5,7 +5,7 @@ Configure SSH aliases for a new project.
 Adds Host entries to ~/.viko/ssh/config using Viko's master key (id_viko).
 No keypair generation needed — user adds id_viko.pub to the VPS user once.
 
-Run on trahku host (not inside container):
+Run on the deploy VPS host (not inside a container):
   python3 ~/projects/viko-agent/scripts/setup-keys.py <slug> <github_url> [vps_host] [vps_user]
 
 GitHub access uses HTTPS + GITHUB_TOKEN — no deploy key needed.
@@ -72,7 +72,6 @@ def main():
         sys.exit(1)
 
     slug = sys.argv[1].lower().strip()
-    github_url = sys.argv[2].strip()
     vps_host = sys.argv[3].strip() if len(sys.argv) > 3 else ""
     vps_user = sys.argv[4].strip() if len(sys.argv) > 4 else "viko-exec"
 
@@ -82,7 +81,7 @@ def main():
     update_ssh_config(slug, vps_host, ssh_dir, vps_user)
 
     print(f"\n{'='*50}")
-    print(f"PHASE1_COMPLETE")
+    print("PHASE1_COMPLETE")
     print(f"VPS_KEY_REQUIRED={'true' if vps_host else 'false'}")
     print(f"{'='*50}")
 
@@ -91,9 +90,9 @@ def main():
         pub_key = pub_key_path.read_text().strip() if pub_key_path.exists() else "(id_viko.pub not found)"
         print(f"\n⚠ VPS SSH key — pastikan key ini sudah di authorized_keys {vps_user}@{vps_host}:")
         print(f"  {pub_key}")
-        print(f"\n  Kalau belum, tambahkan:")
+        print("\n  Kalau belum, tambahkan:")
         print(f'  echo "{pub_key}" >> ~/.ssh/authorized_keys')
-        print(f"\nBalas 'done' setelah selesai.")
+        print("\nBalas 'done' setelah selesai.")
     else:
         print("\nTidak ada VPS — GitHub via HTTPS + token, langsung lanjut Phase 2.")
 
