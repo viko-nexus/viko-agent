@@ -1,0 +1,45 @@
+name: Release
+
+# Runs after CI/CD succeeds on main — never races with deploy.
+on:
+  workflow_run:
+    workflows: ["CI/CD"]
+    branches: [main]
+    types: [completed]
+
+permissions:
+  contents: write    # create tags + GitHub releases
+  packages: write    # push versioned Docker image to GHCR
+  issues: write      # semantic-release can comment on issues
+  pull-requests: write
+
+jobs:
+  release:
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          # Check out the exact SHA that was deployed, not HEAD at trigger time.
+          ref: ${{ github.event.workflow_run.head_sha }}
+
+      - name: Semantic Release
+        id: release
+        uses: cycjimmy/semantic-release-action@v4
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      # Re-tag the already-pushed :latest image — no rebuild needed.
+      - name: Tag Docker image with version
+        if: steps.release.outputs.new_release_published == 'true'
+        run: |
+          VERSION="v${{ steps.release.outputs.new_release_version }}"
+          echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "${{ github.repository_owner }}" --password-stdin
+          docker pull ghcr.io/${{ github.repository_owner }}/viko-agent:latest
+          docker tag  ghcr.io/${{ github.repository_owner }}/viko-agent:latest \
+                      ghcr.io/${{ github.repository_owner }}/viko-agent:${VERSION}
+          docker push ghcr.io/${{ github.repository_owner }}/viko-agent:${VERSION}
+          docker logout ghcr.io
+          echo "Published ghcr.io/${{ github.repository_owner }}/viko-agent:${VERSION}"
