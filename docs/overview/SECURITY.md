@@ -12,15 +12,15 @@ security on its own**. All critical security boundaries are enforced at the code
 
 ### Owner Authentication
 
-The `OWNER_WA` environment variable is the root of all trust. Only messages from
+The `WHATSAPP_OWNER_NUMBER` environment variable is the root of all trust. Only messages from
 this WhatsApp number can trigger commands. This check happens in the bridge code
 before the LLM is ever invoked:
 
 ```
-Message arrives → bridge checks sender == OWNER_WA → PASS or SILENT IGNORE
+Message arrives → bridge checks sender == WHATSAPP_OWNER_NUMBER → PASS or SILENT IGNORE
 ```
 
-`OWNER_WA` is never hardcoded in committed code. It is set at deploy time via
+`WHATSAPP_OWNER_NUMBER` is never hardcoded in committed code. It is set at deploy time via
 environment variable, making the system self-hostable without exposing credentials.
 
 ### Project Isolation

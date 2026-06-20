@@ -28,7 +28,7 @@ default_if_missing() {
 # Portable — GitHub secrets are canonical (upsert, overriding any local drift)
 for k in NINEROUTER_JWT_SECRET NINEROUTER_INITIAL_PASSWORD NINEROUTER_API_KEY_SECRET \
          ANTHROPIC_API_KEY GROQ_API_KEY OPENAI_API_KEY \
-         WHATSAPP_HOME_CHANNEL VIKO_SSH_PUB VIKO_ISOLATION_GUARD; do
+         WHATSAPP_HOME_CHANNEL WHATSAPP_OWNER_NUMBER VIKO_SSH_PUB VIKO_ISOLATION_GUARD; do
   upsert "$k" "${!k:-}"
 done
 

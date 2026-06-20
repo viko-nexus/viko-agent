@@ -2,10 +2,10 @@
 
 ## Who Can Give Commands
 
-Only the system owner — configured via the `OWNER_WA` environment variable.
+Only the system owner — configured via the `WHATSAPP_OWNER_NUMBER` environment variable.
 This is set at deploy time and never hardcoded.
 
-If `OWNER_WA` is empty or unset, no commands are processed and a startup
+If `WHATSAPP_OWNER_NUMBER` is empty or unset, no commands are processed and a startup
 warning is logged.
 
 ---
@@ -21,7 +21,7 @@ Incoming group message
     │       YES → forward to Hermes-Project, Admin is blind (no LLM invoked)
     │       NO  ↓
     │
-    ├── Sender == OWNER_WA?
+    ├── Sender == WHATSAPP_OWNER_NUMBER?
     │       YES → pass to Admin LLM
     │       NO  → ignore silently (no response)
 ```

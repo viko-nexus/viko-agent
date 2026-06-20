@@ -20,7 +20,7 @@ cd viko-agent
 
 # Copy and fill in environment
 cp .env.example .env
-# Required: OWNER_WA, NINEROUTER_JWT_SECRET, NINEROUTER_INITIAL_PASSWORD,
+# Required: WHATSAPP_OWNER_NUMBER, NINEROUTER_JWT_SECRET, NINEROUTER_INITIAL_PASSWORD,
 #           NINEROUTER_API_KEY_SECRET, ANTHROPIC_API_KEY, GROQ_API_KEY, GITHUB_TOKEN
 
 # Build Hermes image (takes ~10-20 min on first build, cached after)
@@ -107,7 +107,7 @@ Scripts run directly from the VPS repo clone — no rebuild needed.
 
 ```bash
 # Test locally with dry run
-OWNER_WA=<your-number> python3 scripts/onboard.py \
+WHATSAPP_OWNER_NUMBER=<your-number> python3 scripts/onboard.py \
   --name "Test" --slug testproject \
   --github https://github.com/example/repo \
   --vps-host localhost --vps-user deploy \

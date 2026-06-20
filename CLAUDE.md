@@ -52,7 +52,7 @@ viko-agent/
 ## Code Conventions
 
 - **Language**: All code, comments, docstrings, variable names → **English**
-- **No hardcoded values**: `OWNER_WA`, phone numbers, group JIDs, project slugs → always from env vars or config files
+- **No hardcoded values**: `WHATSAPP_OWNER_NUMBER`, phone numbers, group JIDs, project slugs → always from env vars or config files
 - **No comments explaining obvious code** — only add WHY a non-obvious choice was made
 - **Never commit**: `.env`, `data/`, `backups/`, `projects/*/` (except viko-agent itself)
 
@@ -115,7 +115,7 @@ See `.env.example` for the full list. Key variables:
 
 | Variable | Purpose |
 |----------|---------|
-| `OWNER_WA` | Owner's WA number — only this number can issue commands. Never hardcode. |
+| `WHATSAPP_OWNER_NUMBER` | Owner's WA number — only this number can issue commands. Never hardcode. |
 | `VIKO_NAME` | Container/network prefix (default: `viko`) |
 | `OPENAI_API_KEY` | 9router client API key (for Hermes to call 9router) |
 | `OPENAI_BASE_URL` | 9router endpoint (`http://viko-9router:20128/v1`) |
@@ -127,7 +127,7 @@ See `.env.example` for the full list. Key variables:
 
 ## Security Rules (never break these)
 
-1. `OWNER_WA` must always come from env var — never a literal phone number in code
+1. `WHATSAPP_OWNER_NUMBER` must always come from env var — never a literal phone number in code
 2. `bridge/whatsapp-bridge.js` relay token scope check is the real security gate — do not bypass
 3. `patches/isolation-guard.py` verifies per-project isolation at boot — must run before gateway
 4. `project.json` stores per-project DB credentials at mode 600 — never read from env vars

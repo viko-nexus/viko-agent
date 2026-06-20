@@ -143,7 +143,7 @@ Nyalain container...
 | Port range exhausted (3001–3999) | "Tidak ada port tersedia, cek container yang berjalan." |
 | Slug already exists on disk | "Slug '{slug}' sudah ada di server. Pilih slug lain." |
 | Container health check timeout | "Container tidak bisa jalan dalam 30 detik — `docker logs viko-{slug}`" |
-| `OWNER_WA` not set | Refuse all onboarding with explicit warning |
+| `WHATSAPP_OWNER_NUMBER` not set | Refuse all onboarding with explicit warning |
 
 ---
 

@@ -98,7 +98,7 @@ if the JID is registered, Admin forwards and stays silent. No exception.
 **Per-project isolation.** Each Hermes-Project container mounts only its own `/home/deploy/{slug}/`
 folder. Separate memory DB, SSH keypair, and config.
 
-**Owner WA number is always from env.** `OWNER_WA` is set via environment variable — never
+**Owner WA number is always from env.** `WHATSAPP_OWNER_NUMBER` is set via environment variable — never
 hardcoded in code or templates. This makes the system self-hostable.
 
 ---

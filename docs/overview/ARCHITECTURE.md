@@ -120,7 +120,7 @@ The `[CTX]` stamp is injected by the bridge (not by LLM) and cannot be spoofed.
 
 1. Message arrives at bridge
 2. JID not in `routing.json` → falls through to Admin LLM
-3. Bridge checks sender == OWNER_WA
+3. Bridge checks sender == WHATSAPP_OWNER_NUMBER
 4. Admin Hermes handles (onboarding or general assistance)
 
 ---
@@ -129,7 +129,7 @@ The `[CTX]` stamp is injected by the bridge (not by LLM) and cannot be spoofed.
 
 | Boundary | Enforcement |
 |----------|-------------|
-| Only owner can issue commands | `OWNER_WA` checked at bridge layer (code, not LLM) |
+| Only owner can issue commands | `WHATSAPP_OWNER_NUMBER` checked at bridge layer (code, not LLM) |
 | Projects cannot see each other | Separate HERMES_HOME bind-mounts, no shared network |
 | Projects cannot send to other JIDs | Relay token scoped to one JID per token |
 | Project containers cannot impersonate | `[CTX]` stamp is bridge-injected, verified by Admin |

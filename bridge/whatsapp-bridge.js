@@ -27,7 +27,7 @@
  *   GET  /relay/scope    — Admin: token → allowed JID introspection
  *
  * Usage:
- *   OWNER_WA=628xxx node bridge/whatsapp-bridge.js
+ *   WHATSAPP_OWNER_NUMBER=628xxx node bridge/whatsapp-bridge.js
  *   WHATSAPP_RELAY_MODE=true WHATSAPP_RELAY_TARGET=http://viko-admin:3000 \
  *     HERMES_RELAY_TOKEN=xxx WHATSAPP_PORT_FILTER=3001 node bridge/whatsapp-bridge.js
  */
@@ -51,7 +51,7 @@ const SESSION_DIR = process.env.WHATSAPP_SESSION_DIR ||
 
 const WHATSAPP_MODE = process.env.WHATSAPP_MODE || 'bot';
 const ALLOWED_USERS = parseAllowedUsers(process.env.WHATSAPP_ALLOWED_USERS || '*');
-const OWNER_WA = (process.env.OWNER_WA || '').replace(/^\+/, '');
+const OWNER_WA = (process.env.WHATSAPP_OWNER_NUMBER || '').replace(/^\+/, '');
 
 const RELAY_MODE = ['1', 'true', 'yes'].includes(
   (process.env.WHATSAPP_RELAY_MODE || '').toLowerCase()

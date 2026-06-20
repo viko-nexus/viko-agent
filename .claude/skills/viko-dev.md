@@ -35,7 +35,7 @@ Available variables:
 - `{{PROJECT_GITHUB}}` — GitHub repo URL
 - `{{DEPLOY_HOST}}` — deploy VPS hostname or IP
 - `{{DEPLOY_USER}}` — SSH user on deploy VPS
-- `{{OWNER_WA}}` — filled from OWNER_WA env var at onboard time (never hardcoded)
+- `{{WHATSAPP_OWNER_NUMBER}}` — filled from WHATSAPP_OWNER_NUMBER env var at onboard time (never hardcoded)
 - `{{MEMBER_WA_LIST}}` — comma-separated member WA numbers
 - `{{BLOCKED_WA_LIST}}` — comma-separated blocked numbers (empty initially)
 
@@ -109,7 +109,7 @@ Test locally first with a dummy slug before deploying.
 ## Testing Onboarding Locally (Dry Run)
 
 ```bash
-OWNER_WA=<your-number> python3 scripts/onboard.py --dry-run \
+WHATSAPP_OWNER_NUMBER=<your-number> python3 scripts/onboard.py --dry-run \
   --name "TestProject" --slug "testproject" \
   --github "https://github.com/example/repo" \
   --vps-host "localhost" --vps-user "deploy" \
