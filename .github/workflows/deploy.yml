@@ -90,10 +90,10 @@ jobs:
           context: .
           file: Dockerfile.hermes
           push: true
-          tags: ghcr.io/${{ github.repository_owner }}/viko-hermes:latest
+          tags: ghcr.io/${{ github.repository_owner }}/viko-agent:latest
           # Registry layer cache: unchanged layers are not re-pulled on the VPS.
-          cache-from: type=registry,ref=ghcr.io/${{ github.repository_owner }}/viko-hermes:buildcache
-          cache-to: type=registry,ref=ghcr.io/${{ github.repository_owner }}/viko-hermes:buildcache,mode=max
+          cache-from: type=registry,ref=ghcr.io/${{ github.repository_owner }}/viko-agent:buildcache
+          cache-to: type=registry,ref=ghcr.io/${{ github.repository_owner }}/viko-agent:buildcache,mode=max
           # HERMES_UID/GID: deploy user on the VPS (UID 1000). Container auto-chowns at first start.
           build-args: |
             HERMES_UID=1000
@@ -145,8 +145,8 @@ jobs:
             if [ "$REBUILT" = "true" ]; then
               echo "Pulling latest image from GHCR..."
               echo "$GHCR_TOKEN" | docker login ghcr.io -u "$GHCR_ACTOR" --password-stdin
-              docker pull ghcr.io/${{ github.repository_owner }}/viko-hermes:latest
-              docker tag ghcr.io/${{ github.repository_owner }}/viko-hermes:latest viko-hermes:latest
+              docker pull ghcr.io/${{ github.repository_owner }}/viko-agent:latest
+              docker tag ghcr.io/${{ github.repository_owner }}/viko-agent:latest viko-hermes:latest
               docker logout ghcr.io
             fi
 

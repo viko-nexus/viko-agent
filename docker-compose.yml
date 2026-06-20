@@ -146,5 +146,5 @@ services:
 # Project Hermes containers are spawned dynamically by spawn-hermes.py
 # and are NOT defined in this file. Each uses WHATSAPP_RELAY_MODE=true
 # to proxy through the admin bridge above.
-# To spawn: ssh viko-vps python3 ~/projects/viko-agent/scripts/spawn-hermes.py <slug> <jid>
+# To spawn: ssh viko-vps python3 ~/viko-agent/scripts/spawn-hermes.py <slug> <jid>
 # Routing: data/bridge/routing.json (hot-reloaded by bridge, no restart needed)
