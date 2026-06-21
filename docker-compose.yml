@@ -79,6 +79,8 @@ services:
       - ./hooks:/opt/data/hooks:ro
       # MCP servers from repo — mounted read-only, registered in config.yaml
       - ./mcp-servers:/opt/viko/mcp-servers:ro
+      # SOUL.md — bind-mounted directly so repo updates apply without cont-init path dependency
+      - ./admin/SOUL.md:/opt/data/SOUL.md:ro
       # Skills: shared + admin-specific (onboarding skill)
       - ./skills:/opt/viko/skills:ro
       - ./admin/skills:/opt/viko/admin/skills:ro
