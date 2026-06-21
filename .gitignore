@@ -39,3 +39,6 @@ __pycache__/
 
 # Node
 node_modules
+
+# Local dev override — bind-mounts source over the image (local-only, never deploy)
+docker-compose.override.yml

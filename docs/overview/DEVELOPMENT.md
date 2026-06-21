@@ -71,7 +71,14 @@ docker compose --profile full up -d --force-recreate hermes
 
 ### Editing `patches/` (Hermes image patches)
 
-Patches are baked into the image at build time. Any change requires a rebuild.
+Patches are baked into the image at build time. **Most** changes require a rebuild —
+but the WhatsApp bridge (`patches/whatsapp-bridge.js`) does not. See
+[Fast Local Iteration](#fast-local-iteration-no-rebuild) below; that one file is
+copied verbatim into the image and can be bind-mounted instead.
+
+The **Python source patches** (`patch-model-router.py`, `patch-ssh-guard.py`,
+`patch-approval-sql-context.py`, `indonesian-locale.py`) edit Hermes' own vendored
+files in-place, so they cannot be bind-mounted — they always need a rebuild:
 
 ```bash
 nano patches/patch-model-router.py
@@ -122,6 +129,52 @@ MCP servers are bind-mounted into the container. Restart is enough.
 nano mcp-servers/projects-gateway.py
 docker compose --profile full up -d --force-recreate hermes
 ```
+
+---
+
+## Fast Local Iteration (no rebuild)
+
+A full image rebuild takes 15-30 min. You do **not** need one to iterate on the
+WhatsApp bridge — `patches/whatsapp-bridge.js` is copied verbatim into the image
+(`Dockerfile.hermes`), not compiled. The same is true for `patches/isolation-guard.py`
+and `scripts/init-hermes-config.py`. Bind-mount these over their in-image locations
+and reload the process in seconds.
+
+**One-time setup** — create `docker-compose.override.yml` (gitignored, local-only;
+`docker compose` loads it automatically with no `-f` flag):
+
+```yaml
+services:
+  hermes:
+    volumes:
+      - ./patches/whatsapp-bridge.js:/opt/hermes/scripts/whatsapp-bridge/bridge.js:ro
+      - ./patches/isolation-guard.py:/opt/hermes/docker/viko-isolation-guard.py:ro
+      - ./scripts/init-hermes-config.py:/opt/viko/scripts/init-hermes-config.py:ro
+```
+
+Then recreate the container once so the mounts take effect:
+
+```bash
+docker compose --profile full up -d --force-recreate hermes
+```
+
+**Iteration loop** (seconds, repeat freely):
+
+```bash
+nano patches/whatsapp-bridge.js          # 1. edit
+./scripts/dev-reload-bridge.sh           # 2. reload just the bridge (~2-5s)
+docker logs viko-hermes -f | grep -i bridge   # 3. observe
+```
+
+`dev-reload-bridge.sh` kills the `node bridge.js` child process; the gateway
+respawns it from the bind-mounted file. If a reload ever doesn't take, fall back to
+`docker restart viko-hermes` (~30-60s) — still far faster than a rebuild.
+
+When the fix is verified, **commit the file** and let CI rebuild the image for prod.
+The override is local-only and never deployed, so production always runs the baked image.
+
+> Caveat: this covers the whole-file replacements only. Changes to the Python
+> source patches still require `docker compose build hermes` (see above).
 
 ---
 
