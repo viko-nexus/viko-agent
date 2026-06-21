@@ -23,21 +23,49 @@ cp .env.example .env
 # Required: WHATSAPP_OWNER_NUMBER, NINEROUTER_JWT_SECRET, NINEROUTER_INITIAL_PASSWORD,
 #           NINEROUTER_API_KEY_SECRET, ANTHROPIC_API_KEY, GROQ_API_KEY, GITHUB_TOKEN
 
-# Build Hermes image (takes ~10-20 min on first build, cached after)
+# Build Hermes image ONCE (takes ~15-30 min; cached after)
 docker compose build hermes
 
-# Start everything
-docker compose --profile full up -d
-
-# Tail logs
-docker logs -f viko-hermes
+# Bootstrap the whole local stack in one run (see below)
+./scripts/dev-init.sh
 ```
+
+### `scripts/dev-init.sh` — one-shot local bootstrap
+
+After the image exists, this single idempotent script does everything needed to
+get a working local instance and ends by printing the WhatsApp QR to scan:
+
+1. Sanity checks (`.env`, Docker running, prebuilt image present)
+2. Writes `docker-compose.override.yml` (bind-mounts source for rebuild-free iteration)
+3. Creates the macOS `data/hermes/SOUL.md` nested-mount placeholder
+4. Starts 9router + Hermes from the **existing image** (no rebuild)
+5. Seeds 9router combos (`init-9router.py`) and **syncs the local 9router API key
+   into `.env`** as `OPENAI_API_KEY` (the key is per-instance — the production key
+   does not work against a local 9router and yields `401 API key required`)
+6. Smoke-tests the LLM path (expects 9router `200`)
+7. Pairs WhatsApp via `hermes whatsapp` if no `creds.json` yet
+
+Re-run it any time; already-done steps are skipped. If the local 9router has no
+API key yet, it tells you to generate one in the dashboard and re-run.
+
+### Dashboards (local)
+
+Both bind to `VIKO_BIND_ADDR` (default `127.0.0.1`), so they are reachable only
+from this machine:
+
+| Dashboard | URL | Auth |
+|-----------|-----|------|
+| Hermes (agent, WA session, config) | http://localhost:9119 | none (`HERMES_DASHBOARD_INSECURE=true`) |
+| 9router (providers, combos, API keys, usage) | http://localhost:20128 | password = `NINEROUTER_INITIAL_PASSWORD` |
+
+Configure provider keys (Anthropic/Groq) and generate the API key in the 9router
+dashboard. `init-9router.py` only creates the combos; it does not add provider keys.
 
 ---
 
 ## First-Time Initialization
 
-After Hermes has started at least once (config.yaml is created):
+`scripts/dev-init.sh` runs these for you. To do them manually:
 
 ```bash
 # 1. Apply Hermes config overrides
@@ -46,9 +74,13 @@ python3 scripts/init-hermes-config.py
 # 2. Initialize 9router model combos
 python3 scripts/init-9router.py
 
-# 3. Pair WhatsApp (scan QR in logs)
-docker logs -f viko-hermes   # QR appears during startup
+# 3. Pair WhatsApp (interactive QR)
+docker exec -it viko-hermes hermes whatsapp
 ```
+
+> The QR for pairing comes from the interactive `hermes whatsapp` command above
+> (it needs a TTY), not the gateway logs. The Node bridge writes its own output to
+> `data/hermes/whatsapp/bridge.log`, not `docker logs`.
 
 After pairing, WhatsApp session is saved to `data/hermes/.hermes/whatsapp/session/`
 (gitignored). It persists across container restarts.

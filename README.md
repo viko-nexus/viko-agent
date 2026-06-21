@@ -64,6 +64,31 @@ python3 scripts/init-9router.py
 python3 scripts/init-hermes-config.py
 ```
 
+### Local development (one command)
+
+After the image is built once (`docker compose build hermes`), bootstrap the whole
+local stack — bind-mounts for rebuild-free iteration, 9router combos + API key sync,
+LLM smoke test, and WhatsApp QR pairing — in a single run:
+
+```bash
+./scripts/dev-init.sh
+```
+
+It is idempotent (safe to re-run) and ends by printing the QR to scan. Dashboards:
+**Hermes** → http://localhost:9119 · **9router** → http://localhost:20128
+(password = `NINEROUTER_INITIAL_PASSWORD`).
+
+Iterate on the WhatsApp bridge **without rebuilding** (a rebuild takes 15-30 min):
+
+```bash
+# edit patches/whatsapp-bridge.js, then:
+./scripts/dev-reload-bridge.sh        # ~5-30s
+docker exec viko-hermes tail -f /opt/data/whatsapp/bridge.log
+```
+
+See [docs/overview/DEVELOPMENT.md](docs/overview/DEVELOPMENT.md#fast-local-iteration-no-rebuild)
+for the full workflow and caveats.
+
 ---
 
 ## Repository Structure

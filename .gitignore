@@ -42,3 +42,6 @@ node_modules
 
 # Local dev override — bind-mounts source over the image (local-only, never deploy)
 docker-compose.override.yml
+
+# Local .env backups created by dev-init.sh (contain secrets)
+.env.bak*
