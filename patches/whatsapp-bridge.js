@@ -685,7 +685,7 @@ async function startSocket() {
         _pq.push(event);
         if (_pq.length > MAX_QUEUE_SIZE) _pq.shift();
       } else {
-        // Unregistered group: only forward if Viko is mentioned by text/WA-mention or sender is owner.
+        // Unregistered group: only forward if Viko is mentioned by text/WA-mention, or sender is owner.
         // Prevents admin Hermes from responding to all group chatter.
         // DMs always pass through (isGroup=false).
         if (isGroup && !isOwner && !_mentionsViko) {
