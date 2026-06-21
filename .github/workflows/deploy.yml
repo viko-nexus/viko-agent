@@ -107,13 +107,18 @@ jobs:
     needs: build
 
     steps:
-      - name: Deploy to VPS
-        uses: appleboy/ssh-action@v1
+      - name: Setup SSH key
+        run: |
+          install -m 600 /dev/null /tmp/vps_key
+          printf '%s' "${{ secrets.VPS_SSH_KEY }}" > /tmp/vps_key
+
+      - name: Deploy to VPS (with retry)
         env:
-          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          GHCR_ACTOR: ${{ github.actor }}
           REBUILT: ${{ needs.build.outputs.rebuilt }}
-          # Portable .env values — provisioned onto the VPS by scripts/provision-env.sh
+          GHCR_ACTOR: ${{ github.actor }}
+          REPO_OWNER: ${{ github.repository_owner }}
+          # Secrets passed as env vars — substituted into the heredoc before SSH
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           NINEROUTER_JWT_SECRET: ${{ secrets.NINEROUTER_JWT_SECRET }}
           NINEROUTER_INITIAL_PASSWORD: ${{ secrets.NINEROUTER_INITIAL_PASSWORD }}
           NINEROUTER_API_KEY_SECRET: ${{ secrets.NINEROUTER_API_KEY_SECRET }}
@@ -125,43 +130,77 @@ jobs:
           VIKO_SSH_PUB: ${{ secrets.VIKO_SSH_PUB }}
           VIKO_ISOLATION_GUARD: ${{ secrets.VIKO_ISOLATION_GUARD }}
           VIKO_GITHUB_TOKEN: ${{ secrets.VIKO_GITHUB_TOKEN }}
-        with:
-          host: ${{ secrets.SSH_HOST }}
-          username: ${{ secrets.SSH_USER }}
-          key: ${{ secrets.VPS_SSH_KEY }}
-          envs: GHCR_TOKEN,GHCR_ACTOR,REBUILT,NINEROUTER_JWT_SECRET,NINEROUTER_INITIAL_PASSWORD,NINEROUTER_API_KEY_SECRET,ANTHROPIC_API_KEY,GROQ_API_KEY,OPENAI_API_KEY,WHATSAPP_HOME_CHANNEL,WHATSAPP_OWNER_NUMBER,VIKO_SSH_PUB,VIKO_ISOLATION_GUARD,VIKO_GITHUB_TOKEN
-          command_timeout: 25m
-          script: |
-            set -e
-            cd ~/viko-agent
+        run: |
+          SSH="ssh -i /tmp/vps_key \
+            -o StrictHostKeyChecking=no \
+            -o ConnectTimeout=30 \
+            -o ServerAliveInterval=60 \
+            -o ServerAliveCountMax=10 \
+            ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}"
 
-            # Always mirror repo exactly — discard any local edits on VPS
-            git fetch origin main
-            git reset --hard origin/main
+          run_deploy() {
+            $SSH bash -s << ENDSSH
+          set -e
+          cd ~/viko-agent
 
-            # Provision .env from GitHub secrets (portable keys upserted; host-specific
-            # keys defaulted only if missing). GitHub secrets are the source of truth.
-            bash scripts/provision-env.sh
+          # Always mirror repo exactly — discard any local edits on VPS
+          git fetch origin main
+          git reset --hard origin/main
 
-            # Pull from GHCR FIRST (admin stays up during the pull) — only when the
-            # image was rebuilt this run. A slow/failed pull must not take admin down.
-            if [ "$REBUILT" = "true" ]; then
-              echo "Pulling latest image from GHCR..."
-              echo "$GHCR_TOKEN" | docker login ghcr.io -u "$GHCR_ACTOR" --password-stdin
-              docker pull ghcr.io/${{ github.repository_owner }}/viko-agent:latest
-              docker tag ghcr.io/${{ github.repository_owner }}/viko-agent:latest viko-hermes:latest
-              docker logout ghcr.io
+          # Provision .env from GitHub secrets (portable keys upserted; host-specific
+          # keys defaulted only if missing). GitHub secrets are the source of truth.
+          export NINEROUTER_JWT_SECRET="${NINEROUTER_JWT_SECRET}"
+          export NINEROUTER_INITIAL_PASSWORD="${NINEROUTER_INITIAL_PASSWORD}"
+          export NINEROUTER_API_KEY_SECRET="${NINEROUTER_API_KEY_SECRET}"
+          export ANTHROPIC_API_KEY="${ANTHROPIC_API_KEY}"
+          export GROQ_API_KEY="${GROQ_API_KEY}"
+          export OPENAI_API_KEY="${OPENAI_API_KEY}"
+          export WHATSAPP_HOME_CHANNEL="${WHATSAPP_HOME_CHANNEL}"
+          export WHATSAPP_OWNER_NUMBER="${WHATSAPP_OWNER_NUMBER}"
+          export VIKO_SSH_PUB="${VIKO_SSH_PUB}"
+          export VIKO_ISOLATION_GUARD="${VIKO_ISOLATION_GUARD}"
+          export VIKO_GITHUB_TOKEN="${VIKO_GITHUB_TOKEN}"
+          bash scripts/provision-env.sh
+
+          # Pull from GHCR FIRST (admin stays up during the pull) — only when the
+          # image was rebuilt this run. A slow/failed pull must not take admin down.
+          if [ "${REBUILT}" = "true" ]; then
+            echo "Pulling latest image from GHCR..."
+            echo "${GHCR_TOKEN}" | docker login ghcr.io -u "${GHCR_ACTOR}" --password-stdin
+            docker pull ghcr.io/${REPO_OWNER}/viko-agent:latest
+            docker tag ghcr.io/${REPO_OWNER}/viko-agent:latest viko-hermes:latest
+            docker logout ghcr.io
+          fi
+
+          # Recreate Hermes ONLY when the image was rebuilt; otherwise let compose
+          # recreate only if compose config changed. Avoids a needless WA session drop.
+          if [ "${REBUILT}" = "true" ]; then
+            docker rm -f viko-hermes 2>/dev/null || true
+            docker compose --profile full up -d --force-recreate hermes
+          else
+            docker compose --profile full up -d hermes
+          fi
+          docker ps --filter name=viko --format 'table {{.Names}}\t{{.Status}}'
+          ENDSSH
+          }
+
+          for attempt in 1 2 3; do
+            echo "=== Deploy attempt ${attempt}/3 ==="
+            if run_deploy; then
+              echo "Deploy succeeded on attempt ${attempt}"
+              exit 0
             fi
-
-            # Recreate Hermes ONLY when the image was rebuilt; otherwise let compose
-            # recreate only if compose config changed. Avoids a needless WA session drop.
-            if [ "$REBUILT" = "true" ]; then
-              docker rm -f viko-hermes 2>/dev/null || true
-              docker compose --profile full up -d --force-recreate hermes
-            else
-              docker compose --profile full up -d hermes
+            if [ "${attempt}" -lt 3 ]; then
+              echo "Attempt ${attempt} failed, retrying in 30s..."
+              sleep 30
             fi
-            docker ps --filter name=viko --format 'table {{.Names}}\t{{.Status}}'
+          done
+          echo "All 3 deploy attempts failed"
+          exit 1
+
+      - name: Cleanup SSH key
+        if: always()
+        run: rm -f /tmp/vps_key
 
   # ── Job 4: Tag + GitHub release (conventional commits → semver) ──────────────
   release:
