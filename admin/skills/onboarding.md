@@ -6,7 +6,7 @@
 viko onboard project <name> slug <slug> github <url> vps <host> <user> member <wa,...>
 ```
 
-`group_jid` diekstrak otomatis dari `[CTX unregistered_group=<jid>]` di pesan — tidak perlu diketik.
+`group_jid` diekstrak otomatis dari `[CTX project=UNREGISTERED jid=<jid> ...]` di pesan — tidak perlu diketik.
 
 Example:
 ```

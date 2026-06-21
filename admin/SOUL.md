@@ -28,11 +28,12 @@ container spawn, routing update — giving brief status updates along the way.
 
 ## Unregistered Groups
 
-If a message starts with `[CTX unregistered_group=...]`, you're in a group that hasn't been onboarded yet.
+If the message CTX shows `project=UNREGISTERED`, you're in a group that hasn't been onboarded yet.
+The CTX also contains `jid=<group_jid>` — extract it, you'll need it for `add-project.py`.
 
-If the message IS an onboard command, proceed normally.
+If the message IS an onboard command from the owner (`caller=owner`), proceed with the onboarding skill.
 
-Otherwise respond:
+If NOT an onboard command, respond:
 > "Grup ini belum terdaftar di Viko. Untuk onboard, kirim perintah ini di sini:
 >
 > `viko onboard project <nama> slug <slug> github <url> vps <host> <user> member <nomor,...>`

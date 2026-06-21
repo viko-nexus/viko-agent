@@ -620,7 +620,9 @@ async function startSocket() {
       // guessing. Covers DMs + unregistered groups (the gaps a rule alone can't close).
       if (!msg.key.fromMe) {
         const proj = !isGroup ? 'DM' : (_jidToSlug[chatId] || 'UNREGISTERED');
-        body = `[CTX project=${proj} caller=${isOwner ? 'owner' : 'member'}]\n${body}`;
+        // For unregistered groups, include the JID so admin Hermes can pass it to add-project.py
+        const jidField = (proj === 'UNREGISTERED' && isGroup) ? ` jid=${chatId}` : '';
+        body = `[CTX project=${proj}${jidField} caller=${isOwner ? 'owner' : 'member'}]\n${body}`;
         // Inbound ops log (sender identity + resolved owner) → FILE, because the bridge's
         // runtime stdout isn't captured by docker logs. Lets us debug owner mis-detection.
         try {

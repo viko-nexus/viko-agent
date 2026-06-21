@@ -89,7 +89,10 @@ DESIRED = {
     # channel_prompts.default applies to all chats — safe to set here.
     # Per-group JID prompts are deployment-specific → configure directly in config.yaml.
     "whatsapp": {
-        "require_mention": True,
+        # Admin only sees DMs and unregistered groups (registered groups are
+        # routed to per-project Hermes before reaching admin). No need to gate
+        # on @mention — we want Viko to respond to any message in these contexts.
+        "require_mention": False,
         "unauthorized_dm_behavior": "ignore",
         "channel_prompts": {
             "default": "Balas dalam Bahasa Indonesia. Jika pengguna menulis dalam English, balas dalam English. Jawa/Sunda → Indonesia.",
