@@ -203,7 +203,7 @@ const messageQueue = [];        // kept for backward compat (admin Hermes, no po
 const messageQueues = {};       // per-port queues: { "8101": [...], "8102": [...] }
 const globalQueue = [];         // unrouted messages → Admin Hermes
 
-// Per-chat owner session for unregistered groups (15 min after owner mentions Viko).
+// Per-chat owner session for unregistered groups (15-min window after owner mentions Viko).
 // Allows "ok", "cancel", etc. follow-ups during onboarding without re-mentioning Viko.
 const _unregisteredOwnerSession = {}; // chatId → expiry timestamp (ms)
 
