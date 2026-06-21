@@ -152,23 +152,37 @@ services:
       - ./scripts/init-hermes-config.py:/opt/viko/scripts/init-hermes-config.py:ro
 ```
 
+**macOS one-time gotcha:** the base compose bind-mounts `admin/SOUL.md` into the
+`data/hermes` bind (a nested mount). On Docker Desktop / VirtioFS the inner target
+must pre-exist, or the container fails to start with a "mountpoint is outside of
+rootfs" error. Create it once:
+
+```bash
+touch data/hermes/SOUL.md
+```
+
 Then recreate the container once so the mounts take effect:
 
 ```bash
 docker compose --profile full up -d --force-recreate hermes
 ```
 
-**Iteration loop** (seconds, repeat freely):
+**Iteration loop** (repeat freely):
 
 ```bash
 nano patches/whatsapp-bridge.js          # 1. edit
-./scripts/dev-reload-bridge.sh           # 2. reload just the bridge (~2-5s)
-docker logs viko-hermes -f | grep -i bridge   # 3. observe
+./scripts/dev-reload-bridge.sh           # 2. reload (~5-30s, no rebuild)
+docker exec viko-hermes tail -f /opt/data/whatsapp/bridge.log   # 3. observe
 ```
 
-`dev-reload-bridge.sh` kills the `node bridge.js` child process; the gateway
-respawns it from the bind-mounted file. If a reload ever doesn't take, fall back to
-`docker restart viko-hermes` (~30-60s) — still far faster than a rebuild.
+`dev-reload-bridge.sh` runs `docker restart viko-hermes`; the gateway re-spawns the
+bridge from the bind-mounted file. (Killing the bridge process alone does NOT work —
+the gateway treats an unexpected bridge exit as a fatal error and will not respawn it.)
+
+> **Where bridge logs go:** the Node bridge writes its own stdout to
+> `/opt/data/whatsapp/bridge.log` (= `data/hermes/whatsapp/bridge.log` on the host),
+> NOT to `docker logs viko-hermes` — that stream only shows the Python gateway
+> adapter's `[Whatsapp]` lines. Tail the file to see `[bridge]` output.
 
 When the fix is verified, **commit the file** and let CI rebuild the image for prod.
 The override is local-only and never deployed, so production always runs the baked image.
