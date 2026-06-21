@@ -203,6 +203,10 @@ const messageQueue = [];        // kept for backward compat (admin Hermes, no po
 const messageQueues = {};       // per-port queues: { "8101": [...], "8102": [...] }
 const globalQueue = [];         // unrouted messages → Admin Hermes
 
+// Per-chat owner session for unregistered groups (15 min after owner mentions Viko).
+// Allows "ok", "cancel", etc. follow-ups during onboarding without re-mentioning Viko.
+const _unregisteredOwnerSession = {}; // chatId → expiry timestamp (ms)
+
 // ── Routing table (routing.json hot-reload) ──────────────────────────────
 const ROUTING_FILE = process.env.ROUTING_FILE ||
   path.join(process.env.HOME || '/opt/data', 'projects/viko-agent/data/bridge/routing.json');
@@ -685,12 +689,22 @@ async function startSocket() {
         _pq.push(event);
         if (_pq.length > MAX_QUEUE_SIZE) _pq.shift();
       } else {
-        // Unregistered group: only forward if Viko is mentioned by text/WA-mention, or sender is owner.
-        // Prevents admin Hermes from responding to all group chatter.
+        // Unregistered group: require explicit "viko" mention from anyone.
+        // Exception: owner follow-up messages during an active 15-min session (onboarding flow).
         // DMs always pass through (isGroup=false).
-        if (isGroup && !isOwner && !_mentionsViko) {
-          // silent drop — group chatter not directed at Viko
-        } else {
+        let _shouldForward = true;
+        if (isGroup && !_mentionsViko) {
+          const _sessionExpiry = _unregisteredOwnerSession[chatId];
+          const _inOwnerSession = isOwner && _sessionExpiry && Date.now() < _sessionExpiry;
+          if (!_inOwnerSession) {
+            _shouldForward = false; // silent drop — not directed at Viko
+          }
+        }
+        if (_shouldForward) {
+          // Refresh 15-min session whenever owner explicitly mentions Viko in unregistered group
+          if (isOwner && _mentionsViko && isGroup) {
+            _unregisteredOwnerSession[chatId] = Date.now() + 15 * 60 * 1000;
+          }
           globalQueue.push(event);
           if (globalQueue.length > MAX_QUEUE_SIZE) globalQueue.shift();
           // Backward compat: also push to legacy messageQueue (Admin Hermes uses this)
