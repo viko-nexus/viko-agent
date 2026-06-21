@@ -110,7 +110,7 @@ jobs:
       - name: Setup SSH key
         run: |
           install -m 600 /dev/null /tmp/vps_key
-          printf '%s' "${{ secrets.VPS_SSH_KEY }}" > /tmp/vps_key
+          echo "${{ secrets.VPS_SSH_KEY }}" > /tmp/vps_key
 
       - name: Deploy to VPS (with retry)
         env:
