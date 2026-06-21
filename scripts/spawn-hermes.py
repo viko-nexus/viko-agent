@@ -136,31 +136,31 @@ def _parse_ssh_host_block(config_text: str, *aliases: str) -> dict:
             capture = bool(set(s.split()[1:]) & set(aliases))
             continue
         if capture:
-            m = re.match(r"(?i)\s*(hostname|user)\s+(\S+)", line)
+            m = re.match(r"(?i)\s*(hostname|user|port)\s+(\S+)", line)
             if m:
                 out.setdefault(m.group(1).lower(), m.group(2))
     return out
 
 
-def _resolve_vps(slug: str, vps_host: str, vps_user: str) -> tuple:
-    """Resolve (vps_host, vps_user) from args, then per-project config, then the
-    legacy shared config. Returns ('', '') if this project has no VPS."""
+def _resolve_vps(slug: str, vps_host: str, vps_user: str, vps_port: str = "22") -> tuple:
+    """Resolve (vps_host, vps_user, vps_port) from args, then per-project config, then
+    the legacy shared config. Returns ('', '', '') if this project has no VPS."""
     if vps_host:
-        return vps_host, (vps_user or "viko-exec")
+        return vps_host, (vps_user or "viko-exec"), (vps_port or "22")
 
     proj_cfg = SSH_PROJECTS_DIR / slug / "config"
     if proj_cfg.exists():
         d = _parse_ssh_host_block(proj_cfg.read_text(), f"{slug}-vps", f"{slug}-prod")
         if d.get("hostname"):
-            return d["hostname"], d.get("user", "viko-exec")
+            return d["hostname"], d.get("user", "viko-exec"), d.get("port", "22")
 
     shared = SSH_DIR / "config"
     if shared.exists():
         d = _parse_ssh_host_block(shared.read_text(), f"{slug}-vps", f"{slug}-prod")
         if d.get("hostname"):
-            return d["hostname"], d.get("user", "viko-exec")
+            return d["hostname"], d.get("user", "viko-exec"), d.get("port", "22")
 
-    return "", ""
+    return "", "", ""
 
 
 def _ensure_project_key(slug: str) -> Path:
@@ -177,7 +177,7 @@ def _ensure_project_key(slug: str) -> Path:
     return priv
 
 
-def _build_project_ssh_dir(slug: str, vps_host: str, vps_user: str) -> Path:
+def _build_project_ssh_dir(slug: str, vps_host: str, vps_user: str, vps_port: str = "22") -> Path:
     """Build ~/.viko/ssh/projects/{slug}/ holding ONLY this project's key + a
     single-alias config + pre-seeded known_hosts. This whole dir is what gets
     mounted at /opt/data/.ssh — so the container has no other project's key and
@@ -193,10 +193,13 @@ def _build_project_ssh_dir(slug: str, vps_host: str, vps_user: str) -> Path:
 
     # Single-alias config — both {slug}-vps and {slug}-prod point to the one host.
     if vps_host:
+        # Only emit Port when non-default (22) to keep the config minimal.
+        port_line = f"    Port {vps_port}\n" if vps_port and vps_port != "22" else ""
         (proj_dir / "config").write_text(
             f"Host {slug}-vps {slug}-prod\n"
             f"    HostName {vps_host}\n"
             f"    User {vps_user}\n"
+            f"{port_line}"
             f"    IdentityFile /opt/data/.ssh/id_viko\n"
             f"    IdentitiesOnly yes\n"
             f"    StrictHostKeyChecking accept-new\n"
@@ -586,7 +589,9 @@ def spawn_container(slug: str, port: int, data_dir: Path, env: dict, proj_ssh_di
     return result.stdout.strip()
 
 
-def _prepare_isolation(slug: str, env: dict, vps_host: str, vps_user: str) -> Path:
+def _prepare_isolation(
+    slug: str, env: dict, vps_host: str, vps_user: str, vps_port: str = "22"
+) -> Path:
     """Resolve VPS, build the per-project SSH dir, and run preflight. Returns the
     per-project ssh dir to mount. Raises (fail-closed) if invariants don't hold."""
     projects_root = Path(env.get("VIKO_PROJECTS_ROOT", str(Path.home() / "Projects")))
@@ -595,12 +600,12 @@ def _prepare_isolation(slug: str, env: dict, vps_host: str, vps_user: str) -> Pa
     # block `git clone` into the code dir and context.md writes during onboarding.
     (projects_root / slug).mkdir(parents=True, exist_ok=True)
     (REPO_DIR / "projects" / slug).mkdir(parents=True, exist_ok=True)
-    rh, ru = _resolve_vps(slug, vps_host, vps_user)
+    rh, ru, rp = _resolve_vps(slug, vps_host, vps_user, vps_port)
     if rh:
-        print(f"  VPS: {ru}@{rh} (alias {slug}-vps)")
+        print(f"  VPS: {ru}@{rh}:{rp} (alias {slug}-vps)")
     else:
         print(f"  No VPS resolved for {slug} — ssh disabled for this container")
-    proj_ssh_dir = _build_project_ssh_dir(slug, rh, ru)
+    proj_ssh_dir = _build_project_ssh_dir(slug, rh, ru, rp)
     preflight(slug, projects_root, proj_ssh_dir, rh)
     return proj_ssh_dir
 
@@ -611,6 +616,7 @@ def main():
     parser.add_argument("group_jid")
     parser.add_argument("--vps-host", default="")
     parser.add_argument("--vps-user", default="")
+    parser.add_argument("--vps-port", default="22")
     args = parser.parse_args()
 
     slug = args.slug.lower().strip()
@@ -619,7 +625,9 @@ def main():
     env = _read_env()
     routing = load_routing()
 
-    proj_ssh_dir = _prepare_isolation(slug, env, args.vps_host.strip(), args.vps_user.strip())
+    proj_ssh_dir = _prepare_isolation(
+        slug, env, args.vps_host.strip(), args.vps_user.strip(), args.vps_port.strip()
+    )
 
     # Mint a fresh relay token every (re)spawn — rotatable by design.
     relay_token = secrets.token_urlsafe(32)

@@ -45,18 +45,15 @@ DMs from non-owners: brief, non-technical response only. No commands executed.
 
 ## Valid Owner Commands
 
-```
-viko onboard project <name> slug <slug> github <url> vps <host> <user> member <wa,...>
-```
+Onboarding is owner-only. Owner mulai dengan `onboard` (wizard percakapan) atau
+shortcut one-liner. Hanya `slug` + `github` yang wajib; server/SSH user opsional
+(tanpa server = project jalan lokal tanpa SSH); members opsional (default dibaca
+dari anggota grup).
+
+Prosedur lengkap (langkah wizard, validasi, eksekusi) ada di
+`admin/skills/onboarding.md`.
 
 Everything else from non-owners: ignore silently.
-
-Onboard command parameters:
-- `name` — non-empty display name
-- `slug` — lowercase alphanumeric + hyphens, e.g. `mankop`
-- `github` — full HTTPS URL starting with `https://github.com/`
-- `vps <host> <user>` — deploy VPS hostname/IP and SSH user
-- `member <wa,...>` — comma-separated WA numbers (no spaces)
 
 ---
 

@@ -153,6 +153,7 @@ def main():
                         help="Clone into {slug}/{subdir}/ instead of {slug}/ (multi-repo projects)")
     parser.add_argument("--vps-host", default="", help="VPS hostname or IP for this project")
     parser.add_argument("--vps-user", default="viko-exec", help="SSH username on the project VPS")
+    parser.add_argument("--vps-port", default="22", help="SSH port on the project VPS (default 22)")
     parser.add_argument("--members", default="", help="Comma-separated phone numbers for DM access")
     args = parser.parse_args(args_in)
 
@@ -162,6 +163,7 @@ def main():
     repo_subdir = args.repo_subdir.strip()
     vps_host = args.vps_host.strip()
     vps_user = args.vps_user.strip()
+    vps_port = args.vps_port.strip()
     member_phones = [p.strip().lstrip("+") for p in args.members.split(",") if p.strip()]
 
     # Resolve VIKO_PROJECTS_ROOT
@@ -242,6 +244,8 @@ def main():
         spawn_cmd += ["--vps-host", vps_host]
     if vps_user and vps_user != "viko-exec":
         spawn_cmd += ["--vps-user", vps_user]
+    if vps_port and vps_port != "22":
+        spawn_cmd += ["--vps-port", vps_port]
     result = subprocess.run(spawn_cmd, capture_output=True, text=True)
     print(result.stdout)
     if result.returncode != 0:
