@@ -79,8 +79,9 @@ services:
       - ./hooks:/opt/data/hooks:ro
       # MCP servers from repo — mounted read-only, registered in config.yaml
       - ./mcp-servers:/opt/viko/mcp-servers:ro
-      # Skills dir — fixed container path so external_dirs works on any host
+      # Skills: shared + admin-specific (onboarding skill)
       - ./skills:/opt/viko/skills:ro
+      - ./admin/skills:/opt/viko/admin/skills:ro
       # Bridge routing config — written by hermes-admin, hot-reloaded by bridge
       - ./data/bridge:/opt/data/bridge:rw
     ports:

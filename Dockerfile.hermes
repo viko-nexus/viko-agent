@@ -169,7 +169,10 @@ RUN mkdir -p /etc/cont-init.d /etc/s6-overlay/s6-rc.d && \
     chmod +x /etc/cont-init.d/03-viko-isolation-guard && \
     printf '#!/command/with-contenv sh\npython3 /opt/viko/scripts/init-hermes-config.py /opt/data/config.yaml\n' \
         > /etc/cont-init.d/04-viko-hermes-config && \
-    chmod +x /etc/cont-init.d/04-viko-hermes-config
+    chmod +x /etc/cont-init.d/04-viko-hermes-config && \
+    printf '#!/command/with-contenv sh\nREPO="${VIKO_PROJECTS_ROOT}/viko-agent"\n[ -f "$REPO/admin/SOUL.md" ] && cp "$REPO/admin/SOUL.md" /opt/data/SOUL.md || true\n' \
+        > /etc/cont-init.d/05-viko-soul && \
+    chmod +x /etc/cont-init.d/05-viko-soul
 
 # ── Exec shim (privilege-drop for docker exec) ────────────────────────────────
 RUN mkdir -p /opt/hermes/bin && \

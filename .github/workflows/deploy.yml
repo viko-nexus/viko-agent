@@ -139,18 +139,6 @@ jobs:
             git fetch origin main
             git reset --hard origin/main
 
-            # Sync admin identity (hot-reloaded per-message, no restart needed)
-            cp admin/SOUL.md data/hermes/SOUL.md
-
-            # Re-apply config overrides (idempotent). Restart hermes only if config changed
-            # so skills/external_dirs/display settings take effect without a full image rebuild.
-            INIT_OUT=$(python3 scripts/init-hermes-config.py)
-            echo "$INIT_OUT"
-            if echo "$INIT_OUT" | grep -q "updated"; then
-              echo "Config changed — restarting hermes..."
-              docker compose --profile full restart hermes
-            fi
-
             # Provision .env from GitHub secrets (portable keys upserted; host-specific
             # keys defaulted only if missing). GitHub secrets are the source of truth.
             bash scripts/provision-env.sh
