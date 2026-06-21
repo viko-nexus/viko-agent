@@ -685,11 +685,18 @@ async function startSocket() {
         _pq.push(event);
         if (_pq.length > MAX_QUEUE_SIZE) _pq.shift();
       } else {
-        globalQueue.push(event);
-        if (globalQueue.length > MAX_QUEUE_SIZE) globalQueue.shift();
-        // Backward compat: also push to legacy messageQueue (Admin Hermes uses this)
-        messageQueue.push(event);
-        if (messageQueue.length > MAX_QUEUE_SIZE) messageQueue.shift();
+        // Unregistered group: only forward if Viko is mentioned by text/WA-mention or sender is owner.
+        // Prevents admin Hermes from responding to all group chatter.
+        // DMs always pass through (isGroup=false).
+        if (isGroup && !isOwner && !_mentionsViko) {
+          // silent drop — group chatter not directed at Viko
+        } else {
+          globalQueue.push(event);
+          if (globalQueue.length > MAX_QUEUE_SIZE) globalQueue.shift();
+          // Backward compat: also push to legacy messageQueue (Admin Hermes uses this)
+          messageQueue.push(event);
+          if (messageQueue.length > MAX_QUEUE_SIZE) messageQueue.shift();
+        }
       }
     }
   });
