@@ -256,12 +256,22 @@ ruff check scripts/ patches/ mcp-servers/
 ruff format --check scripts/ patches/ mcp-servers/
 ```
 
-**JavaScript** (bridge/):
+**JavaScript** (the WhatsApp bridge — ESLint + Prettier + type-check via checkJs):
 ```bash
-cd bridge && node --check whatsapp-bridge.js allowlist.js
+npm install        # once, installs the dev tooling (gitignored node_modules)
+
+npm run lint       # ESLint: no-unused-vars, no-undef, prefer-const, …
+npm run format     # Prettier: apply formatting   (format:check to verify only)
+npm run typecheck  # tsc --noEmit with checkJs — type-checks the JS, no build step
+npm run check      # all three at once (what CI runs)
 ```
 
-Run lint before every commit. CI enforces this in the `quality` job.
+The bridge stays plain JavaScript (Node runs `bridge.js` directly — no compile step,
+so the fast-reload loop above is unaffected). Type-checking is via `checkJs`/JSDoc in
+`tsconfig.json`; external libs (Baileys, express) are declared in `types/externals.d.ts`,
+and `patches/allowlist.d.ts` types the Hermes-provided `allowlist.js` import.
+
+Run lint before every commit. CI enforces `npm run check` in the `quality` job.
 
 ---
 

@@ -35,11 +35,17 @@ jobs:
       - name: Lint Python (scripts, patches, mcp-servers)
         run: ruff check scripts/ patches/ mcp-servers/
 
-      - name: Check JavaScript (bridge)
-        run: |
-          for f in bridge/whatsapp-bridge.js bridge/allowlist.js; do
-            [ -f "$f" ] && node --check "$f" && echo "OK: $f"
-          done
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      - name: Install JS tooling
+        run: npm ci
+
+      - name: Lint + format + type-check (bridge JS)
+        run: npm run check
 
   # ── Job 2: Build image on runner + push to GHCR ──────────────────────────────
   build:
@@ -169,6 +175,12 @@ jobs:
       - name: Semantic Release
         id: release
         uses: cycjimmy/semantic-release-action@v4
+        with:
+          # @semantic-release/git is not bundled with the action — it commits the
+          # bumped package.json/package-lock.json back to main so the package
+          # version always tracks the release tag. (npm/github/analyzer are bundled.)
+          extra_plugins: |
+            @semantic-release/git@10
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 

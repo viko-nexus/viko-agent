@@ -18,12 +18,28 @@
  *   node bridge.js --port 3000 --session ~/.hermes/whatsapp/session
  */
 
-import { makeWASocket, useMultiFileAuthState, DisconnectReason, fetchLatestBaileysVersion, downloadMediaMessage } from '@whiskeysockets/baileys';
+import {
+  makeWASocket,
+  useMultiFileAuthState,
+  DisconnectReason,
+  fetchLatestBaileysVersion,
+  downloadMediaMessage,
+} from '@whiskeysockets/baileys';
 import express from 'express';
 import { Boom } from '@hapi/boom';
 import pino from 'pino';
 import path from 'path';
-import { mkdirSync, readFileSync, writeFileSync, existsSync, readdirSync, unlinkSync, watch, statSync, appendFileSync } from 'fs';
+import {
+  mkdirSync,
+  readFileSync,
+  writeFileSync,
+  existsSync,
+  readdirSync,
+  unlinkSync,
+  watch,
+  statSync,
+  appendFileSync,
+} from 'fs';
 import { randomBytes } from 'crypto';
 import { execSync } from 'child_process';
 import { tmpdir } from 'os';
@@ -44,7 +60,10 @@ const WHATSAPP_DEBUG =
   ['1', 'true', 'yes', 'on'].includes(process.env.WHATSAPP_DEBUG.toLowerCase());
 
 const PORT = parseInt(getArg('port', '3000'), 10);
-const SESSION_DIR = getArg('session', path.join(process.env.HOME || '~', '.hermes', 'whatsapp', 'session'));
+const SESSION_DIR = getArg(
+  'session',
+  path.join(process.env.HOME || '~', '.hermes', 'whatsapp', 'session'),
+);
 const IMAGE_CACHE_DIR = path.join(process.env.HOME || '~', '.hermes', 'image_cache');
 // Media is downloaded by the ADMIN bridge into these cache dirs and referenced by
 // ABSOLUTE PATH. The admin's own Hermes reads the files directly. Project (relay)
@@ -68,16 +87,22 @@ const ALLOWED_USERS = parseAllowedUsers(process.env.WHATSAPP_ALLOWED_USERS || ''
 // Groups listed here bypass the per-user allowlist — all members can trigger the bot.
 // Populated by add-project.py when a project is onboarded.
 const TRUSTED_GROUPS = new Set(
-    (process.env.WHATSAPP_TRUSTED_GROUPS || '').split(',').map(s => s.trim()).filter(Boolean)
+  (process.env.WHATSAPP_TRUSTED_GROUPS || '')
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean),
 );
 // Owner phone(s) — derived from WHATSAPP_HOME_CHANNEL. Only owner can authorize execution.
 const OWNER_PHONES = parseAllowedUsers(process.env.WHATSAPP_HOME_CHANNEL || '');
 // Allow group messages in self-chat mode (filtered by Python gateway via REQUIRE_MENTION)
-const SELF_CHAT_ALLOW_GROUPS = ['1','true','yes','on'].includes((process.env.WHATSAPP_SELF_CHAT_ALLOW_GROUPS || '').toLowerCase());
+const SELF_CHAT_ALLOW_GROUPS = ['1', 'true', 'yes', 'on'].includes(
+  (process.env.WHATSAPP_SELF_CHAT_ALLOW_GROUPS || '').toLowerCase(),
+);
 const DEFAULT_REPLY_PREFIX = '⚕ *Hermes Agent*\n────────────\n';
-const REPLY_PREFIX = process.env.WHATSAPP_REPLY_PREFIX === undefined
-  ? DEFAULT_REPLY_PREFIX
-  : process.env.WHATSAPP_REPLY_PREFIX.replace(/\\n/g, '\n');
+const REPLY_PREFIX =
+  process.env.WHATSAPP_REPLY_PREFIX === undefined
+    ? DEFAULT_REPLY_PREFIX
+    : process.env.WHATSAPP_REPLY_PREFIX.replace(/\\n/g, '\n');
 const MAX_MESSAGE_LENGTH = parseInt(process.env.WHATSAPP_MAX_MESSAGE_LENGTH || '4096', 10);
 const CHUNK_DELAY_MS = parseInt(process.env.WHATSAPP_CHUNK_DELAY_MS || '300', 10);
 // Per-call timeout for sock.sendMessage(). Baileys occasionally hangs forever
@@ -87,7 +112,7 @@ const CHUNK_DELAY_MS = parseInt(process.env.WHATSAPP_CHUNK_DELAY_MS || '300', 10
 const SEND_TIMEOUT_MS = parseInt(process.env.WHATSAPP_SEND_TIMEOUT_MS || '60000', 10);
 
 function sleep(ms) {
-  return new Promise(resolve => setTimeout(resolve, ms));
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 function sendWithTimeout(chatId, payload, timeoutMs = SEND_TIMEOUT_MS) {
@@ -98,8 +123,9 @@ function sendWithTimeout(chatId, payload, timeoutMs = SEND_TIMEOUT_MS) {
       timeoutMs,
     );
   });
-  return Promise.race([sock.sendMessage(chatId, payload), timeoutPromise])
-    .finally(() => clearTimeout(timer));
+  return Promise.race([sock.sendMessage(chatId, payload), timeoutPromise]).finally(() =>
+    clearTimeout(timer),
+  );
 }
 
 function formatOutgoingMessage(message) {
@@ -161,7 +187,8 @@ function getMessageContent(msg) {
   if (content.ephemeralMessage?.message) return content.ephemeralMessage.message;
   if (content.viewOnceMessage?.message) return content.viewOnceMessage.message;
   if (content.viewOnceMessageV2?.message) return content.viewOnceMessageV2.message;
-  if (content.documentWithCaptionMessage?.message) return content.documentWithCaptionMessage.message;
+  if (content.documentWithCaptionMessage?.message)
+    return content.documentWithCaptionMessage.message;
   if (content.templateMessage?.hydratedTemplate) return content.templateMessage.hydratedTemplate;
   if (content.buttonsMessage) return content.buttonsMessage;
   if (content.listMessage) return content.listMessage;
@@ -194,31 +221,34 @@ function buildLidMap() {
   } catch {}
   return map;
 }
-let lidToPhone = buildLidMap();
+let _lidToPhone = buildLidMap();
 
 const logger = pino({ level: 'warn' });
 
 // Message queue for polling
-const messageQueue = [];        // kept for backward compat (admin Hermes, no port filter)
-const messageQueues = {};       // per-port queues: { "8101": [...], "8102": [...] }
-const globalQueue = [];         // unrouted messages → Admin Hermes
+const messageQueue = []; // kept for backward compat (admin Hermes, no port filter)
+const messageQueues = {}; // per-port queues: { "8101": [...], "8102": [...] }
+const globalQueue = []; // unrouted messages → Admin Hermes
 
 // Per-chat owner session for unregistered groups (15-min window after owner mentions Viko).
 // Allows "ok", "cancel", etc. follow-ups during onboarding without re-mentioning Viko.
 const _unregisteredOwnerSession = {}; // chatId → expiry timestamp (ms)
 
 // ── Routing table (routing.json hot-reload) ──────────────────────────────
-const ROUTING_FILE = process.env.ROUTING_FILE ||
+const ROUTING_FILE =
+  process.env.ROUTING_FILE ||
   path.join(process.env.HOME || '/opt/data', 'projects/viko-agent/data/bridge/routing.json');
 
-let _routing = {};      // { "jid@g.us": 8101 }        — normalized, inbound routing
-let _tokenToJid = {};   // { "<relay_token>": "jid@g.us" } — outbound scope checks
-let _jidToSlug = {};    // { "jid@g.us": "slug" }       — group → project, for scope stamping
+let _routing = {}; // { "jid@g.us": 8101 }        — normalized, inbound routing
+let _tokenToJid = {}; // { "<relay_token>": "jid@g.us" } — outbound scope checks
+let _jidToSlug = {}; // { "jid@g.us": "slug" }       — group → project, for scope stamping
 
 function _loadRouting() {
   try {
     const raw = JSON.parse(readFileSync(ROUTING_FILE, 'utf8'));
-    const routing = {}, tokenToJid = {}, jidToSlug = {};
+    const routing = {},
+      tokenToJid = {},
+      jidToSlug = {};
     for (const [jid, val] of Object.entries(raw)) {
       if (val && typeof val === 'object') {
         // New schema: { jid: { port, slug, relay_token } }
@@ -233,8 +263,14 @@ function _loadRouting() {
     _routing = routing;
     _tokenToJid = tokenToJid;
     _jidToSlug = jidToSlug;
-    console.log(`[bridge] routing.json loaded: ${Object.keys(_routing).length} routes, ${Object.keys(_tokenToJid).length} relay tokens`);
-  } catch { _routing = {}; _tokenToJid = {}; _jidToSlug = {}; }
+    console.log(
+      `[bridge] routing.json loaded: ${Object.keys(_routing).length} routes, ${Object.keys(_tokenToJid).length} relay tokens`,
+    );
+  } catch {
+    _routing = {};
+    _tokenToJid = {};
+    _jidToSlug = {};
+  }
 }
 
 _loadRouting();
@@ -251,7 +287,9 @@ try {
 } catch {}
 
 // ── Relay mode (project Hermes instances) ────────────────────────────────
-const RELAY_MODE = ['1','true','yes'].includes((process.env.WHATSAPP_RELAY_MODE || '').toLowerCase());
+const RELAY_MODE = ['1', 'true', 'yes'].includes(
+  (process.env.WHATSAPP_RELAY_MODE || '').toLowerCase(),
+);
 const RELAY_TARGET = process.env.WHATSAPP_RELAY_TARGET || 'http://viko-hermes-admin:3000';
 const PORT_FILTER = process.env.WHATSAPP_PORT_FILTER || '';
 // Per-container relay credential. The admin bridge maps this token → the one JID
@@ -286,14 +324,17 @@ async function startSocket() {
     markOnlineOnConnect: false,
     // Required for Baileys 7.x: without this, incoming messages that need
     // E2EE session re-establishment are silently dropped (msg.message === null)
-    getMessage: async (key) => {
+    getMessage: async (_key) => {
       // We don't maintain a message store, so return a placeholder.
       // This is enough for Baileys to complete the retry handshake.
       return { conversation: '' };
     },
   });
 
-  sock.ev.on('creds.update', () => { saveCreds(); lidToPhone = buildLidMap(); });
+  sock.ev.on('creds.update', () => {
+    saveCreds();
+    _lidToPhone = buildLidMap();
+  });
 
   sock.ev.on('connection.update', (update) => {
     const { connection, lastDisconnect, qr } = update;
@@ -336,10 +377,11 @@ async function startSocket() {
     // than 'notify'. Accept both and filter agent echo-backs below.
     if (type !== 'notify' && type !== 'append') return;
 
-    const botIds = Array.from(new Set([
-      normalizeWhatsAppId(sock.user?.id),
-      normalizeWhatsAppId(sock.user?.lid),
-    ].filter(Boolean)));
+    const botIds = Array.from(
+      new Set(
+        [normalizeWhatsAppId(sock.user?.id), normalizeWhatsAppId(sock.user?.lid)].filter(Boolean),
+      ),
+    );
 
     for (const msg of messages) {
       if (!msg.message) continue;
@@ -347,12 +389,16 @@ async function startSocket() {
       const chatId = msg.key.remoteJid;
       if (WHATSAPP_DEBUG) {
         try {
-          console.log(JSON.stringify({
-            event: 'upsert', type,
-            fromMe: !!msg.key.fromMe, chatId,
-            senderId: msg.key.participant || chatId,
-            messageKeys: Object.keys(msg.message || {}),
-          }));
+          console.log(
+            JSON.stringify({
+              event: 'upsert',
+              type,
+              fromMe: !!msg.key.fromMe,
+              chatId,
+              senderId: msg.key.participant || chatId,
+              messageKeys: Object.keys(msg.message || {}),
+            }),
+          );
         } catch {}
       }
       const senderId = msg.key.participant || chatId;
@@ -394,12 +440,14 @@ async function startSocket() {
         if (WHATSAPP_MODE === 'self-chat') {
           if (!isGroup || !SELF_CHAT_ALLOW_GROUPS) {
             try {
-              console.log(JSON.stringify({
-                event: 'ignored',
-                reason: 'self_chat_mode_rejects_non_self',
-                chatId,
-                senderId,
-              }));
+              console.log(
+                JSON.stringify({
+                  event: 'ignored',
+                  reason: 'self_chat_mode_rejects_non_self',
+                  chatId,
+                  senderId,
+                }),
+              );
             } catch {}
             continue;
           }
@@ -409,12 +457,14 @@ async function startSocket() {
           const isTrustedGroup = isGroup && TRUSTED_GROUPS.has(chatId);
           if (!isTrustedGroup && !matchesAllowedUser(senderId, ALLOWED_USERS, SESSION_DIR)) {
             try {
-              console.log(JSON.stringify({
-                event: 'ignored',
-                reason: 'allowlist_mismatch',
-                chatId,
-                senderId,
-              }));
+              console.log(
+                JSON.stringify({
+                  event: 'ignored',
+                  reason: 'allowlist_mismatch',
+                  chatId,
+                  senderId,
+                }),
+              );
             } catch {}
             continue;
           }
@@ -423,7 +473,9 @@ async function startSocket() {
 
       const messageContent = getMessageContent(msg);
       const contextInfo = getContextInfo(messageContent);
-      const mentionedIds = Array.from(new Set((contextInfo?.mentionedJid || []).map(normalizeWhatsAppId).filter(Boolean)));
+      const mentionedIds = Array.from(
+        new Set((contextInfo?.mentionedJid || []).map(normalizeWhatsAppId).filter(Boolean)),
+      );
       const quotedMessageId = contextInfo?.stanzaId || null;
       const quotedParticipant = normalizeWhatsAppId(contextInfo?.participant || '') || null;
       const quotedRemoteJid = normalizeWhatsAppId(contextInfo?.remoteJid || '') || null;
@@ -444,12 +496,25 @@ async function startSocket() {
         hasMedia = true;
         mediaType = 'image';
         try {
-          const buf = await downloadMediaMessage(msg, 'buffer', {}, { logger, reuploadRequest: sock.updateMediaMessage });
+          const buf = await downloadMediaMessage(
+            msg,
+            'buffer',
+            {},
+            { logger, reuploadRequest: sock.updateMediaMessage },
+          );
           const mime = messageContent.imageMessage.mimetype || 'image/jpeg';
-          const extMap = { 'image/jpeg': '.jpg', 'image/png': '.png', 'image/webp': '.webp', 'image/gif': '.gif' };
+          const extMap = {
+            'image/jpeg': '.jpg',
+            'image/png': '.png',
+            'image/webp': '.webp',
+            'image/gif': '.gif',
+          };
           const ext = extMap[mime] || '.jpg';
           mkdirSync(IMAGE_CACHE_DIR, { recursive: true });
-          const filePath = path.join(IMAGE_CACHE_DIR, `img_${randomBytes(6).toString('hex')}${ext}`);
+          const filePath = path.join(
+            IMAGE_CACHE_DIR,
+            `img_${randomBytes(6).toString('hex')}${ext}`,
+          );
           writeFileSync(filePath, buf);
           mediaUrls.push(filePath);
         } catch (err) {
@@ -460,11 +525,19 @@ async function startSocket() {
         hasMedia = true;
         mediaType = 'video';
         try {
-          const buf = await downloadMediaMessage(msg, 'buffer', {}, { logger, reuploadRequest: sock.updateMediaMessage });
+          const buf = await downloadMediaMessage(
+            msg,
+            'buffer',
+            {},
+            { logger, reuploadRequest: sock.updateMediaMessage },
+          );
           const mime = messageContent.videoMessage.mimetype || 'video/mp4';
           const ext = mime.includes('mp4') ? '.mp4' : '.mkv';
           mkdirSync(DOCUMENT_CACHE_DIR, { recursive: true });
-          const filePath = path.join(DOCUMENT_CACHE_DIR, `vid_${randomBytes(6).toString('hex')}${ext}`);
+          const filePath = path.join(
+            DOCUMENT_CACHE_DIR,
+            `vid_${randomBytes(6).toString('hex')}${ext}`,
+          );
           writeFileSync(filePath, buf);
           mediaUrls.push(filePath);
         } catch (err) {
@@ -475,11 +548,19 @@ async function startSocket() {
         mediaType = messageContent.pttMessage ? 'ptt' : 'audio';
         try {
           const audioMsg = messageContent.pttMessage || messageContent.audioMessage;
-          const buf = await downloadMediaMessage(msg, 'buffer', {}, { logger, reuploadRequest: sock.updateMediaMessage });
+          const buf = await downloadMediaMessage(
+            msg,
+            'buffer',
+            {},
+            { logger, reuploadRequest: sock.updateMediaMessage },
+          );
           const mime = audioMsg.mimetype || 'audio/ogg';
           const ext = mime.includes('ogg') ? '.ogg' : mime.includes('mp4') ? '.m4a' : '.ogg';
           mkdirSync(AUDIO_CACHE_DIR, { recursive: true });
-          const filePath = path.join(AUDIO_CACHE_DIR, `aud_${randomBytes(6).toString('hex')}${ext}`);
+          const filePath = path.join(
+            AUDIO_CACHE_DIR,
+            `aud_${randomBytes(6).toString('hex')}${ext}`,
+          );
           writeFileSync(filePath, buf);
           mediaUrls.push(filePath);
         } catch (err) {
@@ -491,10 +572,18 @@ async function startSocket() {
         mediaType = 'document';
         const fileName = messageContent.documentMessage.fileName || 'document';
         try {
-          const buf = await downloadMediaMessage(msg, 'buffer', {}, { logger, reuploadRequest: sock.updateMediaMessage });
+          const buf = await downloadMediaMessage(
+            msg,
+            'buffer',
+            {},
+            { logger, reuploadRequest: sock.updateMediaMessage },
+          );
           mkdirSync(DOCUMENT_CACHE_DIR, { recursive: true });
           const safeFileName = path.basename(fileName).replace(/[^a-zA-Z0-9._-]/g, '_');
-          const filePath = path.join(DOCUMENT_CACHE_DIR, `doc_${randomBytes(6).toString('hex')}_${safeFileName}`);
+          const filePath = path.join(
+            DOCUMENT_CACHE_DIR,
+            `doc_${randomBytes(6).toString('hex')}_${safeFileName}`,
+          );
           writeFileSync(filePath, buf);
           mediaUrls.push(filePath);
         } catch (err) {
@@ -515,12 +604,25 @@ async function startSocket() {
             },
             message: contextInfo.quotedMessage,
           };
-          const buf = await downloadMediaMessage(fakeMsg, 'buffer', {}, { logger, reuploadRequest: sock.updateMediaMessage });
+          const buf = await downloadMediaMessage(
+            fakeMsg,
+            'buffer',
+            {},
+            { logger, reuploadRequest: sock.updateMediaMessage },
+          );
           const mime = quotedImgMsg.mimetype || 'image/jpeg';
-          const extMap = { 'image/jpeg': '.jpg', 'image/png': '.png', 'image/webp': '.webp', 'image/gif': '.gif' };
+          const extMap = {
+            'image/jpeg': '.jpg',
+            'image/png': '.png',
+            'image/webp': '.webp',
+            'image/gif': '.gif',
+          };
           const ext = extMap[mime] || '.jpg';
           mkdirSync(IMAGE_CACHE_DIR, { recursive: true });
-          const filePath = path.join(IMAGE_CACHE_DIR, `quoted_${randomBytes(6).toString('hex')}${ext}`);
+          const filePath = path.join(
+            IMAGE_CACHE_DIR,
+            `quoted_${randomBytes(6).toString('hex')}${ext}`,
+          );
           writeFileSync(filePath, buf);
           mediaUrls.push(filePath);
           if (!hasMedia) {
@@ -547,11 +649,19 @@ async function startSocket() {
             },
             message: contextInfo.quotedMessage,
           };
-          const buf = await downloadMediaMessage(fakeMsg, 'buffer', {}, { logger, reuploadRequest: sock.updateMediaMessage });
+          const buf = await downloadMediaMessage(
+            fakeMsg,
+            'buffer',
+            {},
+            { logger, reuploadRequest: sock.updateMediaMessage },
+          );
           const fileName = quotedDocMsg.fileName || 'document';
           mkdirSync(DOCUMENT_CACHE_DIR, { recursive: true });
           const safeFileName = path.basename(fileName).replace(/[^a-zA-Z0-9._-]/g, '_');
-          const filePath = path.join(DOCUMENT_CACHE_DIR, `quoted_${randomBytes(6).toString('hex')}_${safeFileName}`);
+          const filePath = path.join(
+            DOCUMENT_CACHE_DIR,
+            `quoted_${randomBytes(6).toString('hex')}_${safeFileName}`,
+          );
           writeFileSync(filePath, buf);
           mediaUrls.push(filePath);
           if (!hasMedia) {
@@ -567,15 +677,15 @@ async function startSocket() {
       if (hasQuotedMessage && contextInfo?.quotedMessage) {
         const qm = contextInfo.quotedMessage;
         const quotedText =
-            qm.conversation ||
-            qm.extendedTextMessage?.text ||
-            qm.imageMessage?.caption ||
-            qm.videoMessage?.caption ||
-            qm.documentMessage?.caption ||
-            (qm.audioMessage  ? '[pesan suara]'                                   : null) ||
-            (qm.imageMessage  ? '[gambar]'                                        : null) ||
-            (qm.videoMessage  ? '[video]'                                         : null) ||
-            (qm.documentMessage ? `[dokumen: ${qm.documentMessage.fileName || 'file'}]` : null);
+          qm.conversation ||
+          qm.extendedTextMessage?.text ||
+          qm.imageMessage?.caption ||
+          qm.videoMessage?.caption ||
+          qm.documentMessage?.caption ||
+          (qm.audioMessage ? '[pesan suara]' : null) ||
+          (qm.imageMessage ? '[gambar]' : null) ||
+          (qm.videoMessage ? '[video]' : null) ||
+          (qm.documentMessage ? `[dokumen: ${qm.documentMessage.fileName || 'file'}]` : null);
         if (quotedText) {
           const quotedFrom = quotedParticipant ? quotedParticipant.split('@')[0] : 'unknown';
           body = `[Reply to: "${quotedText}" — from ${quotedFrom}]\n${body}`;
@@ -588,9 +698,21 @@ async function startSocket() {
       }
 
       // Ignore Hermes' own reply messages in self-chat mode to avoid loops.
-      if (msg.key.fromMe && ((REPLY_PREFIX && body.startsWith(REPLY_PREFIX)) || recentlySentIds.has(msg.key.id))) {
+      if (
+        msg.key.fromMe &&
+        ((REPLY_PREFIX && body.startsWith(REPLY_PREFIX)) || recentlySentIds.has(msg.key.id))
+      ) {
         if (WHATSAPP_DEBUG) {
-          try { console.log(JSON.stringify({ event: 'ignored', reason: 'agent_echo', chatId, messageId: msg.key.id })); } catch {}
+          try {
+            console.log(
+              JSON.stringify({
+                event: 'ignored',
+                reason: 'agent_echo',
+                chatId,
+                messageId: msg.key.id,
+              }),
+            );
+          } catch {}
         }
         continue;
       }
@@ -599,7 +721,14 @@ async function startSocket() {
       if (!body && !hasMedia) {
         if (WHATSAPP_DEBUG) {
           try {
-            console.log(JSON.stringify({ event: 'ignored', reason: 'empty', chatId, messageKeys: Object.keys(msg.message || {}) }));
+            console.log(
+              JSON.stringify({
+                event: 'ignored',
+                reason: 'empty',
+                chatId,
+                messageKeys: Object.keys(msg.message || {}),
+              }),
+            );
           } catch (err) {
             console.error('Failed to log empty message event:', err);
           }
@@ -609,7 +738,10 @@ async function startSocket() {
 
       // Resolve owner ONCE (handles LID↔phone via session mapping files). Reused by the
       // read-only tag and the scope stamp, and logged so a mis-detected owner is visible.
-      const isOwner = !msg.key.fromMe && OWNER_PHONES.size > 0 && matchesAllowedUser(senderId, OWNER_PHONES, SESSION_DIR);
+      const isOwner =
+        !msg.key.fromMe &&
+        OWNER_PHONES.size > 0 &&
+        matchesAllowedUser(senderId, OWNER_PHONES, SESSION_DIR);
 
       // Tag group messages from non-owner members so the gateway enforces read-only mode.
       // Owner is identified by WHATSAPP_HOME_CHANNEL. Non-owners can ask questions and
@@ -623,41 +755,51 @@ async function startSocket() {
       // so the gateway scopes replies and gates the cross-project catalog WITHOUT
       // guessing. Covers DMs + unregistered groups (the gaps a rule alone can't close).
       if (!msg.key.fromMe) {
-        const proj = !isGroup ? 'DM' : (_jidToSlug[chatId] || 'UNREGISTERED');
+        const proj = !isGroup ? 'DM' : _jidToSlug[chatId] || 'UNREGISTERED';
         // For unregistered groups, include the JID so admin Hermes can pass it to add-project.py
-        const jidField = (proj === 'UNREGISTERED' && isGroup) ? ` jid=${chatId}` : '';
+        const jidField = proj === 'UNREGISTERED' && isGroup ? ` jid=${chatId}` : '';
         body = `[CTX project=${proj}${jidField} caller=${isOwner ? 'owner' : 'member'}]\n${body}`;
         // Inbound ops log (sender identity + resolved owner) → FILE, because the bridge's
         // runtime stdout isn't captured by docker logs. Lets us debug owner mis-detection.
         try {
-          appendFileSync('/opt/data/logs/bridge-inbound.log',
-            JSON.stringify({ t: new Date().toISOString(), chatId, senderId, owner: isOwner, group: isGroup, proj }) + '\n');
+          appendFileSync(
+            '/opt/data/logs/bridge-inbound.log',
+            JSON.stringify({
+              t: new Date().toISOString(),
+              chatId,
+              senderId,
+              owner: isOwner,
+              group: isGroup,
+              proj,
+            }) + '\n',
+          );
         } catch {}
       }
 
       // Append @mentioned phone numbers so Viko can act on them
       // e.g. "allow @X to DM" — Viko reads the phone from [Mentioned: ...]
       const humanMentions = mentionedIds
-          .filter(id => !botIds.includes(id))
-          .map(id => id.split('@')[0]);
+        .filter((id) => !botIds.includes(id))
+        .map((id) => id.split('@')[0]);
       if (humanMentions.length > 0) {
-          body = `${body}\n[Mentioned: ${humanMentions.join(', ')}]`;
+        body = `${body}\n[Mentioned: ${humanMentions.join(', ')}]`;
       }
 
       // Recent-media context: remember the last file per chat, and when a Viko-directed
       // message has no media of its own, staple on a file sent moments ago in a separate
       // message (e.g. forward a .docx, then "buatin pdf viko"). Gated to Viko mentions +
       // a short window and consumed once, so stale files aren't stapled onto chatter.
-      const _mentionsViko = /\bviko\b/i.test(body) || mentionedIds.some(id => botIds.includes(id));
+      const _mentionsViko =
+        /\bviko\b/i.test(body) || mentionedIds.some((id) => botIds.includes(id));
       if (mediaUrls.length > 0) {
         _recentMediaByChat[chatId] = { paths: mediaUrls.slice(), type: mediaType, ts: Date.now() };
       } else if (_mentionsViko) {
         const _recent = _recentMediaByChat[chatId];
-        if (_recent && (Date.now() - _recent.ts) < RECENT_MEDIA_WINDOW_MS) {
+        if (_recent && Date.now() - _recent.ts < RECENT_MEDIA_WINDOW_MS) {
           mediaUrls.push(..._recent.paths);
           hasMedia = true;
           mediaType = _recent.type;
-          const _names = _recent.paths.map(p => path.basename(p)).join(', ');
+          const _names = _recent.paths.map((p) => path.basename(p)).join(', ');
           body = `[Lampiran dari pesan sebelumnya di chat ini ikut disertakan: ${_names}]\n${body}`;
           delete _recentMediaByChat[chatId];
         }
@@ -668,7 +810,7 @@ async function startSocket() {
         chatId,
         senderId,
         senderName: msg.pushName || senderNumber,
-        chatName: isGroup ? (chatId.split('@')[0]) : (msg.pushName || senderNumber),
+        chatName: isGroup ? chatId.split('@')[0] : msg.pushName || senderNumber,
         isGroup,
         body,
         hasMedia,
@@ -734,8 +876,11 @@ if (RELAY_MODE) {
   async function _forwardRelay(res, resp) {
     const text = await resp.text();
     let body;
-    try { body = text ? JSON.parse(text) : {}; }
-    catch { body = { error: 'relay_upstream', status: resp.status, detail: text.slice(0, 500) }; }
+    try {
+      body = text ? JSON.parse(text) : {};
+    } catch {
+      body = { error: 'relay_upstream', status: resp.status, detail: text.slice(0, 500) };
+    }
     res.status(resp.status).json(body);
   }
 
@@ -752,13 +897,19 @@ if (RELAY_MODE) {
       for (const p of urls) {
         try {
           if (typeof p !== 'string' || !path.isAbsolute(p) || existsSync(p)) continue;
-          const r = await fetch(`${RELAY_TARGET}/media/${encodeURIComponent(path.basename(p))}`,
-            { headers: { Host: 'viko-hermes-admin' } });
-          if (!r.ok) { console.log(`[bridge] relay media prefetch ${r.status} for ${path.basename(p)}`); continue; }
+          const r = await fetch(`${RELAY_TARGET}/media/${encodeURIComponent(path.basename(p))}`, {
+            headers: { Host: 'viko-hermes-admin' },
+          });
+          if (!r.ok) {
+            console.log(`[bridge] relay media prefetch ${r.status} for ${path.basename(p)}`);
+            continue;
+          }
           mkdirSync(path.dirname(p), { recursive: true });
           writeFileSync(p, Buffer.from(await r.arrayBuffer()));
           console.log(`[bridge] relay prefetched media → ${p}`);
-        } catch (e) { console.log(`[bridge] relay media prefetch failed: ${e.message}`); }
+        } catch (e) {
+          console.log(`[bridge] relay media prefetch failed: ${e.message}`);
+        }
       }
     }
     return messages;
@@ -771,16 +922,21 @@ if (RELAY_MODE) {
         : `${RELAY_TARGET}/messages`;
       const resp = await fetch(url, { headers: { Host: 'viko-hermes-admin' } });
       res.json(await _prefetchRelayMedia(await resp.json()));
-    } catch (e) { res.json([]); }
+    } catch {
+      res.json([]);
+    }
   });
   app.post('/send', async (req, res) => {
     try {
       const resp = await fetch(`${RELAY_TARGET}/send`, {
-        method: 'POST', headers: _relayHeaders(),
-        body: JSON.stringify(req.body)
+        method: 'POST',
+        headers: _relayHeaders(),
+        body: JSON.stringify(req.body),
       });
       await _forwardRelay(res, resp);
-    } catch (e) { res.status(503).json({ error: 'relay_error', detail: e.message }); }
+    } catch (e) {
+      res.status(503).json({ error: 'relay_error', detail: e.message });
+    }
   });
   app.post('/send-media', async (req, res) => {
     try {
@@ -799,53 +955,76 @@ if (RELAY_MODE) {
         };
       }
       const resp = await fetch(`${RELAY_TARGET}/send-media`, {
-        method: 'POST', headers: _relayHeaders(),
-        body: JSON.stringify(payload)
+        method: 'POST',
+        headers: _relayHeaders(),
+        body: JSON.stringify(payload),
       });
       await _forwardRelay(res, resp);
-    } catch (e) { res.status(503).json({ error: 'relay_error', detail: e.message }); }
+    } catch (e) {
+      res.status(503).json({ error: 'relay_error', detail: e.message });
+    }
   });
   app.post('/edit', async (req, res) => {
     try {
       const resp = await fetch(`${RELAY_TARGET}/edit`, {
-        method: 'POST', headers: _relayHeaders(),
-        body: JSON.stringify(req.body)
+        method: 'POST',
+        headers: _relayHeaders(),
+        body: JSON.stringify(req.body),
       });
       await _forwardRelay(res, resp);
-    } catch (e) { res.status(503).json({ error: 'relay_error', detail: e.message }); }
+    } catch (e) {
+      res.status(503).json({ error: 'relay_error', detail: e.message });
+    }
   });
-  ['post'].forEach(m => app[m]('/typing', async (req, res) => {
-    try {
-      await fetch(`${RELAY_TARGET}/typing`, {
-        method: 'POST', headers: _relayHeaders(),
-        body: JSON.stringify(req.body)
-      });
-      res.json({ ok: true });
-    } catch { res.json({ ok: false }); }
-  }));
+  ['post'].forEach((m) =>
+    app[m]('/typing', async (req, res) => {
+      try {
+        await fetch(`${RELAY_TARGET}/typing`, {
+          method: 'POST',
+          headers: _relayHeaders(),
+          body: JSON.stringify(req.body),
+        });
+        res.json({ ok: true });
+      } catch {
+        res.json({ ok: false });
+      }
+    }),
+  );
   app.get('/health', async (req, res) => {
     try {
-      const resp = await fetch(`${RELAY_TARGET}/health`, { headers: { Host: 'viko-hermes-admin' } });
-      const data = await resp.json();
+      const resp = await fetch(`${RELAY_TARGET}/health`, {
+        headers: { Host: 'viko-hermes-admin' },
+      });
+      const data = /** @type {Record<string, unknown>} */ (await resp.json());
       res.json({ ...data, relay: true, port_filter: PORT_FILTER });
-    } catch { res.json({ status: 'relay_disconnected', relay: true }); }
+    } catch {
+      res.json({ status: 'relay_disconnected', relay: true });
+    }
   });
   app.get('/chat/:id', async (req, res) => {
     try {
-      const resp = await fetch(`${RELAY_TARGET}/chat/${req.params.id}`, { headers: { Host: 'viko-hermes-admin' } });
+      const resp = await fetch(`${RELAY_TARGET}/chat/${req.params.id}`, {
+        headers: { Host: 'viko-hermes-admin' },
+      });
       await _forwardRelay(res, resp);
-    } catch { res.status(503).json({ error: 'relay_error' }); }
+    } catch {
+      res.status(503).json({ error: 'relay_error' });
+    }
   });
   // Proxy media fetches to the admin (which downloaded the file). Lets this
   // isolated container's vision tool read images/docs it can't access on disk.
   app.get('/media/:file', async (req, res) => {
     try {
-      const resp = await fetch(`${RELAY_TARGET}/media/${encodeURIComponent(path.basename(req.params.file))}`,
-        { headers: { Host: 'viko-hermes-admin' } });
+      const resp = await fetch(
+        `${RELAY_TARGET}/media/${encodeURIComponent(path.basename(req.params.file))}`,
+        { headers: { Host: 'viko-hermes-admin' } },
+      );
       if (!resp.ok) return res.status(resp.status).json({ error: 'media_relay_error' });
       res.set('Content-Type', resp.headers.get('content-type') || 'application/octet-stream');
       res.send(Buffer.from(await resp.arrayBuffer()));
-    } catch { res.status(503).json({ error: 'relay_error' }); }
+    } catch {
+      res.status(503).json({ error: 'relay_error' });
+    }
   });
   const BRIDGE_BIND = process.env.BRIDGE_BIND || '127.0.0.1';
   app.listen(PORT, BRIDGE_BIND, () => {
@@ -853,412 +1032,459 @@ if (RELAY_MODE) {
   });
   // In relay mode, don't start WA socket at all — exit main flow here
 } else {
+  // Host-header validation — defends against DNS rebinding.
+  // The bridge binds loopback-only (127.0.0.1) but a victim browser on
+  // the same machine could be tricked into fetching from an attacker
+  // hostname that TTL-flips to 127.0.0.1. Reject any request whose Host
+  // header doesn't resolve to a loopback alias.
+  // See GHSA-ppp5-vxwm-4cf7.
+  const _ACCEPTED_HOST_VALUES = new Set([
+    'localhost',
+    '127.0.0.1',
+    '[::1]',
+    '::1',
+    'viko-hermes-admin', // Docker service name for inter-container access
+    ...(process.env.BRIDGE_EXTRA_HOSTS || '')
+      .split(',')
+      .map((s) => s.trim())
+      .filter(Boolean),
+  ]);
 
-// Host-header validation — defends against DNS rebinding.
-// The bridge binds loopback-only (127.0.0.1) but a victim browser on
-// the same machine could be tricked into fetching from an attacker
-// hostname that TTL-flips to 127.0.0.1. Reject any request whose Host
-// header doesn't resolve to a loopback alias.
-// See GHSA-ppp5-vxwm-4cf7.
-const _ACCEPTED_HOST_VALUES = new Set([
-  'localhost',
-  '127.0.0.1',
-  '[::1]',
-  '::1',
-  'viko-hermes-admin',   // Docker service name for inter-container access
-  ...(process.env.BRIDGE_EXTRA_HOSTS || '').split(',').map(s => s.trim()).filter(Boolean),
-]);
+  app.use((req, res, next) => {
+    const raw = (req.headers.host || '').trim();
+    if (!raw) {
+      return res.status(400).json({ error: 'Missing Host header' });
+    }
+    // Strip port suffix: "localhost:3000" → "localhost"
+    const hostOnly = (raw.includes(':') ? raw.substring(0, raw.lastIndexOf(':')) : raw)
+      .replace(/^\[|\]$/g, '')
+      .toLowerCase();
+    if (!_ACCEPTED_HOST_VALUES.has(hostOnly)) {
+      return res.status(400).json({
+        error: 'Invalid Host header. Bridge accepts loopback hosts only.',
+      });
+    }
+    next();
+  });
 
-app.use((req, res, next) => {
-  const raw = (req.headers.host || '').trim();
-  if (!raw) {
-    return res.status(400).json({ error: 'Missing Host header' });
+  // ── Outbound scope enforcement (surface #1) ─────────────────────────────────
+  // Authorization is server-side, never a container's self-claim. A project relay
+  // presents Authorization: Bearer <relay_token>; the admin maps token → the one
+  // JID it may send to. Loopback callers (the admin Hermes itself, which posts to
+  // 127.0.0.1) carry no token and get full access. A networked caller with no /
+  // unknown token is denied (default-deny) — this is the only thing that stops a
+  // project container from POSTing /send with another group's chatId.
+  function _bearer(req) {
+    const m = (req.headers['authorization'] || '').match(/^Bearer\s+(.+)$/i);
+    return m ? m[1].trim() : '';
   }
-  // Strip port suffix: "localhost:3000" → "localhost"
-  const hostOnly = (raw.includes(':')
-    ? raw.substring(0, raw.lastIndexOf(':'))
-    : raw
-  ).replace(/^\[|\]$/g, '').toLowerCase();
-  if (!_ACCEPTED_HOST_VALUES.has(hostOnly)) {
-    return res.status(400).json({
-      error: 'Invalid Host header. Bridge accepts loopback hosts only.',
-    });
+  function _isLoopback(req) {
+    const a = req.socket.remoteAddress || '';
+    return a === '127.0.0.1' || a === '::1' || a === '::ffff:127.0.0.1';
   }
-  next();
-});
+  function _scopeError(req, chatId) {
+    const token = _bearer(req);
+    if (token) {
+      const jid = _tokenToJid[token];
+      if (!jid) return { code: 403, error: 'unknown_relay_token' };
+      if (!chatId || chatId !== jid) {
+        return { code: 403, error: 'cross_project_send_blocked', allowed: jid };
+      }
+      return null; // scoped, destination matches
+    }
+    if (_isLoopback(req)) return null; // admin Hermes (loopback) — full access
+    return { code: 403, error: 'relay_token_required' };
+  }
 
-// ── Outbound scope enforcement (surface #1) ─────────────────────────────────
-// Authorization is server-side, never a container's self-claim. A project relay
-// presents Authorization: Bearer <relay_token>; the admin maps token → the one
-// JID it may send to. Loopback callers (the admin Hermes itself, which posts to
-// 127.0.0.1) carry no token and get full access. A networked caller with no /
-// unknown token is denied (default-deny) — this is the only thing that stops a
-// project container from POSTing /send with another group's chatId.
-function _bearer(req) {
-  const m = (req.headers['authorization'] || '').match(/^Bearer\s+(.+)$/i);
-  return m ? m[1].trim() : '';
-}
-function _isLoopback(req) {
-  const a = req.socket.remoteAddress || '';
-  return a === '127.0.0.1' || a === '::1' || a === '::ffff:127.0.0.1';
-}
-function _scopeError(req, chatId) {
-  const token = _bearer(req);
-  if (token) {
+  const _SCOPED_PATHS = new Set(['/send', '/send-media', '/edit', '/typing']);
+  app.use((req, res, next) => {
+    if (req.method === 'POST' && _SCOPED_PATHS.has(req.path)) {
+      const chatId = (req.body && req.body.chatId) || '';
+      const err = _scopeError(req, chatId);
+      if (err) {
+        console.warn(
+          `[bridge] scope-deny ${req.path} chatId=${chatId || '?'} (${err.error}${err.allowed ? ' allowed=' + err.allowed : ''})`,
+        );
+        return res.status(err.code).json(err);
+      }
+    }
+    next();
+  });
+
+  // Relay scope introspection — a project relay (or the boot guard) presents its
+  // token and gets back the exact port + JID(s) it is allowed to talk to. Used to
+  // self-verify isolation without spraying a canary message into a group.
+  app.get('/relay/scope', (req, res) => {
+    const token = _bearer(req);
     const jid = _tokenToJid[token];
-    if (!jid) return { code: 403, error: 'unknown_relay_token' };
-    if (!chatId || chatId !== jid) {
-      return { code: 403, error: 'cross_project_send_blocked', allowed: jid };
+    if (!jid) return res.status(403).json({ error: 'unknown_relay_token' });
+    res.json({ port: _routing[jid], allowed_jids: [jid] });
+  });
+
+  // Poll for new messages — ?port=8101 for project instances, no param for Admin Hermes
+  app.get('/messages', (req, res) => {
+    const port = req.query.port ? String(req.query.port) : null;
+    if (port) {
+      const q = messageQueues[port] || [];
+      const msgs = q.splice(0, q.length);
+      messageQueues[port] = [];
+      res.json(msgs);
+    } else {
+      // Admin Hermes: gets unrouted messages (globalQueue) + legacy messageQueue
+      const msgs = [
+        ...messageQueue.splice(0, messageQueue.length),
+        ...globalQueue.splice(0, globalQueue.length),
+      ];
+      // Deduplicate by messageId in case of overlap
+      const seen = new Set();
+      res.json(
+        msgs.filter((m) => {
+          if (seen.has(m.messageId)) return false;
+          seen.add(m.messageId);
+          return true;
+        }),
+      );
     }
-    return null;                       // scoped, destination matches
-  }
-  if (_isLoopback(req)) return null;    // admin Hermes (loopback) — full access
-  return { code: 403, error: 'relay_token_required' };
-}
+  });
 
-const _SCOPED_PATHS = new Set(['/send', '/send-media', '/edit', '/typing']);
-app.use((req, res, next) => {
-  if (req.method === 'POST' && _SCOPED_PATHS.has(req.path)) {
-    const chatId = (req.body && req.body.chatId) || '';
-    const err = _scopeError(req, chatId);
-    if (err) {
-      console.warn(`[bridge] scope-deny ${req.path} chatId=${chatId || '?'} (${err.error}${err.allowed ? ' allowed=' + err.allowed : ''})`);
-      return res.status(err.code).json(err);
+  // Send a message
+  app.post('/send', async (req, res) => {
+    if (!sock || connectionState !== 'connected') {
+      return res.status(503).json({ error: 'Not connected to WhatsApp' });
     }
+
+    const { chatId, message } = req.body;
+    if (!chatId || !message) {
+      return res.status(400).json({ error: 'chatId and message are required' });
+    }
+
+    try {
+      const chunks = splitLongMessage(formatOutgoingMessage(message));
+      const messageIds = [];
+      for (let i = 0; i < chunks.length; i += 1) {
+        const sent = await sendWithTimeout(chatId, { text: chunks[i] });
+        trackSentMessageId(sent);
+        if (sent?.key?.id) messageIds.push(sent.key.id);
+        if (chunks.length > 1 && i < chunks.length - 1) {
+          await sleep(CHUNK_DELAY_MS);
+        }
+      }
+
+      res.json({
+        success: true,
+        messageId: messageIds[messageIds.length - 1],
+        messageIds,
+      });
+    } catch (err) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // Edit a previously sent message
+  app.post('/edit', async (req, res) => {
+    if (!sock || connectionState !== 'connected') {
+      return res.status(503).json({ error: 'Not connected to WhatsApp' });
+    }
+
+    const { chatId, messageId, message } = req.body;
+    if (!chatId || !messageId || !message) {
+      return res.status(400).json({ error: 'chatId, messageId, and message are required' });
+    }
+
+    try {
+      const key = { id: messageId, fromMe: true, remoteJid: chatId };
+      const chunks = splitLongMessage(formatOutgoingMessage(message));
+      const messageIds = [];
+
+      await sendWithTimeout(chatId, { text: chunks[0], edit: key });
+      if (chunks.length > 1) {
+        for (let i = 1; i < chunks.length; i += 1) {
+          const sent = await sendWithTimeout(chatId, { text: chunks[i] });
+          trackSentMessageId(sent);
+          if (sent?.key?.id) messageIds.push(sent.key.id);
+          if (i < chunks.length - 1) {
+            await sleep(CHUNK_DELAY_MS);
+          }
+        }
+      }
+
+      res.json({ success: true, messageIds });
+    } catch (err) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // MIME type map and media type inference for /send-media
+  const MIME_MAP = {
+    jpg: 'image/jpeg',
+    jpeg: 'image/jpeg',
+    png: 'image/png',
+    webp: 'image/webp',
+    gif: 'image/gif',
+    mp4: 'video/mp4',
+    mov: 'video/quicktime',
+    avi: 'video/x-msvideo',
+    mkv: 'video/x-matroska',
+    '3gp': 'video/3gpp',
+    pdf: 'application/pdf',
+    doc: 'application/msword',
+    docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  };
+
+  function inferMediaType(ext) {
+    if (['jpg', 'jpeg', 'png', 'webp', 'gif'].includes(ext)) return 'image';
+    if (['mp4', 'mov', 'avi', 'mkv', '3gp'].includes(ext)) return 'video';
+    if (['ogg', 'opus', 'mp3', 'wav', 'm4a'].includes(ext)) return 'audio';
+    return 'document';
   }
-  next();
-});
 
-// Relay scope introspection — a project relay (or the boot guard) presents its
-// token and gets back the exact port + JID(s) it is allowed to talk to. Used to
-// self-verify isolation without spraying a canary message into a group.
-app.get('/relay/scope', (req, res) => {
-  const token = _bearer(req);
-  const jid = _tokenToJid[token];
-  if (!jid) return res.status(403).json({ error: 'unknown_relay_token' });
-  res.json({ port: _routing[jid], allowed_jids: [jid] });
-});
+  // Send media (image, video, document) natively
+  app.post('/send-media', async (req, res) => {
+    if (!sock || connectionState !== 'connected') {
+      return res.status(503).json({ error: 'Not connected to WhatsApp' });
+    }
 
-// Poll for new messages — ?port=8101 for project instances, no param for Admin Hermes
-app.get('/messages', (req, res) => {
-  const port = req.query.port ? String(req.query.port) : null;
-  if (port) {
-    const q = messageQueues[port] || [];
-    const msgs = q.splice(0, q.length);
-    messageQueues[port] = [];
-    res.json(msgs);
-  } else {
-    // Admin Hermes: gets unrouted messages (globalQueue) + legacy messageQueue
-    const msgs = [...messageQueue.splice(0, messageQueue.length), ...globalQueue.splice(0, globalQueue.length)];
-    // Deduplicate by messageId in case of overlap
-    const seen = new Set();
-    res.json(msgs.filter(m => { if (seen.has(m.messageId)) return false; seen.add(m.messageId); return true; }));
-  }
-});
+    let { chatId, filePath, mediaType, caption, fileName, fileBase64 } = req.body;
+    // Relay containers ship file BYTES (their isolated filesystem is unreadable here),
+    // so materialize them to a temp file and let the path-based logic below run as-is.
+    if (fileBase64 && !filePath) {
+      try {
+        mkdirSync(DOCUMENT_CACHE_DIR, { recursive: true });
+        const safe = path.basename(fileName || 'file').replace(/[^a-zA-Z0-9._-]/g, '_');
+        filePath = path.join(
+          DOCUMENT_CACHE_DIR,
+          `outbox_${randomBytes(6).toString('hex')}_${safe}`,
+        );
+        writeFileSync(filePath, Buffer.from(fileBase64, 'base64'));
+      } catch (e) {
+        return res.status(500).json({ error: 'outbox write failed: ' + e.message });
+      }
+    }
+    if (!chatId || !filePath) {
+      return res.status(400).json({ error: 'chatId and filePath are required' });
+    }
 
-// Send a message
-app.post('/send', async (req, res) => {
-  if (!sock || connectionState !== 'connected') {
-    return res.status(503).json({ error: 'Not connected to WhatsApp' });
-  }
+    // Block GIF files — use send_browser_video MCP tool instead
+    if (filePath.toLowerCase().endsWith('.gif')) {
+      return res.status(415).json({
+        error:
+          'GIF not supported for video delivery. Use the send_browser_video MCP tool to send browser recordings as MP4.',
+        hint: 'send_browser_video(chat_id, caption) — finds latest webm recording and converts to mp4 automatically.',
+      });
+    }
 
-  const { chatId, message, replyTo } = req.body;
-  if (!chatId || !message) {
-    return res.status(400).json({ error: 'chatId and message are required' });
-  }
+    try {
+      if (!existsSync(filePath)) {
+        return res.status(404).json({ error: `File not found: ${filePath}` });
+      }
 
-  try {
-    const chunks = splitLongMessage(formatOutgoingMessage(message));
-    const messageIds = [];
-    for (let i = 0; i < chunks.length; i += 1) {
-      const sent = await sendWithTimeout(chatId, { text: chunks[i] });
+      // Drop a duplicate send (gateway MEDIA: delivery + viko-media-autosend hook can both
+      // fire for the same file) within the window, keyed by chat + name + size.
+      const _dkey = `${chatId}|${path.basename(fileName || filePath)}|${statSync(filePath).size}`;
+      const _nowSend = Date.now();
+      if (_recentSends[_dkey] && _nowSend - _recentSends[_dkey] < SEND_DEDUP_MS) {
+        return res.json({ success: true, deduped: true });
+      }
+      _recentSends[_dkey] = _nowSend;
+
+      const buffer = readFileSync(filePath);
+      const ext = filePath.toLowerCase().split('.').pop();
+      const type = mediaType || inferMediaType(ext);
+      let msgPayload;
+
+      switch (type) {
+        case 'image':
+          msgPayload = {
+            image: buffer,
+            caption: caption || undefined,
+            mimetype: MIME_MAP[ext] || 'image/jpeg',
+          };
+          break;
+        case 'video':
+          msgPayload = {
+            video: buffer,
+            caption: caption || undefined,
+            mimetype: MIME_MAP[ext] || 'video/mp4',
+          };
+          break;
+        case 'audio': {
+          // WhatsApp only renders a native voice bubble (ptt) when the file is ogg/opus.
+          // If the caller passes mp3, wav, m4a etc. (e.g. from Edge TTS / NeuTTS),
+          // silently convert to ogg/opus via ffmpeg so ptt is always honoured.
+          let audioBuffer = buffer;
+          let audioExt = ext;
+          const needsConversion = !['ogg', 'opus'].includes(ext);
+          let tmpPath = null;
+          if (needsConversion) {
+            tmpPath = path.join(tmpdir(), `hermes_voice_${randomBytes(6).toString('hex')}.ogg`);
+            try {
+              execSync(
+                `ffmpeg -y -i ${JSON.stringify(filePath)} -ar 48000 -ac 1 -c:a libopus ${JSON.stringify(tmpPath)}`,
+                { timeout: 30000, stdio: 'pipe' },
+              );
+              audioBuffer = readFileSync(tmpPath);
+              audioExt = 'ogg';
+            } catch (convErr) {
+              // ffmpeg not available or conversion failed — fall back to original format
+              console.warn(
+                '[bridge] ffmpeg conversion failed, sending as file attachment:',
+                convErr.message,
+              );
+            } finally {
+              try {
+                if (tmpPath && existsSync(tmpPath)) unlinkSync(tmpPath);
+              } catch (_) {}
+            }
+          }
+          const audioMime =
+            audioExt === 'ogg' || audioExt === 'opus' ? 'audio/ogg; codecs=opus' : 'audio/mpeg';
+          msgPayload = {
+            audio: audioBuffer,
+            mimetype: audioMime,
+            ptt: audioExt === 'ogg' || audioExt === 'opus',
+          };
+          break;
+        }
+        case 'document':
+        default:
+          msgPayload = {
+            document: buffer,
+            fileName: fileName || path.basename(filePath),
+            caption: caption || undefined,
+            mimetype: MIME_MAP[ext] || 'application/octet-stream',
+          };
+          break;
+      }
+
+      const sent = await sendWithTimeout(chatId, msgPayload);
+
       trackSentMessageId(sent);
-      if (sent?.key?.id) messageIds.push(sent.key.id);
-      if (chunks.length > 1 && i < chunks.length - 1) {
-        await sleep(CHUNK_DELAY_MS);
+
+      res.json({ success: true, messageId: sent?.key?.id });
+    } catch (err) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // Typing indicator
+  app.post('/typing', async (req, res) => {
+    if (!sock || connectionState !== 'connected') {
+      return res.status(503).json({ error: 'Not connected' });
+    }
+
+    const { chatId } = req.body;
+    if (!chatId) return res.status(400).json({ error: 'chatId required' });
+
+    try {
+      await sock.sendPresenceUpdate('composing', chatId);
+      res.json({ success: true });
+    } catch {
+      res.json({ success: false });
+    }
+  });
+
+  // Chat info
+  app.get('/chat/:id', async (req, res) => {
+    const chatId = req.params.id;
+    const isGroup = chatId.endsWith('@g.us');
+
+    if (isGroup && sock) {
+      try {
+        const metadata = await sock.groupMetadata(chatId);
+        return res.json({
+          name: metadata.subject,
+          isGroup: true,
+          participants: metadata.participants.map((p) => p.id),
+        });
+      } catch {
+        // Fall through to default
       }
     }
 
     res.json({
-      success: true,
-      messageId: messageIds[messageIds.length - 1],
-      messageIds,
+      name: chatId.replace(/@.*/, ''),
+      isGroup,
+      participants: [],
     });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
+  });
 
-// Edit a previously sent message
-app.post('/edit', async (req, res) => {
-  if (!sock || connectionState !== 'connected') {
-    return res.status(503).json({ error: 'Not connected to WhatsApp' });
-  }
-
-  const { chatId, messageId, message } = req.body;
-  if (!chatId || !messageId || !message) {
-    return res.status(400).json({ error: 'chatId, messageId, and message are required' });
-  }
-
-  try {
-    const key = { id: messageId, fromMe: true, remoteJid: chatId };
-    const chunks = splitLongMessage(formatOutgoingMessage(message));
-    const messageIds = [];
-
-    await sendWithTimeout(chatId, { text: chunks[0], edit: key });
-    if (chunks.length > 1) {
-      for (let i = 1; i < chunks.length; i += 1) {
-        const sent = await sendWithTimeout(chatId, { text: chunks[i] });
-        trackSentMessageId(sent);
-        if (sent?.key?.id) messageIds.push(sent.key.id);
-        if (i < chunks.length - 1) {
-          await sleep(CHUNK_DELAY_MS);
-        }
-      }
+  // Serve a downloaded media file by basename. The relay /messages handler pulls
+  // from here to mirror the admin's media into each project container's cache at the
+  // same absolute path. basename() guards against path traversal.
+  app.get('/media/:file', (req, res) => {
+    const file = path.basename(req.params.file);
+    for (const dir of [IMAGE_CACHE_DIR, DOCUMENT_CACHE_DIR, AUDIO_CACHE_DIR]) {
+      const fp = path.join(dir, file);
+      if (existsSync(fp)) return res.sendFile(fp);
     }
+    res.status(404).json({ error: 'media_not_found' });
+  });
 
-    res.json({ success: true, messageIds });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
-// MIME type map and media type inference for /send-media
-const MIME_MAP = {
-  jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png',
-  webp: 'image/webp', gif: 'image/gif',
-  mp4: 'video/mp4', mov: 'video/quicktime', avi: 'video/x-msvideo',
-  mkv: 'video/x-matroska', '3gp': 'video/3gpp',
-  pdf: 'application/pdf',
-  doc: 'application/msword',
-  docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-  xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-};
-
-function inferMediaType(ext) {
-  if (['jpg', 'jpeg', 'png', 'webp', 'gif'].includes(ext)) return 'image';
-  if (['mp4', 'mov', 'avi', 'mkv', '3gp'].includes(ext)) return 'video';
-  if (['ogg', 'opus', 'mp3', 'wav', 'm4a'].includes(ext)) return 'audio';
-  return 'document';
-}
-
-// Send media (image, video, document) natively
-app.post('/send-media', async (req, res) => {
-  if (!sock || connectionState !== 'connected') {
-    return res.status(503).json({ error: 'Not connected to WhatsApp' });
-  }
-
-  let { chatId, filePath, mediaType, caption, fileName, fileBase64 } = req.body;
-  // Relay containers ship file BYTES (their isolated filesystem is unreadable here),
-  // so materialize them to a temp file and let the path-based logic below run as-is.
-  if (fileBase64 && !filePath) {
+  // Group participants with names
+  app.get('/group/:jid/participants', async (req, res) => {
+    const jid = req.params.jid;
+    if (!jid.endsWith('@g.us') || !sock) {
+      return res.status(400).json({ error: 'Not a group JID or socket not ready' });
+    }
     try {
-      mkdirSync(DOCUMENT_CACHE_DIR, { recursive: true });
-      const safe = path.basename(fileName || 'file').replace(/[^a-zA-Z0-9._-]/g, '_');
-      filePath = path.join(DOCUMENT_CACHE_DIR, `outbox_${randomBytes(6).toString('hex')}_${safe}`);
-      writeFileSync(filePath, Buffer.from(fileBase64, 'base64'));
-    } catch (e) {
-      return res.status(500).json({ error: 'outbox write failed: ' + e.message });
-    }
-  }
-  if (!chatId || !filePath) {
-    return res.status(400).json({ error: 'chatId and filePath are required' });
-  }
-
-  // Block GIF files — use send_browser_video MCP tool instead
-  if (filePath.toLowerCase().endsWith('.gif')) {
-    return res.status(415).json({
-      error: 'GIF not supported for video delivery. Use the send_browser_video MCP tool to send browser recordings as MP4.',
-      hint: 'send_browser_video(chat_id, caption) — finds latest webm recording and converts to mp4 automatically.'
-    });
-  }
-
-  try {
-    if (!existsSync(filePath)) {
-      return res.status(404).json({ error: `File not found: ${filePath}` });
-    }
-
-    // Drop a duplicate send (gateway MEDIA: delivery + viko-media-autosend hook can both
-    // fire for the same file) within the window, keyed by chat + name + size.
-    const _dkey = `${chatId}|${path.basename(fileName || filePath)}|${statSync(filePath).size}`;
-    const _nowSend = Date.now();
-    if (_recentSends[_dkey] && (_nowSend - _recentSends[_dkey]) < SEND_DEDUP_MS) {
-      return res.json({ success: true, deduped: true });
-    }
-    _recentSends[_dkey] = _nowSend;
-
-    const buffer = readFileSync(filePath);
-    const ext = filePath.toLowerCase().split('.').pop();
-    const type = mediaType || inferMediaType(ext);
-    let msgPayload;
-
-    switch (type) {
-      case 'image':
-        msgPayload = { image: buffer, caption: caption || undefined, mimetype: MIME_MAP[ext] || 'image/jpeg' };
-        break;
-      case 'video':
-        msgPayload = { video: buffer, caption: caption || undefined, mimetype: MIME_MAP[ext] || 'video/mp4' };
-        break;
-      case 'audio': {
-        // WhatsApp only renders a native voice bubble (ptt) when the file is ogg/opus.
-        // If the caller passes mp3, wav, m4a etc. (e.g. from Edge TTS / NeuTTS),
-        // silently convert to ogg/opus via ffmpeg so ptt is always honoured.
-        let audioBuffer = buffer;
-        let audioExt = ext;
-        const needsConversion = !['ogg', 'opus'].includes(ext);
-        let tmpPath = null;
-        if (needsConversion) {
-          tmpPath = path.join(tmpdir(), `hermes_voice_${randomBytes(6).toString('hex')}.ogg`);
-          try {
-            execSync(
-              `ffmpeg -y -i ${JSON.stringify(filePath)} -ar 48000 -ac 1 -c:a libopus ${JSON.stringify(tmpPath)}`,
-              { timeout: 30000, stdio: 'pipe' }
-            );
-            audioBuffer = readFileSync(tmpPath);
-            audioExt = 'ogg';
-          } catch (convErr) {
-            // ffmpeg not available or conversion failed — fall back to original format
-            console.warn('[bridge] ffmpeg conversion failed, sending as file attachment:', convErr.message);
-          } finally {
-            try { if (tmpPath && existsSync(tmpPath)) unlinkSync(tmpPath); } catch (_) {}
-          }
-        }
-        const audioMime = (audioExt === 'ogg' || audioExt === 'opus') ? 'audio/ogg; codecs=opus' : 'audio/mpeg';
-        msgPayload = { audio: audioBuffer, mimetype: audioMime, ptt: audioExt === 'ogg' || audioExt === 'opus' };
-        break;
-      }
-      case 'document':
-      default:
-        msgPayload = {
-          document: buffer,
-          fileName: fileName || path.basename(filePath),
-          caption: caption || undefined,
-          mimetype: MIME_MAP[ext] || 'application/octet-stream',
-        };
-        break;
-    }
-
-    const sent = await sendWithTimeout(chatId, msgPayload);
-
-    trackSentMessageId(sent);
-
-    res.json({ success: true, messageId: sent?.key?.id });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
-// Typing indicator
-app.post('/typing', async (req, res) => {
-  if (!sock || connectionState !== 'connected') {
-    return res.status(503).json({ error: 'Not connected' });
-  }
-
-  const { chatId } = req.body;
-  if (!chatId) return res.status(400).json({ error: 'chatId required' });
-
-  try {
-    await sock.sendPresenceUpdate('composing', chatId);
-    res.json({ success: true });
-  } catch (err) {
-    res.json({ success: false });
-  }
-});
-
-// Chat info
-app.get('/chat/:id', async (req, res) => {
-  const chatId = req.params.id;
-  const isGroup = chatId.endsWith('@g.us');
-
-  if (isGroup && sock) {
-    try {
-      const metadata = await sock.groupMetadata(chatId);
-      return res.json({
-        name: metadata.subject,
-        isGroup: true,
-        participants: metadata.participants.map(p => p.id),
+      const meta = await sock.groupMetadata(jid);
+      const participants = meta.participants.map((p) => {
+        // No in-memory contact store is maintained (the `store` global never existed —
+        // this path used to throw and fail the whole endpoint). Names are unavailable
+        // here; return jid/phone/admin and let callers resolve names elsewhere.
+        const contact = {};
+        const phone = p.id.split('@')[0];
+        const name = contact.notify || contact.name || contact.verifiedName || null;
+        return { jid: p.id, phone, name, admin: p.admin || null };
       });
-    } catch {
-      // Fall through to default
+      res.json({ group: meta.subject, jid, participants });
+    } catch (e) {
+      res.status(500).json({ error: e.message });
     }
-  }
-
-  res.json({
-    name: chatId.replace(/@.*/, ''),
-    isGroup,
-    participants: [],
   });
-});
 
-// Serve a downloaded media file by basename. The relay /messages handler pulls
-// from here to mirror the admin's media into each project container's cache at the
-// same absolute path. basename() guards against path traversal.
-app.get('/media/:file', (req, res) => {
-  const file = path.basename(req.params.file);
-  for (const dir of [IMAGE_CACHE_DIR, DOCUMENT_CACHE_DIR, AUDIO_CACHE_DIR]) {
-    const fp = path.join(dir, file);
-    if (existsSync(fp)) return res.sendFile(fp);
-  }
-  res.status(404).json({ error: 'media_not_found' });
-});
-
-// Group participants with names
-app.get('/group/:jid/participants', async (req, res) => {
-  const jid = req.params.jid;
-  if (!jid.endsWith('@g.us') || !sock) {
-    return res.status(400).json({ error: 'Not a group JID or socket not ready' });
-  }
-  try {
-    const meta = await sock.groupMetadata(jid);
-    const participants = meta.participants.map(p => {
-      const contact = store.contacts[p.id] || {};
-      const phone = p.id.split('@')[0];
-      const name = contact.notify || contact.name || contact.verifiedName || null;
-      return { jid: p.id, phone, name, admin: p.admin || null };
+  // Health check
+  app.get('/health', (req, res) => {
+    res.json({
+      status: connectionState,
+      queueLength: messageQueue.length + globalQueue.length,
+      perPortQueues: Object.fromEntries(
+        Object.entries(messageQueues).map(([p, q]) => [p, q.length]),
+      ),
+      routingEntries: Object.keys(_routing).length,
+      uptime: process.uptime(),
     });
-    res.json({ group: meta.subject, jid, participants });
-  } catch (e) {
-    res.status(500).json({ error: e.message });
-  }
-});
-
-// Health check
-app.get('/health', (req, res) => {
-  res.json({
-    status: connectionState,
-    queueLength: messageQueue.length + globalQueue.length,
-    perPortQueues: Object.fromEntries(Object.entries(messageQueues).map(([p, q]) => [p, q.length])),
-    routingEntries: Object.keys(_routing).length,
-    uptime: process.uptime(),
   });
-});
 
-// Start
-if (PAIR_ONLY) {
-  // Pair-only mode: just connect, show QR, save creds, exit. No HTTP server.
-  console.log('📱 WhatsApp pairing mode');
-  console.log(`📁 Session: ${SESSION_DIR}`);
-  console.log();
-  startSocket();
-} else {
-  const BRIDGE_BIND = process.env.BRIDGE_BIND || '127.0.0.1';
-  app.listen(PORT, BRIDGE_BIND, () => {
-    console.log(`🌉 WhatsApp bridge listening on port ${PORT} (mode: ${WHATSAPP_MODE})`);
-    console.log(`📁 Session stored in: ${SESSION_DIR}`);
-    if (ALLOWED_USERS.size > 0) {
-      console.log(`🔒 Allowed users: ${Array.from(ALLOWED_USERS).join(', ')}`);
-    } else if (WHATSAPP_MODE === 'self-chat') {
-      console.log(`🔒 Self-chat mode — only your own messages to yourself are processed.`);
-    } else {
-      console.log(`🔒 No WHATSAPP_ALLOWED_USERS set — incoming messages are rejected.`);
-      console.log(`   Set WHATSAPP_ALLOWED_USERS=<phone> to authorize specific users,`);
-      console.log(`   or WHATSAPP_ALLOWED_USERS=* for an explicit open bot.`);
-    }
-    if (TRUSTED_GROUPS.size > 0) {
-      console.log(`🔓 Trusted groups (all members allowed): ${Array.from(TRUSTED_GROUPS).join(', ')}`);
-    }
+  // Start
+  if (PAIR_ONLY) {
+    // Pair-only mode: just connect, show QR, save creds, exit. No HTTP server.
+    console.log('📱 WhatsApp pairing mode');
+    console.log(`📁 Session: ${SESSION_DIR}`);
     console.log();
     startSocket();
-  });
-}
+  } else {
+    const BRIDGE_BIND = process.env.BRIDGE_BIND || '127.0.0.1';
+    app.listen(PORT, BRIDGE_BIND, () => {
+      console.log(`🌉 WhatsApp bridge listening on port ${PORT} (mode: ${WHATSAPP_MODE})`);
+      console.log(`📁 Session stored in: ${SESSION_DIR}`);
+      if (ALLOWED_USERS.size > 0) {
+        console.log(`🔒 Allowed users: ${Array.from(ALLOWED_USERS).join(', ')}`);
+      } else if (WHATSAPP_MODE === 'self-chat') {
+        console.log(`🔒 Self-chat mode — only your own messages to yourself are processed.`);
+      } else {
+        console.log(`🔒 No WHATSAPP_ALLOWED_USERS set — incoming messages are rejected.`);
+        console.log(`   Set WHATSAPP_ALLOWED_USERS=<phone> to authorize specific users,`);
+        console.log(`   or WHATSAPP_ALLOWED_USERS=* for an explicit open bot.`);
+      }
+      if (TRUSTED_GROUPS.size > 0) {
+        console.log(
+          `🔓 Trusted groups (all members allowed): ${Array.from(TRUSTED_GROUPS).join(', ')}`,
+        );
+      }
+      console.log();
+      startSocket();
+    });
+  }
 } // end !RELAY_MODE
