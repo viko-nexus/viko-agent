@@ -2,36 +2,39 @@
 
 ## Command Format
 
+**Single repo:**
 ```
-viko onboard project <name> slug <slug> github <url> vps <host> <user> member <wa,...>
-```
-
-`group_jid` diekstrak otomatis dari `[CTX project=UNREGISTERED jid=<jid> ...]` di pesan — tidak perlu diketik.
-
-Example:
-```
-viko onboard project Siprodev slug siprodev github https://github.com/doa-sas/siprodev-web vps 168.231.119.52 deploy member 6287820001010
+viko onboard slug <slug> github <url> vps <host> user <ssh-user>
 ```
 
-Optional params:
-- `member` — nomor HP untuk akses DM (comma-separated, boleh lebih dari satu)
+**Multi repo:**
+```
+viko onboard slug <slug> github web <url-web> github app <url-app> vps <host> user <ssh-user>
+```
+
+**With explicit members (optional):**
+```
+viko onboard slug <slug> github <url> vps <host> user <ssh-user> members 628xxx,628yyy
+```
+
+`group_jid` diekstrak otomatis dari `[CTX project=UNREGISTERED jid=<jid> ...]` — tidak perlu diketik.
+
+Multi-repo dideteksi dari jumlah pasangan `github <subdir> <url>` — jika ada dua atau lebih, itu multi-repo.
 
 ---
 
 ## Parse Validation
 
-Before doing anything, validate:
-- `name` — non-empty
-- `slug` — lowercase alphanumeric + hyphens, no spaces, min 2 chars
-- `github` — valid GitHub URL (https:// or git@github.com:)
-- `vps host` — valid hostname or IP
+- `slug` — lowercase alphanumeric + hyphens, min 2 chars
+- `github` — valid GitHub URL (`https://` atau `git@github.com:`)
+- `vps host` — valid hostname atau IP
 - `vps user` — non-empty
-- `member` — digits only, 10–15 digits each
-- `group_jid` — must not already exist in `data/bridge/routing.json`
+- `members` (jika diisi) — digits only, 10–15 digits each
+- `group_jid` — tidak boleh sudah ada di `data/bridge/routing.json`
 
 On validation failure:
 > "Format kurang tepat. Coba lagi:
-> `viko onboard project <nama> slug <slug> github <url> vps <host> <user> member <nomor>`"
+> `viko onboard slug <slug> github <url> vps <host> user <ssh-user>`"
 
 On duplicate group:
 > "Project ini sudah terdaftar."
@@ -40,13 +43,34 @@ On duplicate group:
 
 ## Execution Flow
 
+### Step 0 — Resolve members
+
+**Jika `members` TIDAK diisi dalam command:**
+
+Call bridge:
+```bash
+curl http://localhost:3000/group/{group_jid}/participants
+```
+
+Response berisi `participants` array dengan `{ phone, name, admin }`.
+Filter out Viko's own number (bot). Tampilkan ke owner:
+
+> "Anggota grup yang akan didaftarkan:
+> - SDR Brother (628xxx)
+> - Budi (628yyy)
+>
+> Lanjut semua? Atau ada yang dikecualikan?"
+
+Tunggu konfirmasi → gunakan nomor tersebut sebagai `members_csv`.
+
+**Jika `members` DIISI** → skip langsung ke Step 1.
+
 ### Step 1 — Acknowledge
-> "Oke, lagi setup **{name}** dulu ya..."
+> "Oke, lagi setup **{slug}** dulu ya..."
 
 ### Step 2 — Run onboarding script
 
-Run `add-project.py` — handles clone, SSH key generation, container spawn, GitHub deploy key, routing update.
-
+**Single repo:**
 ```bash
 python3 scripts/add-project.py \
     {slug} \
@@ -57,27 +81,44 @@ python3 scripts/add-project.py \
     --members {members_csv}
 ```
 
-If the above fails with a Docker error (no socket inside container), fall back to SSH:
+**Multi repo** — panggil dua kali; panggilan kedua re-spawn container dengan kedua repo:
 ```bash
-ssh viko-vps "cd ~/viko-agent && python3 scripts/add-project.py {slug} {group_jid} {github_url} --vps-host {vps_host} --vps-user {vps_user} --members {members_csv}"
+python3 scripts/add-project.py {slug} {group_jid} {github_web} --vps-host {vps_host} --vps-user {vps_user} --members {members_csv} --repo-subdir web
+python3 scripts/add-project.py {slug} {group_jid} {github_app} --vps-host {vps_host} --vps-user {vps_user} --members {members_csv} --repo-subdir app
+```
+
+Fallback jika Docker tidak tersedia di dalam container:
+```bash
+ssh viko-vps "cd ~/viko-agent && python3 scripts/add-project.py ..."
 ```
 
 Common errors:
-- Clone failure → check `GITHUB_TOKEN` in `.env`, ensure repo is accessible
-- Port conflict → script auto-allocates next port, should not happen
-- Docker not found → use SSH fallback above
+- Clone failure → cek `GITHUB_TOKEN` di `.env`
+- Docker not found → pakai SSH fallback
 
-### Step 3 — Show VPS deploy key
+### Step 3 — Show deploy key
 
 ```bash
 cat ~/.viko/ssh/{slug}-deploy.pub
 ```
 
-> "Tambahin pubkey ini ke `~/.ssh/authorized_keys` di server {vps_host} (user: {vps_user}) biar Viko bisa SSH ke sana untuk deploy:
+**Single repo:**
+> "Tambahin pubkey ini ke `~/.ssh/authorized_keys` di {vps_host} (user: {vps_user}):
 >
 > `{pubkey}`
 >
 > Kalau sudah, balas **ok**."
+
+**Multi repo** — satu key untuk semua repo. Tambahin ke `authorized_keys` di VPS, DAN ke GitHub Deploy Keys di setiap repo (Settings → Deploy Keys → Add):
+> "Pubkey untuk semua repo {slug}:
+>
+> `{pubkey}`
+>
+> Tambahin ke:
+> 1. `~/.ssh/authorized_keys` di {vps_host}
+> 2. GitHub Deploy Keys di {github_web} dan {github_app}
+>
+> Kalau sudah semua, balas **ok**."
 
 ### Step 4 — Wait for owner confirmation ("ok" / "ready" / "done")
 
@@ -88,24 +129,10 @@ docker exec viko-hermes-{slug} ssh {slug}-prod "echo viko-ok"
 ```
 
 - Success → proceed
-- Failure → "Belum bisa konek. Cek lagi `authorized_keys`-nya ya, lalu balas **ok** untuk retry."
+- Failure → "Belum bisa konek. Cek lagi ya, lalu balas **ok** untuk retry."
 
-### Step 6 — Handoff (last message from Admin in this group)
-> "Selesai! Viko untuk **{name}** udah siap, gue serahin sekarang."
-
----
-
-## Step Status Format
-
-```
-Cloning repo...
-Repo berhasil di-clone ✓
-Generating config...
-Config siap ✓
-Nyalain container...
-Container jalan ✓
-Routing updated ✓
-```
+### Step 6 — Handoff
+> "Selesai! Viko untuk **{slug}** udah siap."
 
 ---
 
@@ -113,24 +140,22 @@ Routing updated ✓
 
 | Error | Action |
 |-------|--------|
-| Clone failed (auth) | Check GITHUB_TOKEN in .env |
-| Clone failed (private repo) | Add deploy key to GitHub → Settings → Deploy Keys, retry |
-| Docker not found | Use `ssh viko-vps` fallback |
-| Container health check timeout | `docker logs viko-hermes-{slug}` |
-| SSH verify failed | Show pubkey again, wait for owner to fix, retry |
-| `WHATSAPP_OWNER_NUMBER` not set | Refuse all onboarding with explicit warning |
+| Clone failed (auth) | Cek GITHUB_TOKEN di .env |
+| Clone failed (private repo) | Add deploy key ke GitHub → Settings → Deploy Keys, retry |
+| Docker not found | Pakai `ssh viko-vps` fallback |
+| Container timeout | `docker logs viko-hermes-{slug}` |
+| SSH verify failed | Tampilkan pubkey lagi, tunggu owner fix, retry |
 | Slug already exists | "Slug '{slug}' sudah ada. Pilih slug lain." |
 
 ---
 
 ## Cancel Flow
 
-Owner sends "cancel" at any point:
-
-1. Stop current step
-2. `docker rm -f viko-hermes-{slug}` (if container was spawned)
-3. Remove from `data/bridge/routing.json` (if added)
-4. Remove `data/hermes-{slug}/` (if created)
+Owner kirim "cancel" kapan saja:
+1. Stop step yang sedang berjalan
+2. `docker rm -f viko-hermes-{slug}` (jika sudah spawn)
+3. Hapus dari `data/bridge/routing.json` (jika sudah ditambah)
+4. Hapus `data/hermes-{slug}/` (jika sudah dibuat)
 
 > "Onboarding dibatalkan."
 
@@ -138,5 +163,5 @@ Owner sends "cancel" at any point:
 
 ## Offboard Command
 
-If owner sends `viko offboard` to Admin: respond:
+Jika owner kirim `viko offboard` ke Admin:
 > "Offboard dilakukan di dalam grup project-nya ya, bukan di sini."

@@ -33,13 +33,19 @@ The CTX also contains `jid=<group_jid>` — extract it, you'll need it for `add-
 
 If the message IS an onboard command from the owner (`caller=owner`), proceed with the onboarding skill.
 
-If NOT an onboard command, respond:
-> "Grup ini belum terdaftar di Viko. Untuk onboard, kirim perintah ini di sini:
+Otherwise respond with EXACTLY this — no improvising, no extra questions:
+
+> Grup ini belum terdaftar di Viko.
 >
-> `viko onboard project <nama> slug <slug> github <url> vps <host> <user> member <nomor,...>`
+> Owner, kirim salah satu format ini di sini:
 >
-> Contoh:
-> `viko onboard project Siprodev slug siprodev github https://github.com/org/repo vps 1.2.3.4 deploy member 6281234567890`"
+> *Single repo:*
+> `viko onboard slug <slug> github <url> vps <host> user <ssh-user>`
+>
+> *Multi repo:*
+> `viko onboard slug <slug> github web <url-web> github app <url-app> vps <host> user <ssh-user>`
+>
+> `members` opsional — kalau tidak diisi, Viko baca dari anggota grup ini otomatis.
 
 ## What You Cannot Do
 
