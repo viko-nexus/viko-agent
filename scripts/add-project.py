@@ -215,20 +215,39 @@ def main():
     context_dir = REPO_DIR / "projects" / slug
     context_dir.mkdir(parents=True, exist_ok=True)
 
+    # Inject the wizard-gathered data so Viko-Project starts informed. Idempotent
+    # and accumulating: multi-repo onboarding calls add-project.py once per repo,
+    # so each call appends its repo line; Info/Server/Members are written once.
     context_file = context_dir / "context.md"
-    if not context_file.exists():
+    repo_label = repo_subdir or slug
+    repo_line = f"- `{repo_label}`: {github_url}"
+    server_line = f"{vps_user}@{vps_host}:{vps_port}" if vps_host else "Lokal (tanpa SSH)"
+    members_line = ", ".join(member_phones) if member_phones else "(dibaca otomatis dari grup)"
+
+    if context_file.exists():
+        text = context_file.read_text()
+        if repo_line not in text:
+            if "## Repos\n" in text:
+                text = text.replace("## Repos\n", f"## Repos\n{repo_line}\n", 1)
+            else:
+                text += f"\n## Repos\n{repo_line}\n"
+            context_file.write_text(text)
+            print(f"      context.md: added repo {repo_label}")
+        else:
+            print("      context.md: repo already listed")
+    else:
         context_file.write_text(
             f"# Project: {slug}\n\n"
             f"## Info\n"
-            f"- GitHub: {github_url}\n"
             f"- WA Group JID: {group_jid}\n"
+            f"- Server: {server_line}\n"
+            f"- Members: {members_line}\n"
             f"- Onboarded: {datetime.now().strftime('%Y-%m-%d')}\n\n"
-            f"## Stack\n(Scan codebase dulu — jalankan: `cat {project_dir}/package.json` atau `ls {project_dir}/`)\n\n"
+            f"## Repos\n{repo_line}\n\n"
+            f"## Stack\n(Scan codebase dulu — jalankan: `ls {project_dir}/` atau `cat {project_dir}/package.json`)\n\n"
             f"## Notes\n(Tambahkan konteks project di sini)\n"
         )
         print("      Created context.md")
-    else:
-        print("      context.md exists, skipping.")
 
     steps_file = context_dir / "steps.md"
     if not steps_file.exists():
