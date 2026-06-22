@@ -89,6 +89,11 @@ function _tagMediaOwner(filePath, ownerJid) {
 // message — e.g. forward a .docx, then "buatin pdf viko") can still reach the file.
 const _recentMediaByChat = {};
 const RECENT_MEDIA_WINDOW_MS = 5 * 60 * 1000;
+
+// Most recent inbound message per chat, kept so the bot's reply can quote it
+// (WhatsApp reply-threading). Bounded implicitly by the number of active chats.
+const _lastInboundByChat = {};
+const QUOTE_WINDOW_MS = 15 * 60 * 1000;
 // Outbound de-dup: the gateway's MEDIA: delivery and the viko-media-autosend hook can
 // both try to send the same file — drop a duplicate (same chat+name+size) within a window.
 const _recentSends = {};
@@ -135,7 +140,13 @@ function sendWithTimeout(chatId, payload, timeoutMs = SEND_TIMEOUT_MS) {
       timeoutMs,
     );
   });
-  return Promise.race([sock.sendMessage(chatId, payload), timeoutPromise]).finally(() =>
+  // Reply-threaded: quote the chat's most recent inbound message so the bot's reply
+  // renders as a WhatsApp reply to whoever it's answering — clearer in a busy group.
+  // Best-effort: only when a recent inbound is on record; never blocks a send.
+  const _opts = {};
+  const _q = _lastInboundByChat[chatId];
+  if (_q && _q.msg && Date.now() - _q.ts < QUOTE_WINDOW_MS) _opts.quoted = _q.msg;
+  return Promise.race([sock.sendMessage(chatId, payload, _opts), timeoutPromise]).finally(() =>
     clearTimeout(timer),
   );
 }
@@ -437,6 +448,10 @@ async function startSocket() {
       // Learn display names for the participants endpoint (members who've spoken).
       if (!msg.key.fromMe && msg.pushName && senderNumber) {
         _nameByNumber[senderNumber] = msg.pushName;
+      }
+      // Remember the latest inbound per chat so the bot's reply can quote it (reply-threading).
+      if (!msg.key.fromMe && msg.message) {
+        _lastInboundByChat[chatId] = { msg, ts: Date.now() };
       }
 
       // Handle fromMe messages based on mode
@@ -782,6 +797,33 @@ async function startSocket() {
         !msg.key.fromMe &&
         OWNER_PHONES.size > 0 &&
         matchesAllowedUser(senderId, OWNER_PHONES, SESSION_DIR);
+
+      // SECURITY (B1): only the owner may clear a dangerous-command approval gate (or
+      // /yolo past all gates). Group sessions are per-user, so a non-owner's bare
+      // "approve"/"yes"/"ok"/"confirm"/"/yolo" would clear THEIR OWN pending gate —
+      // letting any member execute a command they themselves triggered. The gateway only
+      // consumes these literal tokens, so dropping them from non-owners (deterministically,
+      // by the bridge's unspoofable owner check) keeps a member-triggered dangerous command
+      // gated forever (never approved -> never runs). Owner approvals pass untouched;
+      // "deny"/"no" are allowed (denying is safe). Only a lone token is matched, so normal
+      // chatter ("ok siap, viko ...") is unaffected.
+      if (isGroup && !isOwner && !msg.key.fromMe) {
+        const _tok = body.trim().toLowerCase().replace(/^\//, '');
+        if (['approve', 'yes', 'ok', 'confirm', 'yolo'].includes(_tok)) {
+          try {
+            console.log(
+              JSON.stringify({
+                event: 'ignored',
+                reason: 'non_owner_approval_blocked',
+                chatId,
+                senderId,
+                token: _tok,
+              }),
+            );
+          } catch {}
+          continue;
+        }
+      }
 
       // Tag group messages from non-owner members so the gateway enforces read-only mode.
       // Owner is identified by WHATSAPP_HOME_CHANNEL. Non-owners can ask questions and
