@@ -813,6 +813,11 @@ def spawn_container(slug: str, port: int, data_dir: Path, env: dict, proj_ssh_di
         "-e", f"NINEROUTER_KEY={ninerouter_key}",
         "-e", f"VIKO_PROJECTS_ROOT={projects_root}",
         "-e", f"VIKO_PROJECT_SLUG={slug}",
+        # Pin the agent terminal to THIS project's own dir. Hermes resolves the terminal
+        # cwd via os.getenv("TERMINAL_CWD", os.getcwd()); without it the gateway process
+        # cwd (the projects ROOT) leaks in, so `pwd`/"current dir" shows the parent
+        # (viko-nexus) and the agent mis-reports the project name. Scope it to the slug dir.
+        "-e", f"TERMINAL_CWD={projects_root}/{slug}",
         # Boot isolation guard: warn (log+tombstone) | enforce (inert on fail) | off.
         # Default enforce — fail-closed; override to warn/off in .env if ever needed.
         "-e", f"VIKO_ISOLATION_GUARD={env.get('VIKO_ISOLATION_GUARD', 'enforce')}",
