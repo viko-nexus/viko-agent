@@ -180,6 +180,15 @@ jobs:
             docker rm -f viko-hermes 2>/dev/null || true
           fi
           docker compose --profile full up -d --force-recreate hermes
+          # Re-attach admin + 9router to every per-project network. Recreating the admin
+          # via docker-compose only rejoins compose-defined nets (viko_default), dropping
+          # the dynamically-added viko-{slug}-net attachments — which silently breaks
+          # every project's relay (project can't resolve viko-hermes) until reconnected.
+          # Idempotent: "endpoint already exists" is fine.
+          for net in $(docker network ls --filter name=viko- --format '{{.Name}}' | grep -E '^viko-.+-net$'); do
+            docker network connect "$net" viko-hermes  2>/dev/null || true
+            docker network connect "$net" viko-9router 2>/dev/null || true
+          done
           docker ps --filter name=viko --format 'table {{.Names}}\t{{.Status}}'
 
   # ── Job 4: Tag + GitHub release (conventional commits → semver) ──────────────
