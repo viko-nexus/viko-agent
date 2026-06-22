@@ -38,8 +38,6 @@ from datetime import datetime
 
 REPO_DIR = Path(__file__).parent.parent.resolve()
 SSH_DIR = Path.home() / ".viko" / "ssh"
-CORE_SSH_CMD = ("ssh -i /opt/data/.ssh/id_viko -o IdentitiesOnly=yes "
-                "-o StrictHostKeyChecking=accept-new -o UserKnownHostsFile=/opt/data/.ssh/known_hosts")
 HERMES_ADMIN_ENV_PATH = REPO_DIR / "data" / "hermes-admin" / ".env"
 HERMES_ENV_PATH = REPO_DIR / "data" / "hermes" / ".env"
 
@@ -101,20 +99,36 @@ def _gh_org_repo(github_url: str) -> str:
 
 
 def _enable_push(project_dir: Path, github_url: str, slug: str, token: str) -> None:
-    """Give the project's container a SCOPED git-push capability: register its
-    {slug}-deploy key as a write deploy key on THIS repo only, point the repo at
-    an SSH remote, and pin git to the per-project key via core.sshCommand. The key
-    is a deploy key on this repo alone, so the container cannot push anywhere else."""
+    """Give the project's container a SCOPED git-push capability with a deploy key
+    PER REPO. A GitHub deploy key belongs to exactly one repo, so a multi-repo project
+    can't share one key — the 2nd+ repo's registration 422s. We mint a distinct
+    {slug}-{org-repo}-deploy key per repo, register it on its repo alone (write), drop
+    it into the project's mounted ssh dir, and pin THAT repo's clone to THAT key via
+    core.sshCommand. Each key is a deploy key on one repo only — still scoped, no broad
+    user key. (Separate from id_viko, which is the VPS/server SSH key.)"""
     org_repo = _gh_org_repo(github_url)
-    pub_path = SSH_DIR / f"{slug}-deploy.pub"
-    if not org_repo or not pub_path.exists():
-        print(f"      push: skipped (org_repo={org_repo or '?'}, key={'ok' if pub_path.exists() else 'missing'})")
+    if not org_repo:
+        print("      push: skipped (no org_repo parsed from github_url)")
         return
 
-    # 1. Register the deploy key (write) — idempotent.
+    repo_tag = org_repo.replace("/", "-")            # e.g. doa-sas-siprodev-web
+    key_name = f"{slug}-{repo_tag}-deploy"           # one keypair per repo
+    priv = SSH_DIR / key_name
+    if not priv.exists():
+        r = subprocess.run(
+            ["ssh-keygen", "-t", "ed25519", "-N", "", "-C", f"viko-{key_name}", "-f", str(priv)],
+            capture_output=True, text=True)
+        if r.returncode != 0:
+            print(f"      push: keygen failed for {repo_tag}: {r.stderr.strip()}")
+            return
+    priv.chmod(0o600)
+    pub = (SSH_DIR / f"{key_name}.pub").read_text().strip()
+
+    # 1. Register THIS repo's deploy key (write). Distinct key+title per repo, so a
+    #    multi-repo project never 422s on the 2nd repo. A 422 here means THIS key is
+    #    already on THIS repo (idempotent re-run) — fine; any other error is surfaced.
     if token:
-        body = json.dumps({"title": f"viko-{slug}", "key": pub_path.read_text().strip(),
-                           "read_only": False}).encode()
+        body = json.dumps({"title": f"viko-{key_name}", "key": pub, "read_only": False}).encode()
         req = urllib.request.Request(
             f"https://api.github.com/repos/{org_repo}/keys", data=body, method="POST",
             headers={"Authorization": f"Bearer {token}", "Accept": "application/vnd.github+json"})
@@ -123,16 +137,29 @@ def _enable_push(project_dir: Path, github_url: str, slug: str, token: str) -> N
             print(f"      push: deploy key registered on {org_repo}")
         except urllib.error.HTTPError as e:
             msg = e.read().decode()
-            print(f"      push: deploy key {'already present' if 'already in use' in msg else 'note ' + msg[:80]}")
+            if e.code == 422 and "already in use" in msg:
+                print(f"      push: deploy key already present on {org_repo} (ok)")
+            else:
+                print(f"      push: WARN registering key on {org_repo}: HTTP {e.code} {msg[:100]}")
+    else:
+        print("      push: no GITHUB_TOKEN — skipped key registration (set it to enable push)")
 
-    # 2. Point the repo at SSH + pin the per-project key + set a commit identity.
+    # 2. Place the per-repo key in the project's mounted ssh dir so the container can use
+    #    it, and pin THIS repo's clone to THIS key (not the shared id_viko).
+    proj_ssh = SSH_DIR / "projects" / slug
+    proj_ssh.mkdir(parents=True, exist_ok=True)
+    (proj_ssh / key_name).write_text(priv.read_text())
+    (proj_ssh / key_name).chmod(0o600)
+    container_key = f"/opt/data/.ssh/{key_name}"
+    ssh_cmd = (f"ssh -i {container_key} -o IdentitiesOnly=yes "
+               f"-o StrictHostKeyChecking=accept-new -o UserKnownHostsFile=/opt/data/.ssh/known_hosts")
     ssh_url = f"git@github.com:{org_repo}.git"
     for args in (["remote", "set-url", "origin", ssh_url],
-                 ["config", "core.sshCommand", CORE_SSH_CMD],
+                 ["config", "core.sshCommand", ssh_cmd],
                  ["config", "user.name", "Viko"],
                  ["config", "user.email", f"viko-{slug}@local"]):
         subprocess.run(["git", "-C", str(project_dir)] + args, capture_output=True)
-    print(f"      push: repo -> {ssh_url} (scoped key, identity Viko)")
+    print(f"      push: repo -> {ssh_url} (per-repo key {key_name})")
 
 
 def main():

@@ -780,18 +780,39 @@ def main():
 
     if group_jid in routing:
         port = _entry_port(routing[group_jid])
-        container_name = f"viko-hermes-{slug}"
-        # Always full re-spawn (rm + run) so env var changes take effect.
-        # docker restart preserves old env — only docker run applies new vars.
+        name = f"viko-hermes-{slug}"
+        prev = f"{name}-prev"
         print(f"\n=== Re-spawning Hermes-{slug} (port {port}) ===")
         data_dir = create_hermes_data_dir(slug, port, group_jid, env)
-        # Update routing BEFORE the container starts polling, so the admin bridge
-        # has the new token mapped (hot-reload <1s) by the time it relays.
+
+        # D1: atomic re-spawn with rollback. The old container can't run alongside the
+        # new (same published port), so PRESERVE it (stop frees the port; rename frees
+        # the name) instead of destroying it. Only after the new one is verified healthy
+        # do we rotate the routing token + drop the old. On ANY failure we restore the
+        # old container and leave routing untouched — a failed re-spawn never takes the
+        # project offline. (full re-spawn, not docker-restart, so new env vars apply.)
+        old_preserved = False
+        if _container_exists(name):
+            _run(["docker", "stop", name])
+            _run(["docker", "rm", "-f", prev])          # clear any stale prev
+            _run(["docker", "rename", name, prev])
+            old_preserved = True
+        try:
+            spawn_container(slug, port, data_dir, env, proj_ssh_dir, relay_token)
+            _wait_healthy(name, port)
+        except Exception:
+            _run(["docker", "rm", "-f", name])           # kill the failed new
+            if old_preserved:
+                _run(["docker", "rename", prev, name])
+                _run(["docker", "start", name])
+                print("  ✗ re-spawn failed — rolled back to previous container (routing unchanged)")
+            raise
+        # New is healthy → commit: rotate the routing token, then drop the old.
         routing[group_jid] = {"port": port, "slug": slug, "relay_token": relay_token}
         save_routing(routing)
-        spawn_container(slug, port, data_dir, env, proj_ssh_dir, relay_token)
-        _wait_healthy(container_name, port)
-        print("  ✓ Container re-spawned and healthy (relay token rotated)")
+        if old_preserved:
+            _run(["docker", "rm", "-f", prev])
+        print("  ✓ Container re-spawned and healthy (rolled forward, token rotated)")
         print(f"\nHermes-{slug} running on port {port}")
         print(f"SPAWN_COMPLETE port={port}")
         return
