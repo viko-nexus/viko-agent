@@ -72,7 +72,14 @@ def main() -> int:
                 foreign_aliases += [a for a in s.split()[1:] if not a.startswith(f"{slug}-")]
     check("ssh-single-alias", not foreign_aliases, f"(foreign: {foreign_aliases})" if foreign_aliases else "")
 
-    foreign_keys = [f for f in names(Path("/opt/data/.ssh")) if f not in SSH_ALLOWED]
+    # Allow this project's own keys: the base id_viko* + any per-repo deploy key,
+    # which C3 names "{slug}-{org-repo}-deploy" (+ .pub). A key prefixed with the
+    # slug belongs to THIS project — only a DIFFERENT slug's key is foreign. (Mirrors
+    # the ssh-single-alias check above, which already allows "{slug}-" aliases.)
+    foreign_keys = [
+        f for f in names(Path("/opt/data/.ssh"))
+        if f not in SSH_ALLOWED and not f.startswith(f"{slug}-")
+    ]
     check("ssh-no-foreign-keys", not foreign_keys, f"(foreign: {foreign_keys})" if foreign_keys else "")
 
     token = os.environ.get("HERMES_RELAY_TOKEN", "").strip()
