@@ -48,6 +48,10 @@ RUN set -eu; \
 
 # Build with host UID/GID so stage2-hook.sh skips the slow chown at startup.
 # Pass --build-arg HERMES_UID=$(id -u) or rely on docker-compose args.
+# IMPORTANT: this build UID owns the baked bridge node_modules + venv, so the
+# RUNTIME HERMES_UID (.env) must match it — a mismatch makes the WhatsApp bridge
+# unable to write its deps and it fails to start. CI passes the VPS deploy user's
+# UID via deploy.yml build-args (1001 on the current VPS).
 ARG HERMES_UID=501
 ARG HERMES_GID=20
 RUN groupadd -o -g ${HERMES_GID} hermes-grp 2>/dev/null || true && \
