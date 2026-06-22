@@ -11,20 +11,23 @@
 
 ## First-Time VPS Setup
 
-### 1. SSH into VPS and create project directory
+### 1. SSH into VPS as the deploy user
 
 ```bash
 ssh deploy@<vps-ip>
-mkdir -p ~/viko-agent
 ```
 
 ### 2. Clone the repository
 
+Clone to `/home/deploy/viko-agent` — the same path the CI `deploy` job operates
+on (its `working-directory`).
+
 ```bash
-git clone git@github.com:viko-nexus/viko-agent.git ~/viko-agent
-cd ~/viko-agent
+git clone git@github.com:viko-nexus/viko-agent.git /home/deploy/viko-agent
+cd /home/deploy/viko-agent
 cp .env.example .env
-# Fill in .env with production values
+# Fill in .env with production values — include the dashboard-auth + VIKO_OWNER_NAME
+# keys (see "Required pre-deploy .env keys NOT provisioned by CI" below)
 ```
 
 ### 3. Set up data directory
@@ -34,20 +37,18 @@ mkdir -p data/bridge data/9router data/hermes
 echo '{}' > data/bridge/routing.json
 ```
 
-### 4. Generate SSH deploy key (for CI/CD)
+### 4. Register the self-hosted GitHub Actions runner
 
-```bash
-# On your local machine
-ssh-keygen -t ed25519 -C "viko-agent-deploy" -f /tmp/viko-deploy-key -N ""
-# Add public key to VPS
-ssh deploy@<vps-ip> "echo '$(cat /tmp/viko-deploy-key.pub)' >> ~/.ssh/authorized_keys"
-# Add private key to GitHub Actions secrets as VPS_SSH_KEY
-```
+The `deploy` job runs **on the VPS itself** via a self-hosted runner (label
+`self-hosted,linux,vps`) — there is no SSH deploy key. Install the runner from
+the repo's Settings → Actions → Runners, registered under
+`~/actions-runner`, running as the `deploy` user with working tree at
+`/home/deploy/viko-agent`.
 
 ### 5. Build and start
 
 ```bash
-cd ~/viko-agent
+cd /home/deploy/viko-agent
 docker compose build hermes
 docker compose --profile full up -d
 ```
@@ -69,59 +70,90 @@ docker logs -f viko-hermes   # scan QR code
 
 ## CI/CD Workflow
 
-The GitHub Actions workflow has three jobs:
+The GitHub Actions workflow (`.github/workflows/deploy.yml`) has four jobs:
 
 ```
-quality → build → deploy
+quality → build → deploy → release
 ```
 
 ### Job 1: quality
 
-Runs on every push. Checks:
-- `ruff check` on Python files (scripts/, patches/, mcp-servers/)
-- `node --check` on JavaScript files (bridge/)
+Runs on every push (`ubuntu-latest`). Checks:
+- `ruff check scripts/ patches/ mcp-servers/` — Python lint
+- `npm run check` — lint + format + type-check on the bridge JS (`bridge/`)
 
 ### Job 2: build
 
-Triggered only when `Dockerfile.hermes` or `patches/` changes. Builds the
-multi-stage image and pushes to GHCR:
+Rebuilds the multi-stage image **only when THIS push touched
+`Dockerfile.hermes`, `patches/`, or `bridge/`** (diffed across the push's
+commit range). Unrelated pushes (docs, config, scripts) skip the rebuild and
+reuse the existing image, avoiding a large re-pull on the VPS.
+
+When a rebuild is needed it builds and pushes to GHCR:
 
 ```
-ghcr.io/viko-nexus/viko-hermes:latest
+ghcr.io/<owner>/viko-agent:latest
 ```
 
-Uses registry layer cache so unchanged layers are not re-pulled on the VPS.
+Uses a registry layer cache
+(`ghcr.io/<owner>/viko-agent:buildcache`, `mode=max`) so unchanged layers are
+not re-pulled on the VPS. The build exposes its `rebuilt` (true/false) result
+as a job output consumed by `deploy`. The image build takes **~15–20 min**.
 
 ### Job 3: deploy
 
-Triggered on every push to `main` (after quality passes). SSH into VPS:
+Runs on the **self-hosted runner installed on the VPS itself** (label
+`[self-hosted, linux, vps]`) — there is no SSH step; the runner executes docker
+commands locally. Working directory: `/home/deploy/viko-agent`.
 
 1. `git fetch origin main && git reset --hard origin/main` — sync repo
-2. `bash scripts/provision-env.sh` — upsert secrets from GitHub Actions into `.env`
-3. `docker pull` — if image was rebuilt, pull new image from GHCR
-4. `docker compose --profile full up -d --force-recreate hermes` — recreate if rebuilt
-5. Health check: `docker ps --filter name=viko`
+2. `bash scripts/provision-env.sh` — provision `.env` from CI secrets
+3. **If the image was rebuilt** (`rebuilt == true`): `docker login` to GHCR,
+   `docker pull ghcr.io/<owner>/viko-agent:latest`, then
+   `docker tag … viko-hermes:latest`
+4. Restart Hermes:
+   - if rebuilt → `docker rm -f viko-hermes` then
+     `docker compose --profile full up -d --force-recreate hermes`
+   - else → `docker compose --profile full up -d hermes`
+5. Status check: `docker ps --filter name=viko`
+
+> **Only the admin `viko-hermes` container is auto-restarted by deploy.** The
+> `viko-9router` service and any per-project `viko-hermes-{slug}` containers are
+> not touched here (see [Updating a Deployment](#updating-a-deployment)).
+
+### Job 4: release
+
+Runs after `deploy` (`ubuntu-latest`). Uses semantic-release (conventional
+commits → semver) to create the Git tag + GitHub release and bump
+`package.json`. When a new version is published it re-tags the already-pushed
+`:latest` image as `ghcr.io/<owner>/viko-agent:v<version>` and pushes that tag
+(no rebuild).
 
 ---
 
 ## GitHub Actions Secrets
 
-Set these in the GitHub repository settings (Settings → Secrets and variables → Actions):
+Set these in the GitHub repository settings (Settings → Secrets and variables → Actions).
+The `deploy` job consumes them as environment, then `scripts/provision-env.sh`
+writes them into the VPS `.env`. The runner is self-hosted on the VPS, so **no
+SSH host/user/key secrets are needed.**
 
 | Secret | Value |
 |--------|-------|
-| `VPS_HOST` | VPS IP address or hostname |
-| `VPS_USER` | SSH user (e.g., `deploy`) |
-| `VPS_SSH_KEY` | Private key content (ed25519, from key generation above) |
 | `NINEROUTER_JWT_SECRET` | 9router JWT secret (generate with `openssl rand -hex 32`) |
 | `NINEROUTER_INITIAL_PASSWORD` | 9router admin password |
 | `NINEROUTER_API_KEY_SECRET` | 9router API key signing secret |
-| `ANTHROPIC_API_KEY` | Anthropic API key (sk-ant-...) |
+| `ANTHROPIC_API_KEY` | Anthropic API key (sk-ant-...) — set in 9router |
 | `GROQ_API_KEY` | Groq API key |
 | `OPENAI_API_KEY` | 9router client API key (from 9router dashboard → API Keys) |
 | `WHATSAPP_HOME_CHANNEL` | WhatsApp group JID for startup notifications |
-| `GITHUB_TOKEN` | Auto-provided by GitHub Actions (for GHCR push) |
+| `WHATSAPP_OWNER_NUMBER` | Owner's WhatsApp number (only number allowed to issue commands) |
+| `VIKO_SSH_PUB` | Viko's dedicated SSH public key (`id_viko`) |
 | `VIKO_ISOLATION_GUARD` | `enforce` or `warn` (isolation guard mode) |
+| `VIKO_GITHUB_TOKEN` | Fine-grained PAT for onboarding. Arrives as `VIKO_GITHUB_TOKEN` and is written to `.env` as `GITHUB_TOKEN` — the Actions secret name `GITHUB_TOKEN` is reserved (auto-provided for GHCR push) and cannot be overridden. |
+
+`GITHUB_TOKEN` (the automatic Actions token) is used by `build`/`release` for
+GHCR auth; it is not one you set.
 
 ---
 
@@ -139,14 +171,72 @@ git push origin main
 # CI/CD will restart Hermes and pick up changes
 ```
 
-Patch changes (patches/ or Dockerfile.hermes):
+Patch changes (`patches/`, `bridge/`, or `Dockerfile.hermes`):
 ```bash
 git push origin main
-# CI/CD detects Dockerfile/patches change → rebuilds image → deploys
+# CI/CD detects the change → rebuilds image → deploys
 # Note: image build takes ~15-20 min
 ```
 
+> **Per-project containers are NOT updated by deploy.** CI only force-recreates
+> the admin `viko-hermes` container. Existing `viko-hermes-{slug}` containers
+> keep running their previously-generated `config/` + `SOUL.md` on the old base
+> image until they are **re-spawned** with `scripts/spawn-hermes.py`. So
+> persona / prompt / `TERMINAL_CWD` / relay-token-rotation changes and a new
+> base image (e.g. the isolation-guard) only reach project containers on
+> re-spawn. The relay scope-gate fix lives in the admin bridge, so it is live as
+> soon as the admin container restarts.
+
 ---
+
+## How `provision-env.sh` Builds the VPS `.env`
+
+`scripts/provision-env.sh` runs in the `deploy` job after the repo sync and
+before `docker compose up`. Its behavior:
+
+- **Upserts** (GitHub secrets are canonical, overriding any local drift):
+  `NINEROUTER_JWT_SECRET`, `NINEROUTER_INITIAL_PASSWORD`,
+  `NINEROUTER_API_KEY_SECRET`, `ANTHROPIC_API_KEY`, `GROQ_API_KEY`,
+  `OPENAI_API_KEY`, `WHATSAPP_HOME_CHANNEL`, `WHATSAPP_OWNER_NUMBER`,
+  `VIKO_SSH_PUB`, `VIKO_ISOLATION_GUARD`, and `VIKO_GITHUB_TOKEN` →
+  written as `GITHUB_TOKEN`. (Empty values are skipped, so a blank secret leaves
+  the existing line untouched.)
+- **Defaults only when missing** (machine-specific — never overrides an existing
+  host): `VIKO_PROJECTS_ROOT` (`/home/viko/projects`), `HERMES_UID` (`1000`),
+  `HERMES_GID` (`1000`), `VIKO_BIND_ADDR` (`127.0.0.1`).
+- **Pins `VIKO_ISOLATION_GUARD=enforce` when missing** — fail-closed backstop so
+  a fresh deploy is locked down even if the CI secret is unset.
+
+### Required pre-deploy `.env` keys NOT provisioned by CI (TODO)
+
+The A2 / persona work added env vars that `docker-compose.yml` reads but
+`provision-env.sh` does **not** yet provision. **You must set these manually in
+the VPS `.env` before deploy** (or the admin dashboard is auth-locked/broken and
+Viko won't know the owner's name):
+
+| Key | Effect if missing |
+|-----|-------------------|
+| `HERMES_DASHBOARD_BASIC_AUTH_USERNAME` | Dashboard basic-auth username |
+| `HERMES_DASHBOARD_BASIC_AUTH_PASSWORD` *(or `_PASSWORD_HASH`)* | Dashboard password. `docker-compose.yml` sets `HERMES_DASHBOARD_INSECURE=false`, so with no credentials the dashboard is auth-locked / unusable. |
+| `HERMES_DASHBOARD_BASIC_AUTH_SECRET` | Session signing secret |
+| `VIKO_OWNER_NAME` | Owner display name; without it Viko can't address the owner by name |
+
+The dashboard binds `0.0.0.0:9119` (needed for the host port-map), which also
+exposes it to every container on the shared docker network — so basic-auth is
+the real boundary, not the host bind. In production prefer a scrypt hash
+(`HERMES_DASHBOARD_BASIC_AUTH_PASSWORD_HASH`, no plaintext at rest) over
+`_PASSWORD`; generate it with:
+
+```bash
+python -c "from plugins.dashboard_auth.basic import hash_password; print(hash_password('PW'))"
+```
+
+> **TODO (pre-deploy gaps):**
+> 1. `docker-compose.yml` currently wires only `_USERNAME` / `_PASSWORD` / `_SECRET`
+>    — add `HERMES_DASHBOARD_BASIC_AUTH_PASSWORD_HASH` to the `hermes` service env
+>    before relying on the hash form.
+> 2. Extend `scripts/provision-env.sh` to upsert these keys (and `VIKO_OWNER_NAME`)
+>    from CI secrets so they stop being a manual pre-deploy step.
 
 ## Provisioning New Environment Variables
 
@@ -155,7 +245,7 @@ When a new secret is needed:
 1. Add to `.env.example` with a description
 2. Add to `scripts/provision-env.sh` (as either `upsert` or `default_if_missing`)
 3. Add to GitHub Actions secrets
-4. Add to `deploy.yml` `envs:` list and `environment:` block
+4. Add to `deploy.yml` `env:` block
 
 ---
 
