@@ -151,6 +151,10 @@ SSH host/user/key secrets are needed.**
 | `VIKO_SSH_PUB` | Viko's dedicated SSH public key (`id_viko`) |
 | `VIKO_ISOLATION_GUARD` | `enforce` or `warn` (isolation guard mode) |
 | `VIKO_GITHUB_TOKEN` | Fine-grained PAT for onboarding. Arrives as `VIKO_GITHUB_TOKEN` and is written to `.env` as `GITHUB_TOKEN` — the Actions secret name `GITHUB_TOKEN` is reserved (auto-provided for GHCR push) and cannot be overridden. |
+| `VIKO_OWNER_NAME` | Owner display name (e.g. `Eksa`), stamped on the owner's CTX line |
+| `HERMES_DASHBOARD_BASIC_AUTH_USERNAME` | Admin dashboard login username |
+| `HERMES_DASHBOARD_BASIC_AUTH_PASSWORD_HASH` | Admin dashboard scrypt password hash (see [Dashboard auth](#dashboard-auth--owner-name-provisioned-from-ci-secrets)) |
+| `HERMES_DASHBOARD_BASIC_AUTH_SECRET` | Dashboard session-cookie signing secret (`openssl rand -hex 32`) |
 
 `GITHUB_TOKEN` (the automatic Actions token) is used by `build`/`release` for
 GHCR auth; it is not one you set.
@@ -207,36 +211,29 @@ before `docker compose up`. Its behavior:
 - **Pins `VIKO_ISOLATION_GUARD=enforce` when missing** — fail-closed backstop so
   a fresh deploy is locked down even if the CI secret is unset.
 
-### Required pre-deploy `.env` keys NOT provisioned by CI (TODO)
+### Dashboard auth + owner name (provisioned from CI secrets)
 
-The A2 / persona work added env vars that `docker-compose.yml` reads but
-`provision-env.sh` does **not** yet provision. **You must set these manually in
-the VPS `.env` before deploy** (or the admin dashboard is auth-locked/broken and
-Viko won't know the owner's name):
+The admin dashboard runs with `HERMES_DASHBOARD_INSECURE=false`, so it needs
+credentials or it is auth-locked. These are now provisioned by
+`provision-env.sh` from GitHub Actions secrets — set the following secrets:
 
-| Key | Effect if missing |
-|-----|-------------------|
-| `HERMES_DASHBOARD_BASIC_AUTH_USERNAME` | Dashboard basic-auth username |
-| `HERMES_DASHBOARD_BASIC_AUTH_PASSWORD` *(or `_PASSWORD_HASH`)* | Dashboard password. `docker-compose.yml` sets `HERMES_DASHBOARD_INSECURE=false`, so with no credentials the dashboard is auth-locked / unusable. |
-| `HERMES_DASHBOARD_BASIC_AUTH_SECRET` | Session signing secret |
-| `VIKO_OWNER_NAME` | Owner display name; without it Viko can't address the owner by name |
+| Secret | Used for |
+|--------|----------|
+| `HERMES_DASHBOARD_BASIC_AUTH_USERNAME` | Dashboard login username |
+| `HERMES_DASHBOARD_BASIC_AUTH_PASSWORD_HASH` | scrypt password hash (no plaintext at rest) |
+| `HERMES_DASHBOARD_BASIC_AUTH_SECRET` | Session-cookie signing secret (`openssl rand -hex 32`) |
+| `VIKO_OWNER_NAME` | Owner display name stamped on the CTX line so Viko addresses the owner by name |
 
 The dashboard binds `0.0.0.0:9119` (needed for the host port-map), which also
 exposes it to every container on the shared docker network — so basic-auth is
-the real boundary, not the host bind. In production prefer a scrypt hash
-(`HERMES_DASHBOARD_BASIC_AUTH_PASSWORD_HASH`, no plaintext at rest) over
-`_PASSWORD`; generate it with:
+the real boundary, not the host bind. Generate the password hash with:
 
 ```bash
-python -c "from plugins.dashboard_auth.basic import hash_password; print(hash_password('PW'))"
+python -c "from plugins.dashboard_auth.basic import hash_password; print(hash_password('YOUR_PASSWORD'))"
 ```
 
-> **TODO (pre-deploy gaps):**
-> 1. `docker-compose.yml` currently wires only `_USERNAME` / `_PASSWORD` / `_SECRET`
->    — add `HERMES_DASHBOARD_BASIC_AUTH_PASSWORD_HASH` to the `hermes` service env
->    before relying on the hash form.
-> 2. Extend `scripts/provision-env.sh` to upsert these keys (and `VIKO_OWNER_NAME`)
->    from CI secrets so they stop being a manual pre-deploy step.
+`docker-compose.yml` wires both `_PASSWORD` (plaintext, for local dev) and
+`_PASSWORD_HASH` (preferred in prod); the auth plugin uses the hash when set.
 
 ## Provisioning New Environment Variables
 

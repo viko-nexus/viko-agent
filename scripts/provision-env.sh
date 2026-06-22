@@ -25,10 +25,17 @@ default_if_missing() {
   grep -q "^${key}=" "$ENV_FILE" 2>/dev/null || printf '%s=%s\n' "$key" "$val" >> "$ENV_FILE"
 }
 
-# Portable — GitHub secrets are canonical (upsert, overriding any local drift)
+# Portable — GitHub secrets are canonical (upsert, overriding any local drift).
+# Dashboard auth (A2): the admin dashboard runs with HERMES_DASHBOARD_INSECURE=false,
+# so it needs a username + password hash + session secret or it's auth-locked. We
+# provision the scrypt _PASSWORD_HASH (no plaintext at rest), not _PASSWORD.
+# VIKO_OWNER_NAME is stamped on the owner's CTX line so Viko knows the owner's name.
 for k in NINEROUTER_JWT_SECRET NINEROUTER_INITIAL_PASSWORD NINEROUTER_API_KEY_SECRET \
          ANTHROPIC_API_KEY GROQ_API_KEY OPENAI_API_KEY \
-         WHATSAPP_HOME_CHANNEL WHATSAPP_OWNER_NUMBER VIKO_SSH_PUB VIKO_ISOLATION_GUARD; do
+         WHATSAPP_HOME_CHANNEL WHATSAPP_OWNER_NUMBER VIKO_SSH_PUB VIKO_ISOLATION_GUARD \
+         VIKO_OWNER_NAME \
+         HERMES_DASHBOARD_BASIC_AUTH_USERNAME HERMES_DASHBOARD_BASIC_AUTH_PASSWORD_HASH \
+         HERMES_DASHBOARD_BASIC_AUTH_SECRET; do
   upsert "$k" "${!k:-}"
 done
 
