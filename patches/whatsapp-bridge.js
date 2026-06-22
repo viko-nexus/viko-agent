@@ -300,7 +300,7 @@ let _jidToSlug = Object.create(null); // { "jid@g.us": "slug" }  — group → p
 // Hold each drained batch in-flight, keyed by port, and keep RE-SERVING the same batch
 // until the relay POSTs /messages/ack — only then is it evicted. The gateway dedupes by
 // messageId, so a re-served duplicate is harmless; loss is not.
-let _inflightByPort = Object.create(null); // { "8101": { batchId, msgs, ts, tries } }
+const _inflightByPort = Object.create(null); // { "8101": { batchId, msgs, ts, tries } }
 let _batchSeq = 0; // monotonic counter for batch ids (cleaner than time/random)
 // E1 give-up bound: re-serve an unacked batch for at most this long / this many polls.
 // Past that the relay is treated as dead/wedged — requeue its msgs (gateway dedupes any
@@ -866,7 +866,9 @@ async function startSocket() {
               }),
             );
           } catch {}
-          _securityLog(`non_owner_approval_blocked chatId=${chatId} senderId=${senderId} token=${_tok}`);
+          _securityLog(
+            `non_owner_approval_blocked chatId=${chatId} senderId=${senderId} token=${_tok}`,
+          );
           continue;
         }
       }
@@ -877,7 +879,10 @@ async function startSocket() {
       // markers the gateway sees are bridge-generated and can't be forged. Symmetric to
       // formatOutgoingMessage's OUTBOUND strip; minimal — only the literal bracketed tags.
       if (!msg.key.fromMe) {
-        body = String(body ?? '').replace(/\n?\s*\[(?:CTX|READ-ONLY MEMBER|Mentioned)\b[^\]]*\]/gi, '');
+        body = String(body ?? '').replace(
+          /\n?\s*\[(?:CTX|READ-ONLY MEMBER|Mentioned)\b[^\]]*\]/gi,
+          '',
+        );
       }
 
       // Tag group messages from non-owner members so the gateway enforces read-only mode.
@@ -1302,7 +1307,11 @@ if (RELAY_MODE) {
   // duplicate slashes, drop trailing slashes, and lowercase so every variant that
   // routes to a scoped handler is gated.
   function _scopedPath(p) {
-    const n = (p || '').toLowerCase().replace(/\/{2,}/g, '/').replace(/\/+$/, '') || '/';
+    const n =
+      (p || '')
+        .toLowerCase()
+        .replace(/\/{2,}/g, '/')
+        .replace(/\/+$/, '') || '/';
     return _SCOPED_PATHS.has(n) ? n : null;
   }
   app.use((req, res, next) => {
@@ -1371,7 +1380,10 @@ if (RELAY_MODE) {
       // (likely dead). Requeue its msgs at the head (a recovered relay still gets them;
       // gateway dedupes), drop the in-flight, and fall through to drain — so a never-acking
       // relay can't wedge the port forever and new messages aren't pinned behind it.
-      if (inflight && (Date.now() - inflight.ts > INFLIGHT_TTL_MS || inflight.tries >= INFLIGHT_MAX_TRIES)) {
+      if (
+        inflight &&
+        (Date.now() - inflight.ts > INFLIGHT_TTL_MS || inflight.tries >= INFLIGHT_MAX_TRIES)
+      ) {
         const rq = (messageQueues[allowedPort] = messageQueues[allowedPort] || []);
         const unacked = inflight.msgs.length;
         rq.unshift(...inflight.msgs);
@@ -1384,10 +1396,16 @@ if (RELAY_MODE) {
           const unackedDropped = Math.max(0, unacked - MAX_QUEUE_SIZE);
           rq.splice(MAX_QUEUE_SIZE);
           const _m = `queue-overflow on requeue port=${allowedPort} dropped=${dropped} unacked_dropped=${unackedDropped}`;
-          try { console.warn(`[bridge] ${_m}`); } catch {}
+          try {
+            console.warn(`[bridge] ${_m}`);
+          } catch {}
           _securityLog(_m);
         }
-        try { console.warn(`[bridge] in-flight batch ${inflight.batchId} expired w/o ack — requeued ${unacked}, resuming`); } catch {}
+        try {
+          console.warn(
+            `[bridge] in-flight batch ${inflight.batchId} expired w/o ack — requeued ${unacked}, resuming`,
+          );
+        } catch {}
         delete _inflightByPort[allowedPort];
         inflight = null;
       }
@@ -1721,9 +1739,13 @@ if (RELAY_MODE) {
         console.warn(
           `[bridge] scope-deny GET /chat/${chatId} (${!token ? 'relay_token_required' : !jid ? 'unknown_relay_token' : 'cross_project_read_blocked'})`,
         );
-        return res
-          .status(403)
-          .json({ error: !token ? 'relay_token_required' : !jid ? 'unknown_relay_token' : 'cross_project_read_blocked' });
+        return res.status(403).json({
+          error: !token
+            ? 'relay_token_required'
+            : !jid
+              ? 'unknown_relay_token'
+              : 'cross_project_read_blocked',
+        });
       }
     }
     const isGroup = chatId.endsWith('@g.us');
@@ -1801,9 +1823,13 @@ if (RELAY_MODE) {
         console.warn(
           `[bridge] scope-deny GET /group/${jid}/participants (${!token ? 'relay_token_required' : !tokenJid ? 'unknown_relay_token' : 'cross_project_read_blocked'})`,
         );
-        return res
-          .status(403)
-          .json({ error: !token ? 'relay_token_required' : !tokenJid ? 'unknown_relay_token' : 'cross_project_read_blocked' });
+        return res.status(403).json({
+          error: !token
+            ? 'relay_token_required'
+            : !tokenJid
+              ? 'unknown_relay_token'
+              : 'cross_project_read_blocked',
+        });
       }
     }
     if (!jid.endsWith('@g.us') || !sock) {
@@ -1819,23 +1845,23 @@ if (RELAY_MODE) {
       const participants = meta.participants
         .filter((p) => !selfIds.has(normalizeWhatsAppId(p.id)))
         .map((p) => {
-        // WhatsApp now returns participants as @lid (privacy). Resolve to a real phone
-        // via the session LID→phone map; fall back to null (NOT the raw LID) so callers
-        // never register a LID as if it were a phone number. Names come from pushNames
-        // we've observed — unavailable for members who have never sent a message.
-        const isLid = p.id.endsWith('@lid');
-        const num = p.id.split('@')[0];
-        const phone = isLid ? _lidToPhone[num] || null : num;
-        const name = _nameByNumber[num] || (phone && _nameByNumber[phone]) || null;
-        return {
-          jid: p.id,
-          lid: isLid ? num : null,
-          phone,
-          name,
-          resolved: !!phone,
-          admin: p.admin || null,
-        };
-      });
+          // WhatsApp now returns participants as @lid (privacy). Resolve to a real phone
+          // via the session LID→phone map; fall back to null (NOT the raw LID) so callers
+          // never register a LID as if it were a phone number. Names come from pushNames
+          // we've observed — unavailable for members who have never sent a message.
+          const isLid = p.id.endsWith('@lid');
+          const num = p.id.split('@')[0];
+          const phone = isLid ? _lidToPhone[num] || null : num;
+          const name = _nameByNumber[num] || (phone && _nameByNumber[phone]) || null;
+          return {
+            jid: p.id,
+            lid: isLid ? num : null,
+            phone,
+            name,
+            resolved: !!phone,
+            admin: p.admin || null,
+          };
+        });
       res.json({ group: meta.subject, jid, participants });
     } catch (e) {
       res.status(500).json({ error: e.message });
