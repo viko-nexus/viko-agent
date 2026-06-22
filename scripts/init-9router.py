@@ -37,30 +37,34 @@ if len(sys.argv) > 1:
 # cc/ prefix = Claude Code OAuth (via 9router)
 # groq/ prefix = Groq API
 
+# Fallback ORDER matters: Claude → Claude → Groq. A transient single-model Claude
+# blip falls to the OTHER Claude (still on-persona, follows SOUL.md), NOT straight to
+# Groq/Llama — which ignores the Viko persona and bleeds generic "/help" / foreign-tool
+# noise. Groq is the LAST-RESORT only (availability when ALL Claude is down): better a
+# degraded reply than none.
 COMBOS = [
     (
         "viko-chat",
         [
             "cc/claude-haiku-4-5-20251001",          # primary: fast, cheap
-            "groq/llama-3.3-70b-versatile",           # fallback 1
-            "groq/meta-llama/llama-4-maverick-17b-128e-instruct",  # fallback 2
+            "cc/claude-sonnet-4-6",                   # fallback: stay on Claude (quality)
+            "groq/llama-3.3-70b-versatile",           # last-resort: all-Claude-down only
         ],
     ),
     (
         "viko-code",
         [
             "cc/claude-sonnet-4-6",                   # primary: smarter for code/analysis
-            "groq/llama-3.3-70b-versatile",           # fallback 1
-            "groq/meta-llama/llama-4-maverick-17b-128e-instruct",  # fallback 2
+            "cc/claude-haiku-4-5-20251001",          # fallback: stay on Claude
+            "groq/llama-3.3-70b-versatile",           # last-resort
         ],
     ),
     (
         "viko-combo",
         [
-            "groq/llama-3.3-70b-versatile",           # primary: always-on, no token limits
-            "groq/meta-llama/llama-4-maverick-17b-128e-instruct",
-            "cc/claude-sonnet-4-6",
-            "cc/claude-haiku-4-5-20251001",
+            "cc/claude-haiku-4-5-20251001",          # primary: quality, follows persona
+            "cc/claude-sonnet-4-6",                   # fallback: stay on Claude
+            "groq/llama-3.3-70b-versatile",           # last-resort
         ],
     ),
 ]

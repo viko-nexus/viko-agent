@@ -14,7 +14,10 @@ export function parseAllowedUsers(str) {
   if (!str || !str.trim()) return [];
   const trimmed = str.trim();
   if (trimmed === '*') return ['*'];
-  return trimmed.split(',').map(s => s.trim().replace(/^\+/, '')).filter(Boolean);
+  return trimmed
+    .split(',')
+    .map((s) => s.trim().replace(/^\+/, ''))
+    .filter(Boolean);
 }
 
 /**
@@ -23,7 +26,9 @@ export function parseAllowedUsers(str) {
  * "6281234567890:12@s.whatsapp.net" → "6281234567890"
  */
 export function normalizePhone(senderId) {
-  return String(senderId || '').split('@')[0].split(':')[0];
+  return String(senderId || '')
+    .split('@')[0]
+    .split(':')[0];
 }
 
 /**
@@ -33,5 +38,5 @@ export function matchesAllowedUser(senderId, allowList) {
   if (!allowList || allowList.length === 0) return false;
   if (allowList.includes('*')) return true;
   const phone = normalizePhone(senderId);
-  return allowList.some(a => phone === a);
+  return allowList.some((a) => phone === a);
 }

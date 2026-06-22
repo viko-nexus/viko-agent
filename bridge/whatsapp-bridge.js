@@ -32,12 +32,17 @@
  *     HERMES_RELAY_TOKEN=xxx WHATSAPP_PORT_FILTER=3001 node bridge/whatsapp-bridge.js
  */
 
-import { makeWASocket, useMultiFileAuthState, DisconnectReason, fetchLatestBaileysVersion } from '@whiskeysockets/baileys';
+import {
+  makeWASocket,
+  useMultiFileAuthState,
+  DisconnectReason,
+  fetchLatestBaileysVersion,
+} from '@whiskeysockets/baileys';
 import express from 'express';
 import { Boom } from '@hapi/boom';
 import pino from 'pino';
 import path from 'path';
-import { mkdirSync, readFileSync, existsSync, watch } from 'fs';
+import { mkdirSync, readFileSync, watch } from 'fs';
 import qrcode from 'qrcode-terminal';
 import { parseAllowedUsers, matchesAllowedUser, normalizePhone } from './allowlist.js';
 
@@ -46,7 +51,8 @@ import { parseAllowedUsers, matchesAllowedUser, normalizePhone } from './allowli
 const BRIDGE_PORT = parseInt(process.env.BRIDGE_PORT || '3000', 10);
 const BRIDGE_BIND = process.env.BRIDGE_BIND || '0.0.0.0';
 
-const SESSION_DIR = process.env.WHATSAPP_SESSION_DIR ||
+const SESSION_DIR =
+  process.env.WHATSAPP_SESSION_DIR ||
   path.join(process.env.HOME || '/root', '.hermes', 'whatsapp', 'session');
 
 const WHATSAPP_MODE = process.env.WHATSAPP_MODE || 'bot';
@@ -54,7 +60,7 @@ const ALLOWED_USERS = parseAllowedUsers(process.env.WHATSAPP_ALLOWED_USERS || '*
 const OWNER_WA = (process.env.WHATSAPP_OWNER_NUMBER || '').replace(/^\+/, '');
 
 const RELAY_MODE = ['1', 'true', 'yes'].includes(
-  (process.env.WHATSAPP_RELAY_MODE || '').toLowerCase()
+  (process.env.WHATSAPP_RELAY_MODE || '').toLowerCase(),
 );
 const RELAY_TARGET = process.env.WHATSAPP_RELAY_TARGET || 'http://viko-admin:3000';
 const PORT_FILTER = process.env.WHATSAPP_PORT_FILTER || '';
@@ -78,7 +84,7 @@ const INJECTION_PATTERNS = [
   /ignore\s+(?:all\s+)?(?:previous|prior)\s+instructions?/gi,
   /forget\s+(?:your|all)\s+instructions?/gi,
   /you\s+are\s+now\s+(?:a\s+)?(?:different|new|another)/gi,
-  /\[INST\][^\[]*\[\/INST\]/gi,
+  /\[INST\][^[]*\[\/INST\]/gi,
 ];
 
 function sanitize(text) {
@@ -89,14 +95,16 @@ function sanitize(text) {
 
 // ── Routing table (admin mode) ─────────────────────────────────────────────────
 
-let _routing = {};     // { "jid@g.us": port_number }
-let _tokenToJid = {};  // { "relay_token_hex": "jid@g.us" }
-let _jidToSlug = {};   // { "jid@g.us": "project-slug" }
+let _routing = {}; // { "jid@g.us": port_number }
+let _tokenToJid = {}; // { "relay_token_hex": "jid@g.us" }
+let _jidToSlug = {}; // { "jid@g.us": "project-slug" }
 
 function loadRouting() {
   try {
     const raw = JSON.parse(readFileSync(ROUTING_FILE, 'utf8'));
-    const routing = {}, tokenToJid = {}, jidToSlug = {};
+    const routing = {},
+      tokenToJid = {},
+      jidToSlug = {};
     for (const [jid, val] of Object.entries(raw)) {
       if (val && typeof val === 'object') {
         if (val.port != null) routing[jid] = Number(val.port);
@@ -106,11 +114,15 @@ function loadRouting() {
         routing[jid] = val; // legacy schema: { jid: port }
       }
     }
-    _routing = routing; _tokenToJid = tokenToJid; _jidToSlug = jidToSlug;
+    _routing = routing;
+    _tokenToJid = tokenToJid;
+    _jidToSlug = jidToSlug;
     console.log(`[bridge] routing.json: ${Object.keys(_routing).length} routes`);
   } catch (e) {
     console.warn(`[bridge] Failed to load routing.json: ${e.message}`);
-    _routing = {}; _tokenToJid = {}; _jidToSlug = {};
+    _routing = {};
+    _tokenToJid = {};
+    _jidToSlug = {};
   }
 }
 
@@ -130,7 +142,7 @@ if (!RELAY_MODE) {
 // ── Message queues (admin mode) ───────────────────────────────────────────────
 
 const perPortQueues = {}; // { "3001": [message, ...] }
-const globalQueue = [];   // unrouted messages → Admin Hermes
+const globalQueue = []; // unrouted messages → Admin Hermes
 
 function enqueue(port, event) {
   const key = String(port);
@@ -177,7 +189,9 @@ function splitMessage(text, max = MAX_MSG_LEN) {
   return chunks;
 }
 
-function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
+function sleep(ms) {
+  return new Promise((r) => setTimeout(r, ms));
+}
 
 function extractText(msg) {
   const m = msg.message || {};
@@ -207,16 +221,19 @@ if (RELAY_MODE) {
   function relayHeaders() {
     return {
       'Content-Type': 'application/json',
-      'Host': new URL(RELAY_TARGET).hostname,
-      ...(RELAY_TOKEN ? { 'Authorization': `Bearer ${RELAY_TOKEN}` } : {}),
+      Host: new URL(RELAY_TARGET).hostname,
+      ...(RELAY_TOKEN ? { Authorization: `Bearer ${RELAY_TOKEN}` } : {}),
     };
   }
 
   async function fwd(res, upstream) {
     const text = await upstream.text();
     let body;
-    try { body = text ? JSON.parse(text) : {}; }
-    catch { body = { error: 'relay_parse_error', detail: text.slice(0, 300) }; }
+    try {
+      body = text ? JSON.parse(text) : {};
+    } catch {
+      body = { error: 'relay_parse_error', detail: text.slice(0, 300) };
+    }
     res.status(upstream.status).json(body);
   }
 
@@ -227,7 +244,9 @@ if (RELAY_MODE) {
         : `${RELAY_TARGET}/messages`;
       const r = await fetch(url, { headers: relayHeaders() });
       res.json(await r.json());
-    } catch { res.json([]); }
+    } catch {
+      res.json([]);
+    }
   });
 
   for (const ep of ['/send', '/edit', '/typing']) {
@@ -248,7 +267,7 @@ if (RELAY_MODE) {
   app.get('/health', async (req, res) => {
     try {
       const r = await fetch(`${RELAY_TARGET}/health`, { headers: relayHeaders() });
-      const d = await r.json();
+      const d = /** @type {Record<string, unknown>} */ (await r.json());
       res.json({ ...d, relay: true, port_filter: PORT_FILTER });
     } catch {
       res.json({ status: 'relay_disconnected', relay: true });
@@ -258,10 +277,8 @@ if (RELAY_MODE) {
   app.listen(BRIDGE_PORT, '127.0.0.1', () => {
     console.log(`[bridge] Relay → ${RELAY_TARGET} (port_filter: ${PORT_FILTER || 'all'})`);
   });
-
 } else {
-
-// ── ADMIN MODE ────────────────────────────────────────────────────────────────
+  // ── ADMIN MODE ────────────────────────────────────────────────────────────────
 
   // Outbound scope enforcement:
   //   - Loopback (127.0.0.1): Admin Hermes — unrestricted
@@ -295,7 +312,9 @@ if (RELAY_MODE) {
     if (req.method === 'POST' && SCOPED_PATHS.has(req.path)) {
       const err = scopeError(req, req.body?.chatId || '');
       if (err) {
-        console.warn(`[bridge] scope-deny ${req.path} chatId=${req.body?.chatId || '?'} (${err.error})`);
+        console.warn(
+          `[bridge] scope-deny ${req.path} chatId=${req.body?.chatId || '?'} (${err.error})`,
+        );
         return res.status(err.code).json(err);
       }
     }
@@ -496,7 +515,7 @@ if (RELAY_MODE) {
 
   app.listen(BRIDGE_PORT, BRIDGE_BIND, () => {
     console.log(`[bridge] Admin mode on ${BRIDGE_BIND}:${BRIDGE_PORT}`);
-    startSocket().catch(e => {
+    startSocket().catch((e) => {
       console.error('[bridge] Socket start failed:', e.message);
       process.exit(1);
     });

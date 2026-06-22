@@ -20,8 +20,22 @@ cd viko-agent
 
 # Copy and fill in environment
 cp .env.example .env
-# Required: WHATSAPP_OWNER_NUMBER, NINEROUTER_JWT_SECRET, NINEROUTER_INITIAL_PASSWORD,
-#           NINEROUTER_API_KEY_SECRET, ANTHROPIC_API_KEY, GROQ_API_KEY, GITHUB_TOKEN
+# Required: WHATSAPP_OWNER_NUMBER, VIKO_OWNER_NAME, VIKO_PROJECTS_ROOT,
+#           NINEROUTER_JWT_SECRET, NINEROUTER_INITIAL_PASSWORD, NINEROUTER_API_KEY_SECRET,
+#           ANTHROPIC_API_KEY, GROQ_API_KEY, GITHUB_TOKEN,
+#           HERMES_DASHBOARD_BASIC_AUTH_USERNAME + _PASSWORD (or _SECRET / a scrypt hash)
+# Optional: VIKO_BIND_ADDR (default 127.0.0.1), VIKO_ISOLATION_GUARD (default enforce)
+#
+# VIKO_OWNER_NAME — bridge stamps the owner's real name on the inbound CTX line so
+#   Viko addresses the owner by name instead of guessing.
+# VIKO_PROJECTS_ROOT — absolute host path for project repos, bind-mounted at the
+#   same path inside containers. On macOS/local set HERMES_UID/HERMES_GID to your
+#   host IDs (often 501:20, not the 1000:1000 Linux default) so bind-mount files
+#   are owned correctly.
+# Dashboard auth — the Hermes dashboard binds 0.0.0.0:9119 (for the host port-map),
+#   so it is reachable by every container on a shared docker network. It now runs
+#   with HERMES_DASHBOARD_INSECURE=false; set the basic-auth credentials so a
+#   project container can't scrape the session token / API key.
 
 # Build Hermes image ONCE (takes ~15-30 min; cached after)
 docker compose build hermes
@@ -55,8 +69,14 @@ from this machine:
 
 | Dashboard | URL | Auth |
 |-----------|-----|------|
-| Hermes (agent, WA session, config) | http://localhost:9119 | none (`HERMES_DASHBOARD_INSECURE=true`) |
+| Hermes (agent, WA session, config) | http://localhost:9119 | basic auth — `HERMES_DASHBOARD_BASIC_AUTH_USERNAME` / `_PASSWORD` (`HERMES_DASHBOARD_INSECURE=false`) |
 | 9router (providers, combos, API keys, usage) | http://localhost:20128 | password = `NINEROUTER_INITIAL_PASSWORD` |
+
+The Hermes dashboard binds `0.0.0.0` for the host port-map, which also exposes it
+to peers on a shared docker network, so the host bind alone is not a boundary.
+Set `HERMES_DASHBOARD_BASIC_AUTH_USERNAME` + `_PASSWORD` in `.env` (prod: prefer a
+scrypt hash over plaintext) so a project container can't scrape the session token /
+API key.
 
 Configure provider keys (Anthropic/Groq) and generate the API key in the 9router
 dashboard. `init-9router.py` only creates the combos; it does not add provider keys.
@@ -104,9 +124,9 @@ docker compose --profile full up -d --force-recreate hermes
 ### Editing `patches/` (Hermes image patches)
 
 Patches are baked into the image at build time. **Most** changes require a rebuild —
-but the WhatsApp bridge (`patches/whatsapp-bridge.js`) does not. See
-[Fast Local Iteration](#fast-local-iteration-no-rebuild) below; that one file is
-copied verbatim into the image and can be bind-mounted instead.
+but a few stand-alone files (`whatsapp-bridge.js`, `isolation-guard.py`) are copied
+verbatim into the image and can be bind-mounted over their in-image location instead.
+See [Fast Local Iteration](#fast-local-iteration-no-rebuild) below.
 
 The **Python source patches** (`patch-model-router.py`, `patch-ssh-guard.py`,
 `patch-approval-sql-context.py`, `indonesian-locale.py`) edit Hermes' own vendored
@@ -219,6 +239,14 @@ the gateway treats an unexpected bridge exit as a fatal error and will not respa
 When the fix is verified, **commit the file** and let CI rebuild the image for prod.
 The override is local-only and never deployed, so production always runs the baked image.
 
+> **Project containers get the live bridge too.** `scripts/spawn-hermes.py`
+> bind-mounts `patches/whatsapp-bridge.js` over the image's baked copy in every
+> `viko-{slug}` container as well, so a bridge edit applies to admin AND project
+> containers on a container restart — no image rebuild. But a project container's
+> generated `config.yaml` / `SOUL.md` (anti-hallucination + persona prompt, terminal
+> cwd, channel prompt) are written by `spawn-hermes.py` only at spawn time — to pick
+> up changes to those you must **re-spawn** the container, not just restart it.
+
 > Caveat: this covers the whole-file replacements only. Changes to the Python
 > source patches still require `docker compose build hermes` (see above).
 
@@ -256,12 +284,33 @@ ruff check scripts/ patches/ mcp-servers/
 ruff format --check scripts/ patches/ mcp-servers/
 ```
 
-**JavaScript** (bridge/):
+**JavaScript** (the WhatsApp bridge — ESLint + Prettier + type-check via checkJs):
 ```bash
-cd bridge && node --check whatsapp-bridge.js allowlist.js
+npm install        # once, installs the dev tooling (gitignored node_modules)
+
+npm run lint       # ESLint: no-unused-vars, no-undef, prefer-const, …
+npm run format     # Prettier: apply formatting   (format:check to verify only)
+npm run typecheck  # tsc --noEmit with checkJs — type-checks the JS, no build step
+npm run check      # all three at once (what CI runs)
 ```
 
-Run lint before every commit. CI enforces this in the `quality` job.
+The bridge stays plain JavaScript (Node runs `bridge.js` directly — no compile step,
+so the fast-reload loop above is unaffected). Type-checking is via `checkJs`/JSDoc in
+`tsconfig.json`; external libs (Baileys, express) are declared in `types/externals.d.ts`,
+and `patches/allowlist.d.ts` types the Hermes-provided `allowlist.js` import.
+
+> **`node --check` is NOT enough to validate the bridge.** It is an ESM module; a
+> syntax check that passes can still crash the ESM loader at import time. Real lesson:
+> a regex containing literal U+2028/U+2029 chars passed `node --check` but threw when
+> the loader actually parsed the module. Validate via an actual import / `npm run check`,
+> not `node --check`.
+
+Run the quality gate before every commit. CI enforces both in the `quality` job:
+
+```bash
+npm run check                              # bridge: lint + format:check + typecheck
+ruff check scripts/ patches/ mcp-servers/  # Python
+```
 
 ---
 
@@ -271,9 +320,12 @@ No automated test suite yet. Manual testing:
 
 1. **Bridge connectivity**: `curl http://localhost:3000/health`
 2. **9router health**: `curl http://localhost:20128/`
-3. **Hermes dashboard**: `http://localhost:9119` (requires VIKO_BIND_ADDR loopback)
+3. **Hermes dashboard**: `http://localhost:9119` (bound to `VIKO_BIND_ADDR`; basic auth)
 4. **Onboarding dry run**: `python3 scripts/onboard.py --dry-run ...`
-5. **Isolation guard**: Check `docker logs viko-hermes` for `[isolation-guard] OK`
+5. **Isolation guard**: check a project container's logs for `[isolation-guard] OK`
+   (e.g. `docker logs viko-hermes-{slug}`). The guard runs per-project at boot; with
+   `VIKO_ISOLATION_GUARD=enforce` (the default) a failed check leaves the container
+   inert/unhealthy instead of starting the gateway.
 
 ---
 

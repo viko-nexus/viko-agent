@@ -120,11 +120,35 @@ messages to the correct Hermes-Project via `data/bridge/routing.json` (Group JID
 **After onboarding, Admin is permanently blind to that group.** The routing check happens first —
 if the JID is registered, Admin forwards and stays silent. No exception.
 
-**Per-project isolation.** Each Hermes-Project container mounts only its own `/home/deploy/{slug}/`
-folder. Separate memory DB, SSH keypair, and config.
+**Per-project isolation.** Each Hermes-Project container mounts only its own project
+folder (and a narrow allowlist of the viko-agent repo — never the whole repo, `.env`,
+or `data/`). Separate memory DB, per-project SSH keypair, and config. Each container
+runs on its own docker network (`viko-{slug}-net`) attached to only the admin bridge
+and 9router, so a compromised project can't reach a sibling at L3. Project containers
+get **no** `GITHUB_TOKEN` and **no** docker socket — cloning and orchestration are the
+admin's job alone.
+
+**Scoped relay tokens.** Each project gets a fresh relay token at every (re)spawn,
+passed via an `--env-file` (never the docker-run argv). The admin bridge enforces it
+as the real security gate: a token authorizes that one container to **send to** and
+**read from** only its single bound group JID — any other chat is `403`. Relay delivery
+is at-least-once.
+
+**Boot isolation guard (fail-closed).** Every project container runs
+`patches/isolation-guard.py` before the gateway. With `VIKO_ISOLATION_GUARD=enforce`
+(the default) a failed isolation invariant leaves the container inert/unhealthy rather
+than starting; `warn` and `off` are available for debugging.
+
+**Dashboard auth.** The Hermes dashboard binds `0.0.0.0` for the host port-map, so it
+is reachable by peers on a shared docker network. It runs with
+`HERMES_DASHBOARD_INSECURE=false` and basic auth
+(`HERMES_DASHBOARD_BASIC_AUTH_USERNAME` / `_PASSWORD`, or a scrypt hash) so a project
+container can't scrape the session token / API key.
 
 **Owner WA number is always from env.** `WHATSAPP_OWNER_NUMBER` is set via environment variable — never
-hardcoded in code or templates. This makes the system self-hostable.
+hardcoded in code or templates. `VIKO_OWNER_NAME` lets the bridge stamp the owner's
+real name on each inbound message so Viko addresses the owner by name. This makes the
+system self-hostable.
 
 ---
 

@@ -11,8 +11,8 @@ no-op.
 Mode via VIKO_ISOLATION_GUARD:
   enforce  → on failure: tombstone + best-effort alert + go INERT (block startup,
              gateway never starts, container reports unhealthy). NOT a crash-loop.
-  warn     → on failure: tombstone + log, but continue startup. (default — safe to
-             ship; flip to enforce once proven.)
+             (default — fail-closed.)
+  warn     → on failure: tombstone + log, but continue startup.
   off      → skip entirely.
 
 The capability layer (per-project mount, per-project SSH key, dropped token,
@@ -23,6 +23,7 @@ import sys
 import json
 import time
 import urllib.request
+import urllib.error
 from pathlib import Path
 
 TOMBSTONE = Path("/opt/data/.isolation-tombstone")
@@ -30,7 +31,7 @@ SSH_ALLOWED = {"id_viko", "id_viko.pub", "config", "known_hosts"}
 
 
 def main() -> int:
-    mode = os.environ.get("VIKO_ISOLATION_GUARD", "warn").strip().lower()
+    mode = os.environ.get("VIKO_ISOLATION_GUARD", "enforce").strip().lower()
     slug = os.environ.get("VIKO_PROJECT_SLUG", "").strip()
     if not slug or mode == "off":
         return 0  # admin container or disabled → no-op
@@ -91,6 +92,26 @@ def main() -> int:
             check("relay-scope-own-group", len(jids) == 1 and port_ok, f"({data})")
         except Exception as e:
             print(f"[isolation-guard] WARN: /relay/scope check skipped (admin unreachable: {e})")
+
+    # ── Real boundary probe (best-effort — only a 200 = leak = FAIL) ─────────
+    # Probe the actual runtime boundary now the bridge scopes reads: a token-less
+    # cross-project read MUST be denied (403). 200 = real leak. If the bridge is
+    # simply unreachable at boot, do NOT hard-fail — a transient hiccup must never
+    # brick a container; only a successful (200) cross-project read is a failure.
+    foreign_jid = "0000000000000000@g.us"  # a JID this project must never read
+    try:
+        probe = urllib.request.Request(
+            f"http://viko-hermes:3000/group/{foreign_jid}/participants",
+            headers={"Host": "viko-hermes-admin"},  # deliberately NO Authorization
+        )
+        try:
+            with urllib.request.urlopen(probe, timeout=8) as r:
+                status = r.status
+        except urllib.error.HTTPError as he:
+            status = he.code
+        check("bridge-denies-tokenless-read", status != 200, f"(status={status})")
+    except Exception as e:
+        print(f"[isolation-guard] WARN: boundary probe skipped (admin unreachable: {e})")
 
     # ── Verdict ──────────────────────────────────────────────────────────────
     if not failures:

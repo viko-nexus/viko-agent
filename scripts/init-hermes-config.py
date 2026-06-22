@@ -3,7 +3,7 @@
 Idempotent Hermes config initializer.
 
 Applies critical settings to data/hermes/config.yaml that are not set
-by Hermes's defaults. Safe to run multiple times — only missing/incorrect
+by Hermes's defaults. Safe to run multiple times - only missing/incorrect
 keys are changed.
 
 Usage:
@@ -40,7 +40,7 @@ if len(sys.argv) > 1 and sys.argv[1] == "--target" and len(sys.argv) > 2:
 elif len(sys.argv) > 1 and not sys.argv[1].startswith("--"):
     CONFIG_PATH = Path(sys.argv[1])
 
-# ── Desired settings ──────────────────────────────────────────────────────────
+# ?? Desired settings ??????????????????????????????????????????????????????????
 # Only keys listed here are touched. Everything else is left as-is.
 
 def _read_env_file() -> dict:
@@ -63,13 +63,13 @@ def _get(key: str, default: str = "") -> str:
 NINEROUTER_API_KEY = _get("OPENAI_API_KEY")
 NINEROUTER_URL = _get("OPENAI_BASE_URL", "http://viko-9router:20128/v1")
 
-# Repo root is two levels up from this script (scripts/init-hermes-config.py → repo/)
+# Repo root is two levels up from this script (scripts/init-hermes-config.py -> repo/)
 VIKO_AGENT_ROOT = str(Path(__file__).parent.parent.resolve())
-# Projects root: where all app projects live (must be inside ~/Projects — see docker-compose mounts)
+# Projects root: where all app projects live (must be inside ~/Projects - see docker-compose mounts)
 VIKO_PROJECTS_ROOT = _get("VIKO_PROJECTS_ROOT", str(Path.home() / "Projects"))
 
 DESIRED = {
-    # Primary model — viko-combo routes to best available via fallback
+    # Primary model - viko-combo routes to best available via fallback
     "model": {
         "default": "viko-combo",
         "provider": "openai",
@@ -86,19 +86,22 @@ DESIRED = {
         "extract_backend": "https://r.jina.ai/",
     },
     # WhatsApp: require @mention in groups, ignore unknown DMs
-    # channel_prompts.default applies to all chats — safe to set here.
-    # Per-group JID prompts are deployment-specific → configure directly in config.yaml.
+    # channel_prompts.default applies to all chats - safe to set here.
+    # Per-group JID prompts are deployment-specific -> configure directly in config.yaml.
     "whatsapp": {
-        # Admin only sees DMs and unregistered groups (registered groups are
-        # routed to per-project Hermes before reaching admin). No need to gate
-        # on @mention — we want Viko to respond to any message in these contexts.
-        "require_mention": False,
+        # Admin sees DMs + unregistered groups -> respond to any message (no @mention
+        # gate). BUT this same override also runs (via cont-init 04) inside each PROJECT
+        # container, which lives in a busy group chat and must ONLY answer when addressed.
+        # VIKO_PROJECT_SLUG is set only in project containers -> gate on @mention there so
+        # Viko doesn't butt into every group message. Without this it clobbers the
+        # require_mention:True that spawn-hermes.py writes for projects.
+        "require_mention": bool(os.environ.get("VIKO_PROJECT_SLUG")),
         "unauthorized_dm_behavior": "ignore",
         "channel_prompts": {
-            "default": "Balas dalam Bahasa Indonesia. Jika pengguna menulis dalam English, balas dalam English. Jawa/Sunda → Indonesia.",
+            "default": "Balas dalam Bahasa Indonesia. Jika pengguna menulis dalam English, balas dalam English. Jawa/Sunda -> Indonesia.",
         },
     },
-    # Pre-approved commands — no approval prompt needed for these operations
+    # Pre-approved commands - no approval prompt needed for these operations
     "command_allowlist": [
         "script execution via -e/-c flag",
         "script execution via heredoc",
@@ -133,7 +136,7 @@ DESIRED = {
         },
     },
     # Skills: expose shared skills + admin-specific skills (onboarding)
-    # Paths derived from script location — works for any user/machine
+    # Paths derived from script location - works for any user/machine
     "skills": {
         "external_dirs": [f"{VIKO_AGENT_ROOT}/skills", f"{VIKO_AGENT_ROOT}/admin/skills"],
         "guard_agent_created": True,
@@ -187,24 +190,30 @@ def deep_merge(base: dict, override: dict) -> tuple[dict, int]:
 
 
 def main():
-    if not CONFIG_PATH.exists():
-        print(f"ERROR: {CONFIG_PATH} not found.")
-        print("Start Hermes once first so it creates the default config.yaml, then run this script.")
-        sys.exit(1)
-
-    with open(CONFIG_PATH, encoding="utf-8") as f:
-        config = yaml.safe_load(f) or {}
+    if CONFIG_PATH.exists():
+        with open(CONFIG_PATH, encoding="utf-8") as f:
+            config = yaml.safe_load(f) or {}
+    else:
+        # Hermes hasn't created config.yaml yet - this happens when the script runs
+        # from cont-init, which fires BEFORE the gateway's first start. Create the
+        # file from our overrides; Hermes fills every other key from its defaults
+        # (the config dataclasses use from_dict + default_factory), and it won't
+        # overwrite an existing config.yaml on start. This makes the overrides apply
+        # on a fresh setup instead of being silently skipped.
+        print(f"{CONFIG_PATH} not found - creating it from Viko overrides.")
+        CONFIG_PATH.parent.mkdir(parents=True, exist_ok=True)
+        config = {}
 
     config, changed = deep_merge(config, DESIRED)
 
     if changed == 0:
-        print("✓ Hermes config already up to date — no changes needed")
+        print("OK Hermes config already up to date - no changes needed")
         return
 
     with open(CONFIG_PATH, "w", encoding="utf-8") as f:
         yaml.dump(config, f, allow_unicode=True, default_flow_style=False, sort_keys=False)
 
-    print(f"✓ Hermes config updated ({changed} setting(s) applied)")
+    print(f"OK Hermes config updated ({changed} setting(s) applied)")
     print("Restart Hermes to apply changes:")
     service = "hermes" if TARGET == "admin" else TARGET
     print(f"  docker compose --profile full up -d --force-recreate {service}")

@@ -80,6 +80,9 @@ mkdir -p data/hermes
 # ── 4. Start the stack (no build) ────────────────────────────────────────────
 say "Starting 9router + Hermes..."
 docker compose --profile full up -d
+# Force-recreate hermes so a freshly-built image is actually picked up — a plain
+# `up -d` leaves the already-running container on the stale image.
+docker compose --profile full up -d --force-recreate hermes
 say "Waiting for 9router to be healthy..."
 for _ in $(seq 1 60); do
   [ "$(docker inspect -f '{{.State.Health.Status}}' "$ROUTER" 2>/dev/null)" = "healthy" ] && break

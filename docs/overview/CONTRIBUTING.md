@@ -45,10 +45,10 @@ Python:
 - Type hints optional but encouraged for function signatures
 - No print statements except in scripts meant to be run manually
 
-JavaScript (bridge/):
+JavaScript (the WhatsApp bridge — plain JS, no TypeScript build):
 - ES module syntax (`import`/`export`)
-- `node --check` must pass
-- JSDoc comments on exported functions
+- `npm run check` must pass (ESLint + Prettier + `tsc --noEmit` via checkJs)
+- JSDoc comments on exported functions; use JSDoc `@type` casts where checkJs needs a hint
 
 Dockerfile:
 - Comments must explain WHY a layer exists, not WHAT the command does
@@ -81,7 +81,7 @@ docs(overview): update deployment guide for Traefik setup
 - [ ] All code and comments in English
 - [ ] No hardcoded phone numbers, JIDs, or project slugs
 - [ ] `ruff check` passes on any modified Python files
-- [ ] `node --check` passes on any modified JavaScript files
+- [ ] `npm run check` passes on any modified JavaScript files
 - [ ] Tested locally (build passes, bridge responds, Hermes starts)
 - [ ] Security rules from [AGENTS.md](../../AGENTS.md) not broken
 - [ ] `docs/overview/` updated if architecture or deployment changed

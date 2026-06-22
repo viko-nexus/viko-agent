@@ -25,10 +25,17 @@ default_if_missing() {
   grep -q "^${key}=" "$ENV_FILE" 2>/dev/null || printf '%s=%s\n' "$key" "$val" >> "$ENV_FILE"
 }
 
-# Portable — GitHub secrets are canonical (upsert, overriding any local drift)
+# Portable — GitHub secrets are canonical (upsert, overriding any local drift).
+# Dashboard auth (A2): the admin dashboard runs with HERMES_DASHBOARD_INSECURE=false,
+# so it needs a username + password hash + session secret or it's auth-locked. We
+# provision the scrypt _PASSWORD_HASH (no plaintext at rest), not _PASSWORD.
+# VIKO_OWNER_NAME is stamped on the owner's CTX line so Viko knows the owner's name.
 for k in NINEROUTER_JWT_SECRET NINEROUTER_INITIAL_PASSWORD NINEROUTER_API_KEY_SECRET \
          ANTHROPIC_API_KEY GROQ_API_KEY OPENAI_API_KEY \
-         WHATSAPP_HOME_CHANNEL WHATSAPP_OWNER_NUMBER VIKO_SSH_PUB VIKO_ISOLATION_GUARD; do
+         WHATSAPP_HOME_CHANNEL WHATSAPP_OWNER_NUMBER VIKO_SSH_PUB VIKO_ISOLATION_GUARD \
+         VIKO_OWNER_NAME \
+         HERMES_DASHBOARD_BASIC_AUTH_USERNAME HERMES_DASHBOARD_BASIC_AUTH_PASSWORD_HASH \
+         HERMES_DASHBOARD_BASIC_AUTH_SECRET; do
   upsert "$k" "${!k:-}"
 done
 
@@ -36,7 +43,14 @@ done
 # VIKO_GITHUB_TOKEN and is written back as GITHUB_TOKEN in .env.
 upsert GITHUB_TOKEN "${VIKO_GITHUB_TOKEN:-}"
 
-# Machine-specific — default only on a fresh VPS, never override an existing host
+# Isolation guard is fail-closed: upsert() skips empty values, so an unset CI
+# secret would leave it absent and fall back to the code default. Pin it to
+# 'enforce' when missing so a fresh deploy is locked down by default.
+default_if_missing VIKO_ISOLATION_GUARD enforce
+
+# Machine-specific — default only on a fresh VPS, never override an existing host.
+# HERMES_UID/GID default 1000:1000 (Linux VPS first-user convention) — kept in
+# sync with the docker-compose.yml fallback so a fresh deploy doesn't drift.
 default_if_missing VIKO_PROJECTS_ROOT /home/viko/projects
 default_if_missing HERMES_UID 1000
 default_if_missing HERMES_GID 1000

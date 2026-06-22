@@ -38,8 +38,6 @@ from datetime import datetime
 
 REPO_DIR = Path(__file__).parent.parent.resolve()
 SSH_DIR = Path.home() / ".viko" / "ssh"
-CORE_SSH_CMD = ("ssh -i /opt/data/.ssh/id_viko -o IdentitiesOnly=yes "
-                "-o StrictHostKeyChecking=accept-new -o UserKnownHostsFile=/opt/data/.ssh/known_hosts")
 HERMES_ADMIN_ENV_PATH = REPO_DIR / "data" / "hermes-admin" / ".env"
 HERMES_ENV_PATH = REPO_DIR / "data" / "hermes" / ".env"
 
@@ -101,20 +99,36 @@ def _gh_org_repo(github_url: str) -> str:
 
 
 def _enable_push(project_dir: Path, github_url: str, slug: str, token: str) -> None:
-    """Give the project's container a SCOPED git-push capability: register its
-    {slug}-deploy key as a write deploy key on THIS repo only, point the repo at
-    an SSH remote, and pin git to the per-project key via core.sshCommand. The key
-    is a deploy key on this repo alone, so the container cannot push anywhere else."""
+    """Give the project's container a SCOPED git-push capability with a deploy key
+    PER REPO. A GitHub deploy key belongs to exactly one repo, so a multi-repo project
+    can't share one key — the 2nd+ repo's registration 422s. We mint a distinct
+    {slug}-{org-repo}-deploy key per repo, register it on its repo alone (write), drop
+    it into the project's mounted ssh dir, and pin THAT repo's clone to THAT key via
+    core.sshCommand. Each key is a deploy key on one repo only — still scoped, no broad
+    user key. (Separate from id_viko, which is the VPS/server SSH key.)"""
     org_repo = _gh_org_repo(github_url)
-    pub_path = SSH_DIR / f"{slug}-deploy.pub"
-    if not org_repo or not pub_path.exists():
-        print(f"      push: skipped (org_repo={org_repo or '?'}, key={'ok' if pub_path.exists() else 'missing'})")
+    if not org_repo:
+        print("      push: skipped (no org_repo parsed from github_url)")
         return
 
-    # 1. Register the deploy key (write) — idempotent.
+    repo_tag = org_repo.replace("/", "-")            # e.g. doa-sas-siprodev-web
+    key_name = f"{slug}-{repo_tag}-deploy"           # one keypair per repo
+    priv = SSH_DIR / key_name
+    if not priv.exists():
+        r = subprocess.run(
+            ["ssh-keygen", "-t", "ed25519", "-N", "", "-C", f"viko-{key_name}", "-f", str(priv)],
+            capture_output=True, text=True)
+        if r.returncode != 0:
+            print(f"      push: keygen failed for {repo_tag}: {r.stderr.strip()}")
+            return
+    priv.chmod(0o600)
+    pub = (SSH_DIR / f"{key_name}.pub").read_text().strip()
+
+    # 1. Register THIS repo's deploy key (write). Distinct key+title per repo, so a
+    #    multi-repo project never 422s on the 2nd repo. A 422 here means THIS key is
+    #    already on THIS repo (idempotent re-run) — fine; any other error is surfaced.
     if token:
-        body = json.dumps({"title": f"viko-{slug}", "key": pub_path.read_text().strip(),
-                           "read_only": False}).encode()
+        body = json.dumps({"title": f"viko-{key_name}", "key": pub, "read_only": False}).encode()
         req = urllib.request.Request(
             f"https://api.github.com/repos/{org_repo}/keys", data=body, method="POST",
             headers={"Authorization": f"Bearer {token}", "Accept": "application/vnd.github+json"})
@@ -123,16 +137,29 @@ def _enable_push(project_dir: Path, github_url: str, slug: str, token: str) -> N
             print(f"      push: deploy key registered on {org_repo}")
         except urllib.error.HTTPError as e:
             msg = e.read().decode()
-            print(f"      push: deploy key {'already present' if 'already in use' in msg else 'note ' + msg[:80]}")
+            if e.code == 422 and "already in use" in msg:
+                print(f"      push: deploy key already present on {org_repo} (ok)")
+            else:
+                print(f"      push: WARN registering key on {org_repo}: HTTP {e.code} {msg[:100]}")
+    else:
+        print("      push: no GITHUB_TOKEN — skipped key registration (set it to enable push)")
 
-    # 2. Point the repo at SSH + pin the per-project key + set a commit identity.
+    # 2. Place the per-repo key in the project's mounted ssh dir so the container can use
+    #    it, and pin THIS repo's clone to THIS key (not the shared id_viko).
+    proj_ssh = SSH_DIR / "projects" / slug
+    proj_ssh.mkdir(parents=True, exist_ok=True)
+    (proj_ssh / key_name).write_text(priv.read_text())
+    (proj_ssh / key_name).chmod(0o600)
+    container_key = f"/opt/data/.ssh/{key_name}"
+    ssh_cmd = (f"ssh -i {container_key} -o IdentitiesOnly=yes "
+               f"-o StrictHostKeyChecking=accept-new -o UserKnownHostsFile=/opt/data/.ssh/known_hosts")
     ssh_url = f"git@github.com:{org_repo}.git"
     for args in (["remote", "set-url", "origin", ssh_url],
-                 ["config", "core.sshCommand", CORE_SSH_CMD],
+                 ["config", "core.sshCommand", ssh_cmd],
                  ["config", "user.name", "Viko"],
                  ["config", "user.email", f"viko-{slug}@local"]):
         subprocess.run(["git", "-C", str(project_dir)] + args, capture_output=True)
-    print(f"      push: repo -> {ssh_url} (scoped key, identity Viko)")
+    print(f"      push: repo -> {ssh_url} (per-repo key {key_name})")
 
 
 def main():
@@ -153,7 +180,10 @@ def main():
                         help="Clone into {slug}/{subdir}/ instead of {slug}/ (multi-repo projects)")
     parser.add_argument("--vps-host", default="", help="VPS hostname or IP for this project")
     parser.add_argument("--vps-user", default="viko-exec", help="SSH username on the project VPS")
+    parser.add_argument("--vps-port", default="22", help="SSH port on the project VPS (default 22)")
     parser.add_argument("--members", default="", help="Comma-separated phone numbers for DM access")
+    parser.add_argument("--force", action="store_true",
+                        help="Re-onboard an already-registered group (tears down + rotates the live project)")
     args = parser.parse_args(args_in)
 
     slug = args.slug.lower().strip()
@@ -162,7 +192,24 @@ def main():
     repo_subdir = args.repo_subdir.strip()
     vps_host = args.vps_host.strip()
     vps_user = args.vps_user.strip()
+    vps_port = args.vps_port.strip()
     member_phones = [p.strip().lstrip("+") for p in args.members.split(",") if p.strip()]
+
+    # ── Re-onboard guard ──────────────────────────────────────────────────────
+    # An accidental re-onboard re-clones, rotates the relay token, and re-spawns the
+    # live container — silently tearing it down. Block a FULL duplicate (same group,
+    # no new repo-subdir) unless --force. The multi-repo flow deliberately calls this
+    # again for the SAME group with a different --repo-subdir, so allow that.
+    routing_file = REPO_DIR / "data" / "bridge" / "routing.json"
+    existing_routing = {}
+    if routing_file.exists():
+        try:
+            existing_routing = json.loads(routing_file.read_text())
+        except Exception:
+            existing_routing = {}
+    if group_jid in existing_routing and not repo_subdir and not args.force:
+        print("Project sudah terdaftar — pakai --force untuk re-onboard")
+        sys.exit(1)
 
     # Resolve VIKO_PROJECTS_ROOT
     projects_root_str = _get_env_val(REPO_DIR / ".env", "VIKO_PROJECTS_ROOT")
@@ -213,20 +260,49 @@ def main():
     context_dir = REPO_DIR / "projects" / slug
     context_dir.mkdir(parents=True, exist_ok=True)
 
+    # Inject the wizard-gathered data so Viko-Project starts informed. Idempotent
+    # and accumulating: multi-repo onboarding calls add-project.py once per repo,
+    # so each call appends its repo line; Info/Server/Members are written once.
     context_file = context_dir / "context.md"
-    if not context_file.exists():
+    repo_label = repo_subdir or slug
+    repo_line = f"- `{repo_label}`: {github_url}"
+    server_line = f"{vps_user}@{vps_host}:{vps_port}" if vps_host else "Lokal (tanpa SSH)"
+    members_line = ", ".join(member_phones) if member_phones else "(dibaca otomatis dari grup)"
+    # Owner identity so Viko-Project knows WHO authorizes execution and can greet them
+    # by name. The bridge stamps [CTX caller=owner] on the owner's messages; this line
+    # lets the agent map that to a name + number instead of treating the owner as a stranger.
+    owner_name = _get_env_val(REPO_DIR / ".env", "VIKO_OWNER_NAME") or os.environ.get("VIKO_OWNER_NAME", "")
+    owner_number = _get_env_val(REPO_DIR / ".env", "WHATSAPP_OWNER_NUMBER") or os.environ.get("WHATSAPP_OWNER_NUMBER", "")
+    owner_line = (
+        f"{owner_name} ({owner_number})" if owner_name and owner_number
+        else owner_number or owner_name or "(set WHATSAPP_OWNER_NUMBER / VIKO_OWNER_NAME)"
+    )
+
+    if context_file.exists():
+        text = context_file.read_text()
+        if repo_line not in text:
+            if "## Repos\n" in text:
+                text = text.replace("## Repos\n", f"## Repos\n{repo_line}\n", 1)
+            else:
+                text += f"\n## Repos\n{repo_line}\n"
+            context_file.write_text(text)
+            print(f"      context.md: added repo {repo_label}")
+        else:
+            print("      context.md: repo already listed")
+    else:
         context_file.write_text(
             f"# Project: {slug}\n\n"
             f"## Info\n"
-            f"- GitHub: {github_url}\n"
             f"- WA Group JID: {group_jid}\n"
+            f"- Owner: {owner_line} — yang authorize eksekusi (deploy/infra/ops destruktif)\n"
+            f"- Server: {server_line}\n"
+            f"- Members: {members_line}\n"
             f"- Onboarded: {datetime.now().strftime('%Y-%m-%d')}\n\n"
-            f"## Stack\n(Scan codebase dulu — jalankan: `cat {project_dir}/package.json` atau `ls {project_dir}/`)\n\n"
+            f"## Repos\n{repo_line}\n\n"
+            f"## Stack\n(Scan codebase dulu — jalankan: `ls {project_dir}/` atau `cat {project_dir}/package.json`)\n\n"
             f"## Notes\n(Tambahkan konteks project di sini)\n"
         )
         print("      Created context.md")
-    else:
-        print("      context.md exists, skipping.")
 
     steps_file = context_dir / "steps.md"
     if not steps_file.exists():
@@ -242,6 +318,8 @@ def main():
         spawn_cmd += ["--vps-host", vps_host]
     if vps_user and vps_user != "viko-exec":
         spawn_cmd += ["--vps-user", vps_user]
+    if vps_port and vps_port != "22":
+        spawn_cmd += ["--vps-port", vps_port]
     result = subprocess.run(spawn_cmd, capture_output=True, text=True)
     print(result.stdout)
     if result.returncode != 0:
@@ -276,7 +354,7 @@ def main():
     print(f"  1. Scan codebase: ls {project_dir}/ dan baca file utama")
     print(f"  2. Update {context_dir}/context.md dengan stack dan info project")
     print("  3. Restart hermes (admin instance) jika WHATSAPP_ALLOWED_USERS diubah:")
-    print("     cd ~/projects/viko-agent && docker compose --profile full up -d --force-recreate hermes-admin")
+    print("     cd ~/projects/viko-agent && docker compose --profile full up -d --force-recreate hermes")
     print("  (spawn-hermes.py output above shows status of isolated Hermes instance)")
 
 

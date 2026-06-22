@@ -1,0 +1,23 @@
+# Dependencies & lockfiles
+node_modules/
+**/node_modules/
+package-lock.json
+**/package-lock.json
+
+# Local runtime data (never formatted)
+data/
+backups/
+
+# Generated / vendored
+*.min.js
+
+# Prettier here is scoped to the JS bridge sources only. Docs, config, and markup
+# are authored by hand / other tooling — keep them out of the formatter to avoid
+# noisy, unrelated reformatting.
+**/*.md
+**/*.css
+**/*.html
+**/*.yml
+**/*.yaml
+**/*.py
+assets/**
