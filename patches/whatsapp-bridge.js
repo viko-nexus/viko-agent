@@ -294,6 +294,20 @@ let _routing = Object.create(null); // { "jid@g.us": 8101 }     — normalized, 
 let _tokenToJid = Object.create(null); // { "<relay_token>": "jid@g.us" } — outbound scope checks
 let _jidToSlug = Object.create(null); // { "jid@g.us": "slug" }  — group → project, for scope stamping
 
+// E1: at-least-once relay delivery. The scoped GET /messages drains a per-port queue
+// DESTRUCTIVELY; if the relay never received the batch (restart mid-response, truncated
+// body, a media-prefetch throw), those in-memory messages were lost with no redelivery.
+// Hold each drained batch in-flight, keyed by port, and keep RE-SERVING the same batch
+// until the relay POSTs /messages/ack — only then is it evicted. The gateway dedupes by
+// messageId, so a re-served duplicate is harmless; loss is not.
+let _inflightByPort = Object.create(null); // { "8101": { batchId, msgs, ts, tries } }
+let _batchSeq = 0; // monotonic counter for batch ids (cleaner than time/random)
+// E1 give-up bound: re-serve an unacked batch for at most this long / this many polls.
+// Past that the relay is treated as dead/wedged — requeue its msgs (gateway dedupes any
+// dupes) and resume draining so NEW messages aren't pinned behind a never-acked batch.
+const INFLIGHT_TTL_MS = 120000; // 2 min
+const INFLIGHT_MAX_TRIES = 30;
+
 function _loadRouting() {
   let rawText;
   try {
@@ -1078,7 +1092,24 @@ if (RELAY_MODE) {
         ? `${RELAY_TARGET}/messages?port=${PORT_FILTER}`
         : `${RELAY_TARGET}/messages`;
       const resp = await fetch(url, { headers: _relayHeaders() });
-      res.json(await _prefetchRelayMedia(await resp.json()));
+      // E1: admin tags a non-empty batch with X-Viko-Batch-Id; ack it only AFTER the
+      // messages are successfully consumed locally (media prefetched + handed to the
+      // local gateway), so a crash before ack re-serves the same batch next poll.
+      const batchId = resp.headers.get('x-viko-batch-id');
+      const messages = await _prefetchRelayMedia(await resp.json());
+      res.json(messages);
+      if (batchId) {
+        // Best-effort: a failed ack just re-serves the (gateway-deduped) batch next poll.
+        try {
+          await fetch(`${RELAY_TARGET}/messages/ack`, {
+            method: 'POST',
+            headers: _relayHeaders(),
+            body: JSON.stringify({ batchId }),
+          });
+        } catch (e) {
+          console.log(`[bridge] relay ack failed (will re-serve): ${e.message}`);
+        }
+      }
     } catch {
       res.json([]);
     }
@@ -1312,10 +1343,37 @@ if (RELAY_MODE) {
           .status(403)
           .json({ error: 'cross_project_read_blocked', allowed_port: allowedPort });
       }
-      const q = messageQueues[allowedPort] || [];
-      const msgs = q.splice(0, q.length);
-      messageQueues[allowedPort] = [];
-      return res.json(msgs);
+      // E1: re-serve an unacked in-flight batch verbatim (at-least-once). Only drain
+      // fresh messages once the prior batch has been acked + evicted.
+      let inflight = _inflightByPort[allowedPort];
+      // Give-up: a batch re-served past the TTL / max polls means the relay never acked
+      // (likely dead). Requeue its msgs at the head (a recovered relay still gets them;
+      // gateway dedupes), drop the in-flight, and fall through to drain — so a never-acking
+      // relay can't wedge the port forever and new messages aren't pinned behind it.
+      if (inflight && (Date.now() - inflight.ts > INFLIGHT_TTL_MS || inflight.tries >= INFLIGHT_MAX_TRIES)) {
+        const rq = (messageQueues[allowedPort] = messageQueues[allowedPort] || []);
+        rq.unshift(...inflight.msgs);
+        if (rq.length > MAX_QUEUE_SIZE) rq.splice(MAX_QUEUE_SIZE);
+        try { console.warn(`[bridge] in-flight batch ${inflight.batchId} expired w/o ack — requeued ${inflight.msgs.length}, resuming`); } catch {}
+        delete _inflightByPort[allowedPort];
+        inflight = null;
+      }
+      if (!inflight) {
+        const q = messageQueues[allowedPort] || [];
+        const msgs = q.splice(0, q.length);
+        messageQueues[allowedPort] = [];
+        // Empty poll: return [] with no batch (as before). Don't buffer an empty batch —
+        // it would never be acked and would block draining of future messages.
+        if (msgs.length === 0) return res.json([]);
+        const batchId = String(++_batchSeq) + '-' + allowedPort;
+        inflight = _inflightByPort[allowedPort] = { batchId, msgs, ts: Date.now(), tries: 0 };
+      } else {
+        inflight.tries++;
+      }
+      // Same JSON array body as before (so any other consumer still sees an array); the
+      // relay reads X-Viko-Batch-Id to ack the batch once it's safely consumed locally.
+      res.set('X-Viko-Batch-Id', inflight.batchId);
+      return res.json(inflight.msgs);
     }
     const port = req.query.port ? String(req.query.port) : null;
     if (port) {
@@ -1339,6 +1397,46 @@ if (RELAY_MODE) {
         }),
       );
     }
+  });
+
+  // E1: explicit ack for a delivered batch. Same token/scope machinery as GET /messages —
+  // the port is resolved FROM THE TOKEN (never from the body) so a relay can only ack its
+  // own port. Body: { batchId }. If the in-flight batch for this port matches, evict it
+  // (delivered + acked). Unknown/mismatched batchId → 200 no-op (idempotent: a re-served
+  // batch may be acked twice, or a stale ack may arrive after eviction).
+  app.post('/messages/ack', (req, res) => {
+    let allowedPort = null;
+    if (!_isLoopback(req)) {
+      const token = _bearer(req);
+      const jid = token ? _tokenToJid[token] : '';
+      if (!jid) {
+        const _m = `scope-deny POST /messages/ack (${token ? 'unknown_relay_token' : 'relay_token_required'})`;
+        console.warn(`[bridge] ${_m}`);
+        _securityLog(_m);
+        return res
+          .status(403)
+          .json({ error: token ? 'unknown_relay_token' : 'relay_token_required' });
+      }
+      allowedPort = _routing[jid] != null ? String(_routing[jid]) : null;
+      if (!allowedPort) {
+        const _m = `scope-deny POST /messages/ack (no_port_for_jid) jid=${jid}`;
+        console.warn(`[bridge] ${_m}`);
+        _securityLog(_m);
+        return res.status(403).json({ error: 'no_port_for_jid', allowed: jid });
+      }
+    } else {
+      // Loopback (admin Hermes) doesn't poll the in-flight scoped path, but accept an
+      // explicit port for symmetry/testing without affecting normal admin delivery.
+      allowedPort = req.query.port ? String(req.query.port) : null;
+    }
+    const batchId = req.body && req.body.batchId;
+    if (allowedPort && batchId) {
+      const inflight = _inflightByPort[allowedPort];
+      if (inflight && inflight.batchId === batchId) {
+        delete _inflightByPort[allowedPort];
+      }
+    }
+    return res.json({ ok: true });
   });
 
   // Send a message
