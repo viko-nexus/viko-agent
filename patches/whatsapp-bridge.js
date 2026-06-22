@@ -1285,8 +1285,19 @@ if (RELAY_MODE) {
   }
 
   const _SCOPED_PATHS = new Set(['/send', '/send-media', '/edit', '/typing']);
+  // Normalize before the scope check. Express default routing is non-strict and
+  // case-insensitive, so `POST /send/`, `//send`, and `/SEND` all reach the `/send`
+  // handler — but an exact-match `_SCOPED_PATHS.has(req.path)` would MISS those
+  // variants and skip the scope gate entirely (cross-project send bypass). Collapse
+  // duplicate slashes, drop trailing slashes, and lowercase so every variant that
+  // routes to a scoped handler is gated.
+  function _scopedPath(p) {
+    const n = (p || '').toLowerCase().replace(/\/{2,}/g, '/').replace(/\/+$/, '') || '/';
+    return _SCOPED_PATHS.has(n) ? n : null;
+  }
   app.use((req, res, next) => {
-    if (req.method === 'POST' && _SCOPED_PATHS.has(req.path)) {
+    const scoped = req.method === 'POST' ? _scopedPath(req.path) : null;
+    if (scoped) {
       const chatId = (req.body && req.body.chatId) || '';
       const err = _scopeError(req, chatId);
       if (err) {

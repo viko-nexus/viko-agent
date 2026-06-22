@@ -880,6 +880,24 @@ def main():
     slug = args.slug.lower().strip()
     group_jid = args.group_jid.strip()
 
+    # Fail-closed input validation. `slug` is interpolated into bind-mount SOURCES
+    # (-v {projects_root}/{slug}:...:rw), the container name, and the per-project
+    # network; an unvalidated value containing '/', '.', or '..' would let a mount
+    # source resolve to a sibling/parent path (another project's code, or repo
+    # internals like .env/data/) — an isolation escape. `group_jid` is the routing
+    # key + channel-prompt key; a malformed value registers a route that never
+    # matches a real chat (silent misconfig). Reject both before any side effect.
+    if not re.fullmatch(r"[a-z0-9][a-z0-9-]{0,38}", slug):
+        raise SystemExit(
+            f"invalid slug {slug!r}: must be lowercase alphanumeric + hyphens, "
+            f"start alphanumeric, max 39 chars (no '/', '.', '..')"
+        )
+    if not re.fullmatch(r"[0-9]+(-[0-9]+)?@(g\.us|s\.whatsapp\.net)", group_jid):
+        raise SystemExit(
+            f"invalid group_jid {group_jid!r}: expected <digits>@g.us or "
+            f"<digits>@s.whatsapp.net"
+        )
+
     env = _read_env()
     routing = load_routing()
 
