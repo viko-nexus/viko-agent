@@ -158,12 +158,15 @@ jobs:
 
       - name: Restart Hermes
         run: |
+          # Always force-recreate the admin container: provision-env.sh rewrites .env
+          # on every deploy, and a plain `up -d` does NOT apply .env-only changes (it
+          # leaves the running container untouched when the image is unchanged), so a
+          # config/secret update would silently not take effect. On a rebuilt image we
+          # also rm -f first to guarantee the new image is used.
           if [ "${REBUILT}" = "true" ]; then
             docker rm -f viko-hermes 2>/dev/null || true
-            docker compose --profile full up -d --force-recreate hermes
-          else
-            docker compose --profile full up -d hermes
           fi
+          docker compose --profile full up -d --force-recreate hermes
           docker ps --filter name=viko --format 'table {{.Names}}\t{{.Status}}'
 
   # ── Job 4: Tag + GitHub release (conventional commits → semver) ──────────────
