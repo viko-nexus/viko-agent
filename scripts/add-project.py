@@ -182,6 +182,8 @@ def main():
     parser.add_argument("--vps-user", default="viko-exec", help="SSH username on the project VPS")
     parser.add_argument("--vps-port", default="22", help="SSH port on the project VPS (default 22)")
     parser.add_argument("--members", default="", help="Comma-separated phone numbers for DM access")
+    parser.add_argument("--force", action="store_true",
+                        help="Re-onboard an already-registered group (tears down + rotates the live project)")
     args = parser.parse_args(args_in)
 
     slug = args.slug.lower().strip()
@@ -192,6 +194,22 @@ def main():
     vps_user = args.vps_user.strip()
     vps_port = args.vps_port.strip()
     member_phones = [p.strip().lstrip("+") for p in args.members.split(",") if p.strip()]
+
+    # ── Re-onboard guard ──────────────────────────────────────────────────────
+    # An accidental re-onboard re-clones, rotates the relay token, and re-spawns the
+    # live container — silently tearing it down. Block a FULL duplicate (same group,
+    # no new repo-subdir) unless --force. The multi-repo flow deliberately calls this
+    # again for the SAME group with a different --repo-subdir, so allow that.
+    routing_file = REPO_DIR / "data" / "bridge" / "routing.json"
+    existing_routing = {}
+    if routing_file.exists():
+        try:
+            existing_routing = json.loads(routing_file.read_text())
+        except Exception:
+            existing_routing = {}
+    if group_jid in existing_routing and not repo_subdir and not args.force:
+        print("Project sudah terdaftar — pakai --force untuk re-onboard")
+        sys.exit(1)
 
     # Resolve VIKO_PROJECTS_ROOT
     projects_root_str = _get_env_val(REPO_DIR / ".env", "VIKO_PROJECTS_ROOT")

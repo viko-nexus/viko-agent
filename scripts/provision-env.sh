@@ -41,7 +41,9 @@ upsert GITHUB_TOKEN "${VIKO_GITHUB_TOKEN:-}"
 # 'enforce' when missing so a fresh deploy is locked down by default.
 default_if_missing VIKO_ISOLATION_GUARD enforce
 
-# Machine-specific — default only on a fresh VPS, never override an existing host
+# Machine-specific — default only on a fresh VPS, never override an existing host.
+# HERMES_UID/GID default 1000:1000 (Linux VPS first-user convention) — kept in
+# sync with the docker-compose.yml fallback so a fresh deploy doesn't drift.
 default_if_missing VIKO_PROJECTS_ROOT /home/viko/projects
 default_if_missing HERMES_UID 1000
 default_if_missing HERMES_GID 1000

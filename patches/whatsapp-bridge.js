@@ -39,6 +39,7 @@ import {
   watch,
   statSync,
   appendFileSync,
+  writeSync,
 } from 'fs';
 import { randomBytes } from 'crypto';
 import { execSync } from 'child_process';
@@ -265,6 +266,16 @@ const _nameByNumber = {};
 
 const logger = pino({ level: 'warn' });
 
+// F3-tee: SECURITY/deny events also go to docker logs. The gateway redirects the
+// bridge's stdout to a file, so security denials never surface in `docker logs`.
+// Write these specific events directly to fd 2 (stderr) so they're visible there.
+// Deny/security events ONLY — never normal-traffic spam.
+function _securityLog(line) {
+  try {
+    writeSync(2, `[bridge][security] ${line}\n`);
+  } catch {}
+}
+
 // Message queue for polling
 const messageQueue = []; // kept for backward compat (admin Hermes, no port filter)
 const messageQueues = {}; // per-port queues: { "8101": [...], "8102": [...] }
@@ -284,8 +295,25 @@ let _tokenToJid = Object.create(null); // { "<relay_token>": "jid@g.us" } — ou
 let _jidToSlug = Object.create(null); // { "jid@g.us": "slug" }  — group → project, for scope stamping
 
 function _loadRouting() {
+  let rawText;
   try {
-    const raw = JSON.parse(readFileSync(ROUTING_FILE, 'utf8'));
+    rawText = readFileSync(ROUTING_FILE, 'utf8');
+  } catch {
+    // File genuinely doesn't exist / unreadable as missing → no routes.
+    _routing = Object.create(null);
+    _tokenToJid = Object.create(null);
+    _jidToSlug = Object.create(null);
+    return;
+  }
+  // Empty file → no routes (legitimate "no projects yet" state).
+  if (!rawText || !rawText.trim()) {
+    _routing = Object.create(null);
+    _tokenToJid = Object.create(null);
+    _jidToSlug = Object.create(null);
+    return;
+  }
+  try {
+    const raw = JSON.parse(rawText);
     const routing = Object.create(null),
       tokenToJid = Object.create(null),
       jidToSlug = Object.create(null);
@@ -306,10 +334,13 @@ function _loadRouting() {
     console.log(
       `[bridge] routing.json loaded: ${Object.keys(_routing).length} routes, ${Object.keys(_tokenToJid).length} relay tokens`,
     );
-  } catch {
-    _routing = Object.create(null);
-    _tokenToJid = Object.create(null);
-    _jidToSlug = Object.create(null);
+  } catch (e) {
+    // Fail-closed (D4): the file EXISTS and is NON-EMPTY but failed to parse —
+    // likely a transient half-written write. Do NOT wipe live routes + relay
+    // tokens; keep the previously-loaded maps so existing projects stay routable.
+    console.warn(
+      `[bridge] routing.json parse failed, keeping previous routes (${Object.keys(_routing).length} routes): ${e.message}`,
+    );
   }
 }
 
@@ -821,6 +852,7 @@ async function startSocket() {
               }),
             );
           } catch {}
+          _securityLog(`non_owner_approval_blocked chatId=${chatId} senderId=${senderId} token=${_tok}`);
           continue;
         }
       }
@@ -918,8 +950,37 @@ async function startSocket() {
         timestamp: msg.messageTimestamp,
       };
 
+      // A group message is "directed at Viko" if it mentions "viko"/@Viko OR replies
+      // to one of Viko's own messages. Computed once and reused by both the registered
+      // (E2 media gate) and unregistered branches.
+      const _isReplyToViko =
+        hasQuotedMessage && !!quotedParticipant && botIds.includes(quotedParticipant);
+
       const _targetPort = _routing[chatId];
       if (_targetPort) {
+        // E2: an undirected group message gets dropped by the project's require_mention
+        // anyway, so don't waste a queue slot on it (all media has already been downloaded
+        // and cached above — including the recent-media stapling cache — so 'forward a
+        // file, then "viko buatin pdf"' still works on the NEXT, directed message). Owner
+        // messages and DMs are never gated here; only skip the QUEUE PUSH for undirected
+        // group msgs. Directed messages keep their media and are pushed normally.
+        if (isGroup && !isOwner && !_mentionsViko && !_isReplyToViko) {
+          try {
+            console.log(
+              JSON.stringify({
+                event: 'ignored',
+                reason: 'group_not_directed_at_viko',
+                chatId,
+                senderId,
+                port: _targetPort,
+              }),
+            );
+          } catch {}
+          _securityLog(
+            `group_not_directed_at_viko chatId=${chatId} senderId=${senderId} port=${_targetPort}`,
+          );
+          continue;
+        }
         const _pq = (messageQueues[String(_targetPort)] = messageQueues[String(_targetPort)] || []);
         _pq.push(event);
         if (_pq.length > MAX_QUEUE_SIZE) _pq.shift();
@@ -930,8 +991,6 @@ async function startSocket() {
         // a blanket "all owner messages for N minutes" window caught unrelated talk
         // (owner saying "viko" once made Viko butt into every later message).
         // DMs always pass through (isGroup=false).
-        const _isReplyToViko =
-          hasQuotedMessage && !!quotedParticipant && botIds.includes(quotedParticipant);
         if (!isGroup || _mentionsViko || _isReplyToViko) {
           globalQueue.push(event);
           if (globalQueue.length > MAX_QUEUE_SIZE) globalQueue.shift();
@@ -949,6 +1008,7 @@ async function startSocket() {
               }),
             );
           } catch {}
+          _securityLog(`group_not_directed_at_viko chatId=${chatId} senderId=${senderId}`);
         }
       }
     }
@@ -1199,9 +1259,9 @@ if (RELAY_MODE) {
       const chatId = (req.body && req.body.chatId) || '';
       const err = _scopeError(req, chatId);
       if (err) {
-        console.warn(
-          `[bridge] scope-deny ${req.path} chatId=${chatId || '?'} (${err.error}${err.allowed ? ' allowed=' + err.allowed : ''})`,
-        );
+        const _msg = `scope-deny ${req.path} chatId=${chatId || '?'} (${err.error}${err.allowed ? ' allowed=' + err.allowed : ''})`;
+        console.warn(`[bridge] ${_msg}`);
+        _securityLog(_msg);
         return res.status(err.code).json(err);
       }
     }
@@ -1229,23 +1289,25 @@ if (RELAY_MODE) {
       const token = _bearer(req);
       const jid = token ? _tokenToJid[token] : '';
       if (!jid) {
-        console.warn(
-          `[bridge] scope-deny GET /messages (${token ? 'unknown_relay_token' : 'relay_token_required'})`,
-        );
+        const _m = `scope-deny GET /messages (${token ? 'unknown_relay_token' : 'relay_token_required'})`;
+        console.warn(`[bridge] ${_m}`);
+        _securityLog(_m);
         return res
           .status(403)
           .json({ error: token ? 'unknown_relay_token' : 'relay_token_required' });
       }
       const allowedPort = _routing[jid] != null ? String(_routing[jid]) : null;
       if (!allowedPort) {
-        console.warn(`[bridge] scope-deny GET /messages (no_port_for_jid) jid=${jid}`);
+        const _m = `scope-deny GET /messages (no_port_for_jid) jid=${jid}`;
+        console.warn(`[bridge] ${_m}`);
+        _securityLog(_m);
         return res.status(403).json({ error: 'no_port_for_jid', allowed: jid });
       }
       const requested = req.query.port ? String(req.query.port) : null;
       if (requested && requested !== allowedPort) {
-        console.warn(
-          `[bridge] scope-deny GET /messages (cross_project_read_blocked) requested=${requested} allowed=${allowedPort}`,
-        );
+        const _m = `scope-deny GET /messages (cross_project_read_blocked) requested=${requested} allowed=${allowedPort}`;
+        console.warn(`[bridge] ${_m}`);
+        _securityLog(_m);
         return res
           .status(403)
           .json({ error: 'cross_project_read_blocked', allowed_port: allowedPort });

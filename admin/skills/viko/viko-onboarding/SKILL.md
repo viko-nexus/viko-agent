@@ -63,7 +63,9 @@ cuma tanya field yang masih kurang.
 - Sesi owner 15 menit dari bridge bikin follow-up ngalir mulus — owner nggak perlu
   nyebut "viko" lagi di tiap balasan selama wizard jalan.
 - Sebelum mulai: kalau `group_jid` sudah ada di `data/bridge/routing.json` →
-  > "Project ini sudah terdaftar." (stop, jangan lanjut wizard)
+  > "Project ini sudah terdaftar." (stop, jangan lanjut wizard) — KECUALI owner
+  > eksplisit minta re-onboard ulang grup ini. Cuma kalau ada niat re-onboard
+  > eksplisit baru lanjut, dan eksekusi nanti pakai `--force` (lihat Execution Flow).
 - Status per langkah singkat: "Slug `x` ✓", "Repo dicatat ✓".
 
 ### Langkah 1 — Nama → Slug
@@ -175,6 +177,9 @@ dengan **flag opsional**:
 - Tambah `--vps-port {vps_port}` HANYA kalau port-nya BUKAN `22`.
 - Tambah `--members {members_csv}` HANYA kalau csv-nya tidak kosong. Kalau kosong,
   OMIT `--members` (script otomatis baca anggota grup).
+- Tambah `--force` HANYA kalau ini RE-ONBOARD eksplisit atas grup yang `group_jid`-nya
+  sudah ada di `routing.json` (guard add-project.py bakal nolak tanpa flag ini).
+  Onboard normal grup baru → JANGAN pakai `--force`.
 
 **Single repo, ada server:**
 ```bash
@@ -193,7 +198,9 @@ python3 "$VIKO_PROJECTS_ROOT/viko-agent/scripts/add-project.py" {slug} {group_ji
 
 **Multi repo** — panggil **per repo** dengan `--repo-subdir {label}`; panggilan
 terakhir re-spawn container dengan semua repo. Tambahkan
-`--vps-host`/`--vps-user`/`--vps-port` mengikuti aturan opsional di atas:
+`--vps-host`/`--vps-user`/`--vps-port` mengikuti aturan opsional di atas.
+Panggilan multi-repo per-`--repo-subdir` ini TIDAK perlu `--force` — guard
+add-project.py memang mengizinkan `group_jid` yang sama untuk subdir berbeda:
 ```bash
 python3 "$VIKO_PROJECTS_ROOT/viko-agent/scripts/add-project.py" {slug} {group_jid} {github_web} --members {members_csv} --repo-subdir web
 python3 "$VIKO_PROJECTS_ROOT/viko-agent/scripts/add-project.py" {slug} {group_jid} {github_app} --members {members_csv} --repo-subdir app

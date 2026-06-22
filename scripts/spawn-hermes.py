@@ -18,6 +18,7 @@ Docker network: viko_default (created by docker compose)
 Image: viko-viko-hermes (built by docker compose build hermes)
 """
 
+import os
 import re
 import json
 import shutil
@@ -63,10 +64,18 @@ def _read_env() -> dict:
 
 def load_routing() -> dict:
     if ROUTING_FILE.exists():
-        try:
-            return json.loads(ROUTING_FILE.read_text())
-        except Exception:
+        text = ROUTING_FILE.read_text()
+        if not text.strip():
             return {}
+        try:
+            return json.loads(text)
+        except Exception as e:
+            # Fail-closed: a corrupt-but-present routing.json must NOT be silently
+            # treated as empty — that would reset port allocation and risk colliding
+            # with / clobbering live routes. Abort loudly so a human can fix it.
+            raise RuntimeError(
+                f"routing.json exists but is unparseable ({ROUTING_FILE}): {e}"
+            )
     return {}
 
 
@@ -156,8 +165,28 @@ def _entry_port(val) -> int:
     return int(val) if str(val).isdigit() else 0
 
 
+def _published_ports() -> set:
+    """Filter-ports already published by running containers. Each project container
+    publishes 127.0.0.1:{port+900}->9119, so a host port 8101 maps to dashboard 9001.
+    We track the {port} side (subtract 900) so next_port() can't hand out a port whose
+    dashboard is already bound — even if routing.json has drifted from reality."""
+    used = set()
+    r = subprocess.run(
+        ["docker", "ps", "--format", "{{.Ports}}"],
+        capture_output=True, text=True,
+    )
+    if r.returncode != 0:
+        return used
+    for m in re.finditer(r":(\d+)->9119", r.stdout):
+        host_port = int(m.group(1))
+        if host_port >= MIN_PORT + 900:
+            used.add(host_port - 900)
+    return used
+
+
 def next_port(routing: dict) -> int:
     used = {_entry_port(v) for v in routing.values()}
+    used |= _published_ports()
     used.discard(0)
     port = MIN_PORT
     while port in used:
@@ -167,6 +196,25 @@ def next_port(routing: dict) -> int:
 
 def _run(cmd: list, **kw) -> subprocess.CompletedProcess:
     return subprocess.run(cmd, capture_output=True, text=True, **kw)
+
+
+def _admin_env_value(var: str) -> str:
+    """Read an env var from the running admin container (viko-hermes). Used so the
+    project container's HERMES_UID/GID match the uid that actually owns the mounted
+    SSH keys (the admin writes them) — a mismatch makes the key unreadable/perms-broken.
+    Returns '' if the container isn't running or the var isn't set there."""
+    r = subprocess.run(
+        ["docker", "inspect", "-f",
+         "{{range .Config.Env}}{{println .}}{{end}}", "viko-hermes"],
+        capture_output=True, text=True,
+    )
+    if r.returncode != 0:
+        return ""
+    prefix = f"{var}="
+    for line in r.stdout.splitlines():
+        if line.startswith(prefix):
+            return line[len(prefix):].strip()
+    return ""
 
 
 def _ensure_project_network(slug: str) -> str:
@@ -381,6 +429,13 @@ def _build_project_config(slug: str, group_jid: str, env: dict, workspace: str =
         f"nawarin atau nyebut command slash (mis. /help, /new) dan JANGAN sebut tool/platform "
         f"lain (mis. Yuanbao). Kalau ada yang minta hal di luar kemampuanmu, bilang apa adanya "
         f"dengan bahasa biasa — jangan arahin ke menu command.\n\n"
+        f"ANTI-NGARANG (WAJIB): Kalau ditanya soal kode/file/struktur/config/database/data project "
+        f"{slug} ini, jawab HANYA dari yang beneran kamu cek — baca repo lokal (ls/cat/grep di folder "
+        f"kode yang ke-mount) atau query DB lewat SSH tunnel. JANGAN nebak dari ingatan/training. "
+        f"JANGAN ngarang nama file, fungsi, nama tabel/kolom, tool, atau platform. Kalau belum dicek / "
+        f"nggak ketemu / nggak yakin: bilang apa adanya ('belum kucek', 'nggak ketemu di repo', "
+        f"'nggak yakin, kucek dulu ya?') — JANGAN dikarang. Cuma kode/data project {slug}, nggak usah "
+        f"nyebut atau ngarang project lain.\n\n"
         f"Balas dalam Bahasa Indonesia."
     )
 
@@ -448,14 +503,16 @@ def _build_project_config(slug: str, group_jid: str, env: dict, workspace: str =
             },
         },
         "memory": {"provider": "holographic"},
+        # The approval matcher does exact/fnmatch on a single command token and
+        # rejects shell operators — so entries MUST be real single-token globs, not
+        # descriptive phrases (those can never match, leaving commands stuck on manual
+        # approval). Only commands expressible as one such glob belong here.
         "command_allowlist": [
-            "script execution via -e/-c flag",
-            "script execution via heredoc",
-            "docker restart/stop/kill (container lifecycle)",
-            "hermes kanban",
+            "docker restart *",
+            "docker stop *",
+            "docker kill *",
+            "hermes kanban *",
             "execute_code",
-            "overwrite system file via redirection",
-            f"ssh {slug}-vps (deploy to {slug} VPS)",
         ],
     }
 
@@ -556,6 +613,15 @@ def create_hermes_data_dir(slug: str, port: int, group_jid: str, env: dict) -> P
         f"Kalau ada yang janggal di kode/PR/permintaan, angkat — jangan diem demi enak.\n"
         f"- Lebih baik nemu masalah sekarang daripada meledak di prod. "
         f"Tapi sampaikan dengan cara membangun, bukan nge-judge.\n\n"
+        f"## Anti-Ngarang (WAJIB)\n"
+        f"- Kalau ditanya soal kode/file/struktur/config/database/data project **{slug}** ini, "
+        f"jawab HANYA dari yang beneran kamu inspeksi: baca repo yang ke-mount (`ls`/`cat`/`grep` di folder kode) "
+        f"atau query DB lewat SSH tunnel. JANGAN nebak dari ingatan/training.\n"
+        f"- JANGAN PERNAH ngarang nama file, fungsi, nama tabel/kolom, tool, atau platform. "
+        f"Kalau belum kamu cek, nggak ketemu, atau nggak yakin: bilang apa adanya "
+        f"('belum kucek', 'nggak ketemu di repo', 'nggak yakin, kucek dulu ya?') — bukan dikarang.\n"
+        f"- Verifikasi dulu baru jawab. Kalau jawaban bergantung pada isi file/DB, buka filenya/query dulu.\n"
+        f"- Tetap isolasi: cuma kode/data project **{slug}** — jangan sebut atau ngarang project lain.\n\n"
         f"## Authorization\n"
         f"- Hanya **Eksa** yang bisa authorize eksekusi (deploy, infra, ops destruktif).\n"
         f"- Minta approval dulu sebelum aksi yang irreversible.\n\n"
@@ -582,7 +648,10 @@ def create_hermes_data_dir(slug: str, port: int, group_jid: str, env: dict) -> P
         f"- SSH ke server project: pakai alias `{slug}-prod` (config + key `/opt/data/.ssh/id_viko` udah siap). "
         f"Contoh: `ssh {slug}-prod 'perintah'`. Jangan ngarang host/user/key.\n"
         f"- **Akses DB lewat SSH TUNNEL** (DB gak ke-expose publik, jangan konek langsung): "
-        f"baca `DATABASE_URL` dari file `.env` project DI SERVER (`ssh {slug}-prod 'grep DATABASE_URL <path>/.env'`), "
+        f"baca `DATABASE_URL` dari file `.env` project DI SERVER. Cari path `.env`-nya SEKALI aja "
+        f"(`ssh {slug}-prod 'find ~ -maxdepth 4 -name .env 2>/dev/null'` atau `ls`), terus SIMPAN path itu "
+        f"pakai tool memory kamu biar gak usah nyari ulang tiap kali. Habis ketemu: "
+        f"`ssh {slug}-prod 'grep DATABASE_URL <path>/.env'` (pakai grep, JANGAN cat seluruh .env). "
         f"buka tunnel ke host:port DB-nya — `ssh -fN -L 5433:<db_host>:<db_port> {slug}-prod` — "
         f"lalu query ke `127.0.0.1:5433`. Tipe DB dari scheme DATABASE_URL, client udah keinstall semua: "
         f"`postgresql`->psql/psycopg2, `mysql`->mysql/PyMySQL, `mongodb`->pymongo, `redis`->redis-cli/redis, "
@@ -641,8 +710,12 @@ def create_hermes_data_dir(slug: str, port: int, group_jid: str, env: dict) -> P
 def spawn_container(slug: str, port: int, data_dir: Path, env: dict, proj_ssh_dir: Path,
                     relay_token: str = "") -> str:
     projects_root = env.get("VIKO_PROJECTS_ROOT", str(Path.home() / "Projects"))
-    uid = env.get("HERMES_UID", "1000")
-    gid = env.get("HERMES_GID", "1000")
+    # Derive UID/GID from the running admin container so the project container runs as
+    # the SAME uid that owns the mounted SSH keys (the admin generated/wrote them). A
+    # mismatch leaves id_viko unreadable (or 0600-wrong-owner) and breaks ssh/git.
+    # Fall back to the env value (then 1000) when the admin isn't inspectable.
+    uid = _admin_env_value("HERMES_UID") or env.get("HERMES_UID", "1000")
+    gid = _admin_env_value("HERMES_GID") or env.get("HERMES_GID", "1000")
     ninerouter_key = env.get("OPENAI_API_KEY", "")
     home_channel = env.get("WHATSAPP_HOME_CHANNEL", "")
     vroot = f"{projects_root}/viko-agent"   # == REPO_DIR (same path host↔container)
@@ -653,6 +726,19 @@ def spawn_container(slug: str, port: int, data_dir: Path, env: dict, proj_ssh_di
     # Translate so the SSH mount source is a real host path (docker-out-of-docker). On a host
     # without that prefix (script run directly on a VPS), the replace is a harmless no-op.
     proj_ssh_src = str(proj_ssh_dir).replace("/opt/data", f"{REPO_DIR}/data/hermes", 1)
+
+    # Fail-closed: the translation above is a no-op when proj_ssh_dir lacks the
+    # "/opt/data" prefix, which would point the -v source at a non-existent host path —
+    # Docker then silently mounts an EMPTY dir, giving the container a broken SSH/git
+    # identity (no key, no config). Verify the resolved source really exists AND holds
+    # the per-project key before spawning, rather than booting a container that can't
+    # ssh/push and looks healthy.
+    if not os.path.exists(proj_ssh_src) or not os.path.exists(os.path.join(proj_ssh_src, "id_viko")):
+        raise RuntimeError(
+            f"SSH mount source invalid (fail-closed): {proj_ssh_src} does not exist or "
+            f"has no id_viko — refusing to spawn with an empty .ssh mount (broken ssh/git "
+            f"identity). Check proj_ssh_dir translation / per-project key generation."
+        )
 
     cmd = [
         "docker", "run", "-d",

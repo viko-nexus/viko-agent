@@ -59,8 +59,11 @@ services:
       context: .
       dockerfile: Dockerfile.hermes
       args:
-        HERMES_UID: ${HERMES_UID:-501}
-        HERMES_GID: ${HERMES_GID:-20}
+        # Default to 1000:1000 (Linux VPS first-user convention) so a fresh
+        # deploy matches provision-env.sh / .env.example. Hosts that differ
+        # (e.g. macOS local dev, 501:20) set HERMES_UID/GID in .env, which wins.
+        HERMES_UID: ${HERMES_UID:-1000}
+        HERMES_GID: ${HERMES_GID:-1000}
     profiles: [full]
     depends_on:
       9router:
@@ -96,9 +99,10 @@ services:
       # to reach the Hermes dashboard over Tailscale without exposing it publicly.
       - "${VIKO_BIND_ADDR:-127.0.0.1}:9119:9119"
     environment:
-      # Remap container's hermes user to host user so bind-mount files are owned correctly
-      HERMES_UID: ${HERMES_UID:-501}
-      HERMES_GID: ${HERMES_GID:-20}
+      # Remap container's hermes user to host user so bind-mount files are owned correctly.
+      # Default 1000:1000 (Linux VPS first-user); host .env overrides for other platforms.
+      HERMES_UID: ${HERMES_UID:-1000}
+      HERMES_GID: ${HERMES_GID:-1000}
       # 9router connection — populate OPENAI_API_KEY from 9router dashboard after setup
       OPENAI_BASE_URL: http://viko-9router:20128/v1
       OPENAI_API_KEY: ${OPENAI_API_KEY}
