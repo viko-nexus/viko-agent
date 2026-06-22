@@ -35,36 +35,33 @@ if len(sys.argv) > 1:
 # Each combo: (name, models_list)
 # Models are tried in order (fallback mode, Round Robin OFF).
 # cc/ prefix = Claude Code OAuth (via 9router)
-# groq/ prefix = Groq API
 
-# Fallback ORDER matters: Claude → Claude → Groq. A transient single-model Claude
-# blip falls to the OTHER Claude (still on-persona, follows SOUL.md), NOT straight to
-# Groq/Llama — which ignores the Viko persona and bleeds generic "/help" / foreign-tool
-# noise. Groq is the LAST-RESORT only (availability when ALL Claude is down): better a
-# degraded reply than none.
+# Sonnet + Opus only (latest). Haiku was too weak for an agentic dev assistant —
+# it drifted from the SOUL persona (gua/lu slang) and would not proactively inspect
+# the mounted repo (asked the user for a URL instead of running ls/cat). Sonnet is
+# the workhorse (strong persona-following + agentic tool use, fast); Opus 4.8 is the
+# top tier for code/analysis. Each combo falls back to the OTHER Claude tier — no
+# Groq/Llama (it ignores the persona). Fallback ORDER matters.
 COMBOS = [
     (
         "viko-chat",
         [
-            "cc/claude-haiku-4-5-20251001",          # primary: fast, cheap
-            "cc/claude-sonnet-4-6",                   # fallback: stay on Claude (quality)
-            "groq/llama-3.3-70b-versatile",           # last-resort: all-Claude-down only
+            "cc/claude-sonnet-4-6",                   # primary: fast + on-persona
+            "cc/claude-opus-4-8",                     # fallback: top quality
         ],
     ),
     (
         "viko-code",
         [
-            "cc/claude-sonnet-4-6",                   # primary: smarter for code/analysis
-            "cc/claude-haiku-4-5-20251001",          # fallback: stay on Claude
-            "groq/llama-3.3-70b-versatile",           # last-resort
+            "cc/claude-opus-4-8",                     # primary: smartest for code/analysis
+            "cc/claude-sonnet-4-6",                   # fallback: still strong
         ],
     ),
     (
         "viko-combo",
         [
-            "cc/claude-haiku-4-5-20251001",          # primary: quality, follows persona
-            "cc/claude-sonnet-4-6",                   # fallback: stay on Claude
-            "groq/llama-3.3-70b-versatile",           # last-resort
+            "cc/claude-sonnet-4-6",                   # primary: agentic + follows persona
+            "cc/claude-opus-4-8",                     # fallback: top quality
         ],
     ),
 ]
