@@ -20,9 +20,11 @@ Image: viko-viko-hermes (built by docker compose build hermes)
 
 import os
 import re
+import sys
 import json
 import shutil
 import secrets
+import tempfile
 import argparse
 import subprocess
 from pathlib import Path
@@ -37,6 +39,17 @@ HERMES_IMAGE = "viko-hermes"
 # container physically cannot present another project's key or resolve its alias.
 SSH_DIR = Path.home() / ".viko" / "ssh"
 SSH_PROJECTS_DIR = SSH_DIR / "projects"
+
+# GitHub's published SSH host keys (the three documented algorithms). Pinned rather
+# than ssh-keyscan'ed so a MITM at onboarding can't seed an attacker key that the
+# accept-new ssh config would then trust forever. Source: GitHub docs, "SSH key
+# fingerprints" — https://docs.github.com/authentication/keeping-your-account-and-data-secure/githubs-ssh-key-fingerprints
+# Verified current as of 2026-06; update if GitHub rotates its host keys.
+GITHUB_SSH_HOST_KEYS = (
+    "github.com ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOMqqnkVzrm0SdG6UOoqKLsabgH5C9okWi0dh2l9GKJl\n"
+    "github.com ecdsa-sha2-nistp256 AAAAE2VjZHNhLXNoYTItbmlzdHAyNTYAAAAIbmlzdHAyNTYAAABBBEmKSENjQEezOmxkZMy7opKgwFB9nkt5YRrYMjNuG5N87uRgg6CLrbo5wAdT/y6v0mKV0U2w0WZ2YB/++Tpockg=\n"
+    "github.com ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABgQCj7ndNxQowgcQnjshcLrqPEiiphnt+VTTvDP6mHBL9j1aNUkY4Ue1gvwnGLVlOhGeYrnZaMgRK6+PKCUXaDbC7qtbW8gIkhL7aGCsOr/C56SJMy/BCZfxd1nWzAOxSDPgVsmerOBYfNqltV9/hWCqBywINIR+5dIg6JTJ72pcEpEjcYgXkE2YEFXV1JHnsKgbLWNlhScqb2UmyRkQyytRLtL+38TGxkxCflmO+5Z8CSSNY7GidjMIZ7Q4zMjA2n1nGrlTDkzwDCsw+wqFPGQA179cnfGWOWRVruj16z6XyvxvjJwbz0wQZ75XK5tKSb7FNyeIEs4TT4z+sb0iGLZjF6myJqRTtTM/W/2cZX8Q5MR2x9z/v8Ekjs6L7tUTwTwQDfh8RkOzbpJ3GFqxwoB7w0r0bX+5x/JJqYHbZJpL1A8mDoSk=\n"
+)
 
 
 def _detect_repos(projects_root: Path, slug: str) -> list[dict]:
@@ -340,10 +353,14 @@ def _build_project_ssh_dir(slug: str, vps_host: str, vps_user: str, vps_port: st
                 fh.write(text)
 
     if not _kh_has("github.com"):
-        try:
-            _kh_append(_run(["ssh-keyscan", "-t", "ed25519", "github.com"]).stdout)
-        except Exception:
-            pass
+        # Pin GitHub's PUBLISHED host keys instead of ssh-keyscan'ing github.com.
+        # A keyscan is unauthenticated TOFU: a MITM at onboarding could seed an
+        # attacker key, and the per-project ssh config uses StrictHostKeyChecking
+        # accept-new, so the bad key would be trusted permanently. The constant below
+        # is GitHub's documented set ("SSH key fingerprints",
+        # https://docs.github.com/authentication/keeping-your-account-and-data-secure/githubs-ssh-key-fingerprints).
+        # Verified current as of 2026-06; update these lines if GitHub rotates its keys.
+        _kh_append(GITHUB_SSH_HOST_KEYS)
     # Pre-seed the project VPS host key too. Without it, the first `ssh {slug}-prod`
     # over the read-only known_hosts mount can't accept-new (can't write), so the agent
     # improvises `ssh-keyscan >> known_hosts` — which trips the dangerous-command guard
@@ -358,10 +375,26 @@ def _build_project_ssh_dir(slug: str, vps_host: str, vps_user: str, vps_port: st
             kh_lookup = f"[{vps_host}]:{vps_port}"
         scan += [vps_host]
         if not _kh_has(kh_lookup):
+            # The VPS is operator-controlled, so keyscan TOFU is acceptable here (unlike
+            # github.com). But don't swallow failures silently: a missing key means the
+            # first `ssh {slug}-vps` over the read-only known_hosts mount can't accept-new
+            # and the connection breaks. Surface it on stderr so the operator can seed it.
             try:
-                _kh_append(_run(scan).stdout)
-            except Exception:
-                pass
+                out = _run(scan).stdout
+                if out.strip():
+                    _kh_append(out)
+                else:
+                    print(
+                        f"  ⚠ ssh-keyscan returned no host key for {vps_host} "
+                        f"(port {vps_port}) — VPS ssh may fail until known_hosts is seeded",
+                        file=sys.stderr,
+                    )
+            except Exception as exc:
+                print(
+                    f"  ⚠ ssh-keyscan failed for {vps_host} (port {vps_port}): {exc} "
+                    f"— VPS ssh may fail until known_hosts is seeded",
+                    file=sys.stderr,
+                )
     return proj_dir
 
 
@@ -761,10 +794,32 @@ def spawn_container(slug: str, port: int, data_dir: Path, env: dict, proj_ssh_di
             f"identity). Check proj_ssh_dir translation / per-project key generation."
         )
 
+    # Secret-bearing envs go in a mode-0600 file passed via --env-file, so they never
+    # land in the docker-run argv (visible via ps / /proc/<pid>/cmdline during spawn).
+    # docker bakes the env into the container at run time, so the file is disposable —
+    # we delete it in the finally below. NOTE: `docker inspect` still exposes the env of
+    # the running container (unavoidable); this only closes the argv/ps window at spawn.
+    secret_env_lines = [
+        f"OPENAI_API_KEY={ninerouter_key}",
+        f"NINEROUTER_KEY={ninerouter_key}",
+        f"HERMES_RELAY_TOKEN={relay_token}",
+    ]
+    # Create on the host-readable data dir (a real path for this process, and on the
+    # docker-out-of-docker host the source paths resolve identically) with a 0600 mode
+    # enforced at create time so the secrets are never world/group-readable.
+    fd, env_file_path = tempfile.mkstemp(prefix=f".envfile-{slug}-", dir=str(data_dir))
+    try:
+        with os.fdopen(fd, "w") as fh:
+            fh.write("\n".join(secret_env_lines) + "\n")
+    except Exception:
+        os.unlink(env_file_path)
+        raise
+
     cmd = [
         "docker", "run", "-d",
         "--name", f"viko-hermes-{slug}",
         "--restart", "unless-stopped",
+        "--env-file", env_file_path,
         # Cap per-project container logs so they can't grow unbounded on the host.
         "--log-opt", "max-size=10m",
         "--log-opt", "max-file=3",
@@ -799,18 +854,18 @@ def spawn_container(slug: str, port: int, data_dir: Path, env: dict, proj_ssh_di
         "-e", f"HERMES_UID={uid}",
         "-e", f"HERMES_GID={gid}",
         "-e", "OPENAI_BASE_URL=http://viko-9router:20128/v1",
-        "-e", f"OPENAI_API_KEY={ninerouter_key}",
         "-e", f"WHATSAPP_HOME_CHANNEL={home_channel}",
         "-e", "WHATSAPP_RELAY_MODE=true",
         "-e", "WHATSAPP_RELAY_TARGET=http://viko-hermes:3000",
         "-e", f"WHATSAPP_PORT_FILTER={port}",
-        # Relay scope token — admin bridge maps this → the one JID this container
-        # may send to. Outbound to any other chat is 403 (surface #1).
-        "-e", f"HERMES_RELAY_TOKEN={relay_token}",
+        # OPENAI_API_KEY / NINEROUTER_KEY / HERMES_RELAY_TOKEN are secret-bearing and
+        # are passed via --env-file (below), NOT -e, so they don't appear in the
+        # docker-run argv / ps / /proc/<pid>/cmdline during spawn. The relay scope
+        # token (HERMES_RELAY_TOKEN) maps this container → the one JID it may send to
+        # in the admin bridge; outbound to any other chat is 403 (surface #1).
         # GITHUB_TOKEN deliberately NOT injected — a broad PAT would let the
         # container clone any repo. Cloning is the admin Hermes's job.
         "-e", "NINEROUTER_URL=http://viko-9router:20128",
-        "-e", f"NINEROUTER_KEY={ninerouter_key}",
         "-e", f"VIKO_PROJECTS_ROOT={projects_root}",
         "-e", f"VIKO_PROJECT_SLUG={slug}",
         # Pin the agent terminal to THIS project's own dir. Hermes resolves the terminal
@@ -841,7 +896,15 @@ def spawn_container(slug: str, port: int, data_dir: Path, env: dict, proj_ssh_di
     # `docker run --network viko-{slug}-net`, or the container fails to start.
     _ensure_project_network(slug)
 
-    result = subprocess.run(cmd, capture_output=True, text=True)
+    # docker reads --env-file synchronously at run time, so the file can be removed the
+    # instant `docker run` returns (success OR failure) — always clean it up.
+    try:
+        result = subprocess.run(cmd, capture_output=True, text=True)
+    finally:
+        try:
+            os.unlink(env_file_path)
+        except FileNotFoundError:
+            pass
     if result.returncode != 0:
         raise RuntimeError(f"docker run failed: {result.stderr.strip()}")
     return result.stdout.strip()
@@ -921,6 +984,8 @@ def main():
         # do we rotate the routing token + drop the old. On ANY failure we restore the
         # old container and leave routing untouched — a failed re-spawn never takes the
         # project offline. (full re-spawn, not docker-restart, so new env vars apply.)
+        # Capture the OLD routing entry so we can restore it if the re-spawn fails.
+        old_entry = routing.get(group_jid)
         old_preserved = False
         if _container_exists(name):
             _run(["docker", "stop", name])
@@ -929,17 +994,29 @@ def main():
             old_preserved = True
         try:
             spawn_container(slug, port, data_dir, env, proj_ssh_dir, relay_token)
+            # Rotate the routing token to the NEW token BEFORE waiting for health: the
+            # new container boots with the new token and the (multi-second) health wait
+            # is exactly when it makes relay calls. If the bridge still mapped the old
+            # token its calls would 403 during that window. Write+save now so it's
+            # accepted the instant it comes up; the except below rolls this back.
+            routing[group_jid] = {"port": port, "slug": slug, "relay_token": relay_token}
+            save_routing(routing)
             _wait_healthy(name, port)
         except Exception:
+            # Restore routing to the old entry so the rolled-back old container is again
+            # accepted with its old token (pop if there was no prior entry).
+            if old_entry is not None:
+                routing[group_jid] = old_entry
+            else:
+                routing.pop(group_jid, None)
+            save_routing(routing)
             _run(["docker", "rm", "-f", name])           # kill the failed new
             if old_preserved:
                 _run(["docker", "rename", prev, name])
                 _run(["docker", "start", name])
-                print("  ✗ re-spawn failed — rolled back to previous container (routing unchanged)")
+                print("  ✗ re-spawn failed — rolled back to previous container (routing restored)")
             raise
-        # New is healthy → commit: rotate the routing token, then drop the old.
-        routing[group_jid] = {"port": port, "slug": slug, "relay_token": relay_token}
-        save_routing(routing)
+        # New is healthy → routing already points at the new token; just drop the old.
         if old_preserved:
             _run(["docker", "rm", "-f", prev])
         print("  ✓ Container re-spawned and healthy (rolled forward, token rotated)")
@@ -953,17 +1030,16 @@ def main():
     data_dir = create_hermes_data_dir(slug, port, group_jid, env)
     print(f"  ✓ Config created at {data_dir}")
 
-    routing[group_jid] = {"port": port, "slug": slug, "relay_token": relay_token}
-    save_routing(routing)
-    print("  ✓ routing.json updated (bridge hot-reloads automatically)")
-
-    container_id = spawn_container(slug, port, data_dir, env, proj_ssh_dir, relay_token)
-    print(f"  ✓ Container started: {container_id[:12]}")
-
-    # Wait for genuine health before declaring success. routing.json was already
-    # written for this group_jid, so a dead container would otherwise leave an
-    # orphan route pointing at nothing — roll it back before re-raising.
+    # Mirror the re-spawn path's safety: wrap BOTH the spawn and the health wait, and
+    # write routing only AFTER spawn_container succeeds. Writing the route+token before
+    # spawn would leave an orphan route (token mapped to a container that never started)
+    # if spawn_container raised. On ANY failure, ensure no orphan entry for this group.
     try:
+        container_id = spawn_container(slug, port, data_dir, env, proj_ssh_dir, relay_token)
+        print(f"  ✓ Container started: {container_id[:12]}")
+        routing[group_jid] = {"port": port, "slug": slug, "relay_token": relay_token}
+        save_routing(routing)
+        print("  ✓ routing.json updated (bridge hot-reloads automatically)")
         _wait_healthy(f"viko-hermes-{slug}", port)
     except Exception:
         routing.pop(group_jid, None)

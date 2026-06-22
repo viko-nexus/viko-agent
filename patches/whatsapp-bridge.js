@@ -871,6 +871,15 @@ async function startSocket() {
         }
       }
 
+      // Inbound prompt-injection scrub: the bridge PREPENDS trusted control markers
+      // ([CTX ...], [READ-ONLY MEMBER ...], [Mentioned: ...]) below. Strip any of the
+      // bridge's own markers a user embedded in their raw text first, so the only such
+      // markers the gateway sees are bridge-generated and can't be forged. Symmetric to
+      // formatOutgoingMessage's OUTBOUND strip; minimal — only the literal bracketed tags.
+      if (!msg.key.fromMe) {
+        body = String(body ?? '').replace(/\n?\s*\[(?:CTX|READ-ONLY MEMBER|Mentioned)\b[^\]]*\]/gi, '');
+      }
+
       // Tag group messages from non-owner members so the gateway enforces read-only mode.
       // Owner is identified by WHATSAPP_HOME_CHANNEL. Non-owners can ask questions and
       // check data, but cannot authorize execution, deploys, or infra changes.
@@ -889,13 +898,14 @@ async function startSocket() {
         // Sender identity so the agent addresses the RIGHT person by name instead of
         // guessing/bleeding a name from history. Owner -> VIKO_OWNER_NAME; members ->
         // their pushName (or a name learned from earlier messages), else the number.
-        // Strip brackets/newlines so a crafted pushName can't break out of the CTX tag.
+        // Strip brackets and ALL line/paragraph separators so a crafted pushName can't
+        // break out of the CTX tag or spoof a new line (covers \r, U+2028, U+2029 too).
         const senderLabel =
           (isOwner
             ? process.env.VIKO_OWNER_NAME || senderNumber
             : msg.pushName || _nameByNumber[senderNumber] || senderNumber
           )
-            .replace(/[[\]\n]/g, '')
+            .replace(/[[\]\r\n\u2028\u2029]/g, '')
             .trim() || senderNumber;
         body = `[CTX project=${proj}${jidField} caller=${isOwner ? 'owner' : 'member'} sender=${senderLabel}]\n${body}`;
         // Inbound ops log (sender identity + resolved owner) → FILE, because the bridge's
@@ -1363,9 +1373,21 @@ if (RELAY_MODE) {
       // relay can't wedge the port forever and new messages aren't pinned behind it.
       if (inflight && (Date.now() - inflight.ts > INFLIGHT_TTL_MS || inflight.tries >= INFLIGHT_MAX_TRIES)) {
         const rq = (messageQueues[allowedPort] = messageQueues[allowedPort] || []);
+        const unacked = inflight.msgs.length;
         rq.unshift(...inflight.msgs);
-        if (rq.length > MAX_QUEUE_SIZE) rq.splice(MAX_QUEUE_SIZE);
-        try { console.warn(`[bridge] in-flight batch ${inflight.batchId} expired w/o ack — requeued ${inflight.msgs.length}, resuming`); } catch {}
+        // Bound the queue. Requeued unacked msgs are older (head), so trimming the TAIL
+        // preserves at-least-once delivery — but tail drops here mean NEWER messages are
+        // silently lost, so make any drop observable. If the unacked batch alone overflows
+        // MAX_QUEUE_SIZE, some unacked msgs are dropped too (logged distinctly).
+        if (rq.length > MAX_QUEUE_SIZE) {
+          const dropped = rq.length - MAX_QUEUE_SIZE;
+          const unackedDropped = Math.max(0, unacked - MAX_QUEUE_SIZE);
+          rq.splice(MAX_QUEUE_SIZE);
+          const _m = `queue-overflow on requeue port=${allowedPort} dropped=${dropped} unacked_dropped=${unackedDropped}`;
+          try { console.warn(`[bridge] ${_m}`); } catch {}
+          _securityLog(_m);
+        }
+        try { console.warn(`[bridge] in-flight batch ${inflight.batchId} expired w/o ack — requeued ${unacked}, resuming`); } catch {}
         delete _inflightByPort[allowedPort];
         inflight = null;
       }
@@ -1747,15 +1769,17 @@ if (RELAY_MODE) {
           .json({ error: token ? 'unknown_relay_token' : 'relay_token_required' });
       }
       const owner = _mediaOwnerByFile.get(file);
-      // Files written before this map was populated (e.g. across a restart) have no
-      // owner entry. A valid token is still required above; we allow the fetch so
-      // legitimate cross-restart prefetch keeps working. TODO: persist ownership tags
-      // so unknown-owner files can be denied instead of allowed.
-      if (owner && owner !== jid) {
+      // Fail closed for tokened (non-loopback) callers: a file with no recorded owner
+      // (cached before the map was populated, or after an admin restart cleared it) must
+      // NOT be served on a valid-but-unrelated token — that would let any project relay
+      // pull any other project's media by basename. Deny unknown-owner files; only the
+      // owning project (matching owner) gets through. Loopback (admin) already bypassed.
+      if (!owner || owner !== jid) {
+        const reason = owner ? 'cross_project_media_blocked' : 'unknown_media_owner';
         console.warn(
-          `[bridge] scope-deny GET /media/${file} (cross_project_media_blocked) owner=${owner} caller=${jid}`,
+          `[bridge] scope-deny GET /media/${file} (${reason}) owner=${owner || 'none'} caller=${jid}`,
         );
-        return res.status(403).json({ error: 'cross_project_media_blocked' });
+        return res.status(403).json({ error: reason });
       }
     }
     for (const dir of [IMAGE_CACHE_DIR, DOCUMENT_CACHE_DIR, AUDIO_CACHE_DIR]) {
