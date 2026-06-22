@@ -169,6 +169,19 @@ def _run(cmd: list, **kw) -> subprocess.CompletedProcess:
     return subprocess.run(cmd, capture_output=True, text=True, **kw)
 
 
+def _ensure_project_network(slug: str) -> str:
+    """A3 isolation: give each project its OWN docker network and attach only the
+    shared services it must reach (admin bridge + 9router). Sibling project
+    containers live on different networks, so a compromised project can't reach a
+    peer's container/dashboard at L3 — reachability alone grants nothing. Idempotent:
+    'network create' / 'network connect' on an existing net/attachment just no-op."""
+    net = f"viko-{slug}-net"
+    _run(["docker", "network", "create", net])  # ignore 'already exists'
+    for svc in ("viko-hermes", "viko-9router"):
+        _run(["docker", "network", "connect", net, svc])  # ignore 'already in network'
+    return net
+
+
 def _parse_ssh_host_block(config_text: str, *aliases: str) -> dict:
     """Extract HostName/User for the first Host block matching any alias."""
     out, capture = {}, False
@@ -648,7 +661,7 @@ def spawn_container(slug: str, port: int, data_dir: Path, env: dict, proj_ssh_di
         # Cap per-project container logs so they can't grow unbounded on the host.
         "--log-opt", "max-size=10m",
         "--log-opt", "max-file=3",
-        "--network", "viko_default",
+        "--network", f"viko-{slug}-net",
         "-p", f"127.0.0.1:{port + 900}:9119",
         # ── Volumes ── HARD ISOLATION: only this project's code + its own slice of
         # the viko-agent repo. No full-root mount → cannot cd into other projects.
@@ -711,6 +724,10 @@ def spawn_container(slug: str, port: int, data_dir: Path, env: dict, proj_ssh_di
         ["docker", "rm", "-f", f"viko-hermes-{slug}"],
         capture_output=True
     )
+
+    # A3: the per-project network must exist (with admin + 9router attached) before
+    # `docker run --network viko-{slug}-net`, or the container fails to start.
+    _ensure_project_network(slug)
 
     result = subprocess.run(cmd, capture_output=True, text=True)
     if result.returncode != 0:

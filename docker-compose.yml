@@ -138,10 +138,14 @@ services:
       # Holographic memory — pure local SQLite, no API key needed
       # Dashboard (runs as s6 service alongside gateway)
       HERMES_DASHBOARD: "true"
-      HERMES_DASHBOARD_INSECURE: "true"
-      # Bind the dashboard on all CONTAINER interfaces so Docker's host port map
-      # reaches it. The security boundary is the host-side bind (VIKO_BIND_ADDR =
-      # Tailscale IP), not the container-internal bind.
+      # A2: auth REQUIRED (not insecure). The dashboard binds 0.0.0.0 (needed for the
+      # host port-map), which also exposes :9119 to every container on the shared docker
+      # network — so the host bind is NOT a sufficient boundary. basic_auth gates it so a
+      # project container can't scrape the session token / API key. Creds come from .env.
+      HERMES_DASHBOARD_INSECURE: "false"
+      HERMES_DASHBOARD_BASIC_AUTH_USERNAME: ${HERMES_DASHBOARD_BASIC_AUTH_USERNAME:-}
+      HERMES_DASHBOARD_BASIC_AUTH_PASSWORD: ${HERMES_DASHBOARD_BASIC_AUTH_PASSWORD:-}
+      HERMES_DASHBOARD_BASIC_AUTH_SECRET: ${HERMES_DASHBOARD_BASIC_AUTH_SECRET:-}
       HERMES_DASHBOARD_HOST: "0.0.0.0"
       HERMES_DASHBOARD_PORT: "9119"
     command: ["gateway", "run"]
