@@ -102,10 +102,14 @@ jobs:
           # Registry layer cache: unchanged layers are not re-pulled on the VPS.
           cache-from: type=registry,ref=ghcr.io/${{ github.repository_owner }}/viko-agent:buildcache
           cache-to: type=registry,ref=ghcr.io/${{ github.repository_owner }}/viko-agent:buildcache,mode=max
-          # HERMES_UID/GID: deploy user on the VPS (UID 1000). Container auto-chowns at first start.
+          # HERMES_UID/GID MUST match the VPS deploy user (`id -u deploy`) so the
+          # in-image hermes user + bridge node_modules + /opt/data are owned by it.
+          # This VPS's deploy user is 1001 (not the usual 1000). The runtime .env
+          # HERMES_UID must match this build value, or the bridge can't write its
+          # baked node_modules and WhatsApp fails to start.
           build-args: |
-            HERMES_UID=1000
-            HERMES_GID=1000
+            HERMES_UID=1001
+            HERMES_GID=1001
 
   # ── Job 3: Deploy to VPS — runs directly on the VPS self-hosted runner ──────────
   # Runner registered at ~/actions-runner on VPS (label: self-hosted,linux,vps).
@@ -163,6 +167,15 @@ jobs:
           # leaves the running container untouched when the image is unchanged), so a
           # config/secret update would silently not take effect. On a rebuilt image we
           # also rm -f first to guarantee the new image is used.
+          # Ensure bind-mounted data is owned by the runtime HERMES_UID before start.
+          # The in-image stage2 hook skips its /opt/data chown when build==runtime UID,
+          # so a UID change (or a data dir created under a different UID) would leave the
+          # container unable to write its own state. Chown via a throwaway root container
+          # (the runner is in the docker group but is not root on the host).
+          HU=$(grep -E '^HERMES_UID=' .env | cut -d= -f2 | tr -d '[:space:]'); HU=${HU:-1000}
+          HG=$(grep -E '^HERMES_GID=' .env | cut -d= -f2 | tr -d '[:space:]'); HG=${HG:-1000}
+          docker run --rm -v "$PWD/data:/data" alpine \
+            chown -R "${HU}:${HG}" /data/hermes /data/bridge || true
           if [ "${REBUILT}" = "true" ]; then
             docker rm -f viko-hermes 2>/dev/null || true
           fi
