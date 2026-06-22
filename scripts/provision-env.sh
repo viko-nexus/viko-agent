@@ -11,9 +11,15 @@ set -eu
 ENV_FILE="$(cd "$(dirname "$0")/.." && pwd)/.env"
 touch "$ENV_FILE"
 
+# docker-compose interpolates `$` in .env values, so a value containing `$` (e.g. a
+# scrypt hash, scrypt$N$r$p$salt$hash) gets its `$segment` eaten as an undefined
+# variable. Escape `$` -> `$$` so compose passes the literal value to the container.
+esc_dollar() { printf '%s' "$1" | sed 's/[$]/$$/g'; }
+
 upsert() {
   local key="$1" val="$2"
   [ -z "$val" ] && return 0
+  val="$(esc_dollar "$val")"
   if grep -q "^${key}=" "$ENV_FILE" 2>/dev/null; then
     grep -v "^${key}=" "$ENV_FILE" > "${ENV_FILE}.tmp" && mv "${ENV_FILE}.tmp" "$ENV_FILE"
   fi
@@ -22,7 +28,7 @@ upsert() {
 
 default_if_missing() {
   local key="$1" val="$2"
-  grep -q "^${key}=" "$ENV_FILE" 2>/dev/null || printf '%s=%s\n' "$key" "$val" >> "$ENV_FILE"
+  grep -q "^${key}=" "$ENV_FILE" 2>/dev/null || printf '%s=%s\n' "$key" "$(esc_dollar "$val")" >> "$ENV_FILE"
 }
 
 # Portable — GitHub secrets are canonical (upsert, overriding any local drift).
