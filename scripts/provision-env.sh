@@ -36,6 +36,11 @@ done
 # VIKO_GITHUB_TOKEN and is written back as GITHUB_TOKEN in .env.
 upsert GITHUB_TOKEN "${VIKO_GITHUB_TOKEN:-}"
 
+# Isolation guard is fail-closed: upsert() skips empty values, so an unset CI
+# secret would leave it absent and fall back to the code default. Pin it to
+# 'enforce' when missing so a fresh deploy is locked down by default.
+default_if_missing VIKO_ISOLATION_GUARD enforce
+
 # Machine-specific — default only on a fresh VPS, never override an existing host
 default_if_missing VIKO_PROJECTS_ROOT /home/viko/projects
 default_if_missing HERMES_UID 1000

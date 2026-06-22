@@ -86,6 +86,11 @@ services:
       - ./admin/skills:/opt/viko/admin/skills:ro
       # Bridge routing config — written by hermes-admin, hot-reloaded by bridge
       - ./data/bridge:/opt/data/bridge:rw
+      # Docker socket — REQUIRED for spawn-hermes.py to `docker run` the per-project
+      # viko-{slug} containers (docker-out-of-docker). Grants this container
+      # root-equivalent control of the host Docker daemon; hermes is the trusted
+      # orchestrator by design. The project containers it spawns get NO socket.
+      - /var/run/docker.sock:/var/run/docker.sock
     ports:
       # Bind to VIKO_BIND_ADDR (default loopback). Set to the Tailscale IP in .env
       # to reach the Hermes dashboard over Tailscale without exposing it publicly.
@@ -99,6 +104,9 @@ services:
       OPENAI_API_KEY: ${OPENAI_API_KEY}
       # WhatsApp home channel — Viko sends startup notifications here (set in .env)
       WHATSAPP_HOME_CHANNEL: ${WHATSAPP_HOME_CHANNEL}
+      # Owner display name — bridge stamps it as sender= on owner messages so Viko
+      # addresses the owner by their real name instead of guessing.
+      VIKO_OWNER_NAME: ${VIKO_OWNER_NAME:-}
       # Allow group messages (self-chat mode default blocks all groups)
       WHATSAPP_SELF_CHAT_ALLOW_GROUPS: "true"
       # 9Router media API (image gen, TTS, STT) — same URL and key as OPENAI_*
@@ -138,6 +146,12 @@ services:
       HERMES_DASHBOARD_PORT: "9119"
     command: ["gateway", "run"]
     restart: unless-stopped
+    # Cap docker json log growth so bridge/gateway output doesn't fill the disk.
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
     healthcheck:
       test: ["CMD-SHELL", "bash -c 'echo > /dev/tcp/127.0.0.1/9119'"]
       interval: 30s

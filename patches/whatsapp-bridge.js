@@ -73,6 +73,18 @@ const IMAGE_CACHE_DIR = path.join(process.env.HOME || '~', '.hermes', 'image_cac
 // making the path valid inside the project container too.
 const DOCUMENT_CACHE_DIR = path.join(process.env.HOME || '~', '.hermes', 'document_cache');
 const AUDIO_CACHE_DIR = path.join(process.env.HOME || '~', '.hermes', 'audio_cache');
+// Owning chat JID per cached media basename. Populated where inbound media is written
+// to a cache dir, consumed by GET /media/:file to enforce per-owner access (A1) so a
+// project relay can only pull files that belong to its own group.
+const _mediaOwnerByFile = new Map();
+const MAX_MEDIA_OWNER_ENTRIES = 2000;
+function _tagMediaOwner(filePath, ownerJid) {
+  if (!filePath || !ownerJid) return;
+  _mediaOwnerByFile.set(path.basename(filePath), ownerJid);
+  if (_mediaOwnerByFile.size > MAX_MEDIA_OWNER_ENTRIES) {
+    _mediaOwnerByFile.delete(_mediaOwnerByFile.keys().next().value);
+  }
+}
 // Last media seen per chat, so a request sent right after a file (as a separate
 // message — e.g. forward a .docx, then "buatin pdf viko") can still reach the file.
 const _recentMediaByChat = {};
@@ -207,21 +219,38 @@ function getContextInfo(messageContent) {
 
 mkdirSync(SESSION_DIR, { recursive: true });
 
-// Build LID → phone reverse map from session files (lid-mapping-{phone}.json)
+// Build LID → phone map from session files. WhatsApp persists the mapping in two
+// shapes; read BOTH so group participants (now returned as @lid) resolve to a real
+// phone regardless of which direction was stored:
+//   lid-mapping-{phone}.json         → body is the LID   (keyed by phone)
+//   lid-mapping-{lid}_reverse.json   → body is the phone (keyed by lid)
 function buildLidMap() {
   const map = {};
   try {
     for (const f of readdirSync(SESSION_DIR)) {
-      const m = f.match(/^lid-mapping-(\d+)\.json$/);
-      if (!m) continue;
-      const phone = m[1];
-      const lid = JSON.parse(readFileSync(path.join(SESSION_DIR, f), 'utf8'));
-      if (lid) map[String(lid)] = phone;
+      const rev = f.match(/^lid-mapping-(\d+)_reverse\.json$/);
+      if (rev) {
+        const lid = rev[1];
+        const phone = JSON.parse(readFileSync(path.join(SESSION_DIR, f), 'utf8'));
+        if (phone) map[String(lid)] = String(phone);
+        continue;
+      }
+      const fwd = f.match(/^lid-mapping-(\d+)\.json$/);
+      if (fwd) {
+        const phone = fwd[1];
+        const lid = JSON.parse(readFileSync(path.join(SESSION_DIR, f), 'utf8'));
+        if (lid) map[String(lid)] = String(phone);
+      }
     }
   } catch {}
   return map;
 }
 let _lidToPhone = buildLidMap();
+
+// Display names learned from inbound messages (pushName), keyed by the sender's
+// number (lid or phone). Lets /group/:jid/participants label members who've spoken;
+// members who never sent a message stay unnamed (WhatsApp exposes no name otherwise).
+const _nameByNumber = {};
 
 const logger = pino({ level: 'warn' });
 
@@ -230,25 +259,25 @@ const messageQueue = []; // kept for backward compat (admin Hermes, no port filt
 const messageQueues = {}; // per-port queues: { "8101": [...], "8102": [...] }
 const globalQueue = []; // unrouted messages → Admin Hermes
 
-// Per-chat owner session for unregistered groups (15-min window after owner mentions Viko).
-// Allows "ok", "cancel", etc. follow-ups during onboarding without re-mentioning Viko.
-const _unregisteredOwnerSession = {}; // chatId → expiry timestamp (ms)
-
 // ── Routing table (routing.json hot-reload) ──────────────────────────────
 const ROUTING_FILE =
   process.env.ROUTING_FILE ||
   path.join(process.env.HOME || '/opt/data', 'projects/viko-agent/data/bridge/routing.json');
 
-let _routing = {}; // { "jid@g.us": 8101 }        — normalized, inbound routing
-let _tokenToJid = {}; // { "<relay_token>": "jid@g.us" } — outbound scope checks
-let _jidToSlug = {}; // { "jid@g.us": "slug" }       — group → project, for scope stamping
+// Prototype-free maps: attacker-controlled keys (a relay token / jid from a request
+// header or param) must NOT resolve to inherited Object.prototype members. With a
+// plain {} a token of "constructor"/"__proto__"/"toString" would make _tokenToJid[token]
+// truthy and slip past the `if (!jid)` scope gate — so use Object.create(null).
+let _routing = Object.create(null); // { "jid@g.us": 8101 }     — normalized, inbound routing
+let _tokenToJid = Object.create(null); // { "<relay_token>": "jid@g.us" } — outbound scope checks
+let _jidToSlug = Object.create(null); // { "jid@g.us": "slug" }  — group → project, for scope stamping
 
 function _loadRouting() {
   try {
     const raw = JSON.parse(readFileSync(ROUTING_FILE, 'utf8'));
-    const routing = {},
-      tokenToJid = {},
-      jidToSlug = {};
+    const routing = Object.create(null),
+      tokenToJid = Object.create(null),
+      jidToSlug = Object.create(null);
     for (const [jid, val] of Object.entries(raw)) {
       if (val && typeof val === 'object') {
         // New schema: { jid: { port, slug, relay_token } }
@@ -267,9 +296,9 @@ function _loadRouting() {
       `[bridge] routing.json loaded: ${Object.keys(_routing).length} routes, ${Object.keys(_tokenToJid).length} relay tokens`,
     );
   } catch {
-    _routing = {};
-    _tokenToJid = {};
-    _jidToSlug = {};
+    _routing = Object.create(null);
+    _tokenToJid = Object.create(null);
+    _jidToSlug = Object.create(null);
   }
 }
 
@@ -405,6 +434,11 @@ async function startSocket() {
       const isGroup = chatId.endsWith('@g.us');
       const senderNumber = senderId.replace(/@.*/, '');
 
+      // Learn display names for the participants endpoint (members who've spoken).
+      if (!msg.key.fromMe && msg.pushName && senderNumber) {
+        _nameByNumber[senderNumber] = msg.pushName;
+      }
+
       // Handle fromMe messages based on mode
       if (msg.key.fromMe) {
         if (chatId.includes('status')) continue;
@@ -517,6 +551,7 @@ async function startSocket() {
           );
           writeFileSync(filePath, buf);
           mediaUrls.push(filePath);
+          _tagMediaOwner(filePath, chatId);
         } catch (err) {
           console.error('[bridge] Failed to download image:', err.message);
         }
@@ -540,6 +575,7 @@ async function startSocket() {
           );
           writeFileSync(filePath, buf);
           mediaUrls.push(filePath);
+          _tagMediaOwner(filePath, chatId);
         } catch (err) {
           console.error('[bridge] Failed to download video:', err.message);
         }
@@ -563,6 +599,7 @@ async function startSocket() {
           );
           writeFileSync(filePath, buf);
           mediaUrls.push(filePath);
+          _tagMediaOwner(filePath, chatId);
         } catch (err) {
           console.error('[bridge] Failed to download audio:', err.message);
         }
@@ -586,6 +623,7 @@ async function startSocket() {
           );
           writeFileSync(filePath, buf);
           mediaUrls.push(filePath);
+          _tagMediaOwner(filePath, chatId);
         } catch (err) {
           console.error('[bridge] Failed to download document:', err.message);
         }
@@ -625,6 +663,7 @@ async function startSocket() {
           );
           writeFileSync(filePath, buf);
           mediaUrls.push(filePath);
+          _tagMediaOwner(filePath, chatId);
           if (!hasMedia) {
             hasMedia = true;
             mediaType = 'image';
@@ -664,6 +703,7 @@ async function startSocket() {
           );
           writeFileSync(filePath, buf);
           mediaUrls.push(filePath);
+          _tagMediaOwner(filePath, chatId);
           if (!hasMedia) {
             hasMedia = true;
             mediaType = 'document';
@@ -758,7 +798,18 @@ async function startSocket() {
         const proj = !isGroup ? 'DM' : _jidToSlug[chatId] || 'UNREGISTERED';
         // For unregistered groups, include the JID so admin Hermes can pass it to add-project.py
         const jidField = proj === 'UNREGISTERED' && isGroup ? ` jid=${chatId}` : '';
-        body = `[CTX project=${proj}${jidField} caller=${isOwner ? 'owner' : 'member'}]\n${body}`;
+        // Sender identity so the agent addresses the RIGHT person by name instead of
+        // guessing/bleeding a name from history. Owner -> VIKO_OWNER_NAME; members ->
+        // their pushName (or a name learned from earlier messages), else the number.
+        // Strip brackets/newlines so a crafted pushName can't break out of the CTX tag.
+        const senderLabel =
+          (isOwner
+            ? process.env.VIKO_OWNER_NAME || senderNumber
+            : msg.pushName || _nameByNumber[senderNumber] || senderNumber
+          )
+            .replace(/[[\]\n]/g, '')
+            .trim() || senderNumber;
+        body = `[CTX project=${proj}${jidField} caller=${isOwner ? 'owner' : 'member'} sender=${senderLabel}]\n${body}`;
         // Inbound ops log (sender identity + resolved owner) → FILE, because the bridge's
         // runtime stdout isn't captured by docker logs. Lets us debug owner mis-detection.
         try {
@@ -831,27 +882,31 @@ async function startSocket() {
         _pq.push(event);
         if (_pq.length > MAX_QUEUE_SIZE) _pq.shift();
       } else {
-        // Unregistered group: require explicit "viko" mention from anyone.
-        // Exception: owner follow-up messages during an active 15-min session (onboarding flow).
+        // Unregistered group: only forward if the message is directed at Viko —
+        // it mentions "viko"/@Viko, OR it's a reply to one of Viko's own messages.
+        // Casual chatter to other members is silently dropped. No time-based session:
+        // a blanket "all owner messages for N minutes" window caught unrelated talk
+        // (owner saying "viko" once made Viko butt into every later message).
         // DMs always pass through (isGroup=false).
-        let _shouldForward = true;
-        if (isGroup && !_mentionsViko) {
-          const _sessionExpiry = _unregisteredOwnerSession[chatId];
-          const _inOwnerSession = isOwner && _sessionExpiry && Date.now() < _sessionExpiry;
-          if (!_inOwnerSession) {
-            _shouldForward = false; // silent drop — not directed at Viko
-          }
-        }
-        if (_shouldForward) {
-          // Refresh 15-min session whenever owner explicitly mentions Viko in unregistered group
-          if (isOwner && _mentionsViko && isGroup) {
-            _unregisteredOwnerSession[chatId] = Date.now() + 15 * 60 * 1000;
-          }
+        const _isReplyToViko =
+          hasQuotedMessage && !!quotedParticipant && botIds.includes(quotedParticipant);
+        if (!isGroup || _mentionsViko || _isReplyToViko) {
           globalQueue.push(event);
           if (globalQueue.length > MAX_QUEUE_SIZE) globalQueue.shift();
           // Backward compat: also push to legacy messageQueue (Admin Hermes uses this)
           messageQueue.push(event);
           if (messageQueue.length > MAX_QUEUE_SIZE) messageQueue.shift();
+        } else {
+          try {
+            console.log(
+              JSON.stringify({
+                event: 'ignored',
+                reason: 'group_not_directed_at_viko',
+                chatId,
+                senderId,
+              }),
+            );
+          } catch {}
         }
       }
     }
@@ -898,7 +953,7 @@ if (RELAY_MODE) {
         try {
           if (typeof p !== 'string' || !path.isAbsolute(p) || existsSync(p)) continue;
           const r = await fetch(`${RELAY_TARGET}/media/${encodeURIComponent(path.basename(p))}`, {
-            headers: { Host: 'viko-hermes-admin' },
+            headers: _relayHeaders(),
           });
           if (!r.ok) {
             console.log(`[bridge] relay media prefetch ${r.status} for ${path.basename(p)}`);
@@ -920,7 +975,7 @@ if (RELAY_MODE) {
       const url = PORT_FILTER
         ? `${RELAY_TARGET}/messages?port=${PORT_FILTER}`
         : `${RELAY_TARGET}/messages`;
-      const resp = await fetch(url, { headers: { Host: 'viko-hermes-admin' } });
+      const resp = await fetch(url, { headers: _relayHeaders() });
       res.json(await _prefetchRelayMedia(await resp.json()));
     } catch {
       res.json([]);
@@ -993,7 +1048,7 @@ if (RELAY_MODE) {
   app.get('/health', async (req, res) => {
     try {
       const resp = await fetch(`${RELAY_TARGET}/health`, {
-        headers: { Host: 'viko-hermes-admin' },
+        headers: _relayHeaders(),
       });
       const data = /** @type {Record<string, unknown>} */ (await resp.json());
       res.json({ ...data, relay: true, port_filter: PORT_FILTER });
@@ -1004,7 +1059,7 @@ if (RELAY_MODE) {
   app.get('/chat/:id', async (req, res) => {
     try {
       const resp = await fetch(`${RELAY_TARGET}/chat/${req.params.id}`, {
-        headers: { Host: 'viko-hermes-admin' },
+        headers: _relayHeaders(),
       });
       await _forwardRelay(res, resp);
     } catch {
@@ -1017,7 +1072,7 @@ if (RELAY_MODE) {
     try {
       const resp = await fetch(
         `${RELAY_TARGET}/media/${encodeURIComponent(path.basename(req.params.file))}`,
-        { headers: { Host: 'viko-hermes-admin' } },
+        { headers: _relayHeaders() },
       );
       if (!resp.ok) return res.status(resp.status).json({ error: 'media_relay_error' });
       res.set('Content-Type', resp.headers.get('content-type') || 'application/octet-stream');
@@ -1123,6 +1178,41 @@ if (RELAY_MODE) {
 
   // Poll for new messages — ?port=8101 for project instances, no param for Admin Hermes
   app.get('/messages', (req, res) => {
+    // Scope reads (A1): /messages destructively drains a per-port queue. A networked
+    // (non-loopback) caller must present a valid relay token; the port it may drain is
+    // FORCED to the one bound to its JID — it cannot pass an arbitrary ?port to read
+    // (and drain) another project's queue. Loopback (admin Hermes) keeps full access
+    // and the historical ?port behavior.
+    if (!_isLoopback(req)) {
+      const token = _bearer(req);
+      const jid = token ? _tokenToJid[token] : '';
+      if (!jid) {
+        console.warn(
+          `[bridge] scope-deny GET /messages (${token ? 'unknown_relay_token' : 'relay_token_required'})`,
+        );
+        return res
+          .status(403)
+          .json({ error: token ? 'unknown_relay_token' : 'relay_token_required' });
+      }
+      const allowedPort = _routing[jid] != null ? String(_routing[jid]) : null;
+      if (!allowedPort) {
+        console.warn(`[bridge] scope-deny GET /messages (no_port_for_jid) jid=${jid}`);
+        return res.status(403).json({ error: 'no_port_for_jid', allowed: jid });
+      }
+      const requested = req.query.port ? String(req.query.port) : null;
+      if (requested && requested !== allowedPort) {
+        console.warn(
+          `[bridge] scope-deny GET /messages (cross_project_read_blocked) requested=${requested} allowed=${allowedPort}`,
+        );
+        return res
+          .status(403)
+          .json({ error: 'cross_project_read_blocked', allowed_port: allowedPort });
+      }
+      const q = messageQueues[allowedPort] || [];
+      const msgs = q.splice(0, q.length);
+      messageQueues[allowedPort] = [];
+      return res.json(msgs);
+    }
     const port = req.query.port ? String(req.query.port) : null;
     if (port) {
       const q = messageQueues[port] || [];
@@ -1387,6 +1477,20 @@ if (RELAY_MODE) {
   // Chat info
   app.get('/chat/:id', async (req, res) => {
     const chatId = req.params.id;
+    // Scope reads (A1): a networked caller may only read the chat its token is bound to
+    // (the chat id IS the jid). Loopback (admin) keeps full access.
+    if (!_isLoopback(req)) {
+      const token = _bearer(req);
+      const jid = token ? _tokenToJid[token] : '';
+      if (!jid || jid !== chatId) {
+        console.warn(
+          `[bridge] scope-deny GET /chat/${chatId} (${!token ? 'relay_token_required' : !jid ? 'unknown_relay_token' : 'cross_project_read_blocked'})`,
+        );
+        return res
+          .status(403)
+          .json({ error: !token ? 'relay_token_required' : !jid ? 'unknown_relay_token' : 'cross_project_read_blocked' });
+      }
+    }
     const isGroup = chatId.endsWith('@g.us');
 
     if (isGroup && sock) {
@@ -1414,6 +1518,33 @@ if (RELAY_MODE) {
   // same absolute path. basename() guards against path traversal.
   app.get('/media/:file', (req, res) => {
     const file = path.basename(req.params.file);
+    // Scope reads (A1): a networked caller must present a valid relay token. When the
+    // file is tagged with its owning chat (_mediaOwnerByFile), the token's JID must
+    // match — a project relay can only pull its own group's media. Loopback (admin)
+    // keeps full access.
+    if (!_isLoopback(req)) {
+      const token = _bearer(req);
+      const jid = token ? _tokenToJid[token] : '';
+      if (!jid) {
+        console.warn(
+          `[bridge] scope-deny GET /media/${file} (${token ? 'unknown_relay_token' : 'relay_token_required'})`,
+        );
+        return res
+          .status(403)
+          .json({ error: token ? 'unknown_relay_token' : 'relay_token_required' });
+      }
+      const owner = _mediaOwnerByFile.get(file);
+      // Files written before this map was populated (e.g. across a restart) have no
+      // owner entry. A valid token is still required above; we allow the fetch so
+      // legitimate cross-restart prefetch keeps working. TODO: persist ownership tags
+      // so unknown-owner files can be denied instead of allowed.
+      if (owner && owner !== jid) {
+        console.warn(
+          `[bridge] scope-deny GET /media/${file} (cross_project_media_blocked) owner=${owner} caller=${jid}`,
+        );
+        return res.status(403).json({ error: 'cross_project_media_blocked' });
+      }
+    }
     for (const dir of [IMAGE_CACHE_DIR, DOCUMENT_CACHE_DIR, AUDIO_CACHE_DIR]) {
       const fp = path.join(dir, file);
       if (existsSync(fp)) return res.sendFile(fp);
@@ -1424,19 +1555,49 @@ if (RELAY_MODE) {
   // Group participants with names
   app.get('/group/:jid/participants', async (req, res) => {
     const jid = req.params.jid;
+    // Scope reads (A1): a networked caller may only enumerate participants of the group
+    // its token is bound to (the :jid param). Loopback (admin) keeps full access.
+    if (!_isLoopback(req)) {
+      const token = _bearer(req);
+      const tokenJid = token ? _tokenToJid[token] : '';
+      if (!tokenJid || tokenJid !== jid) {
+        console.warn(
+          `[bridge] scope-deny GET /group/${jid}/participants (${!token ? 'relay_token_required' : !tokenJid ? 'unknown_relay_token' : 'cross_project_read_blocked'})`,
+        );
+        return res
+          .status(403)
+          .json({ error: !token ? 'relay_token_required' : !tokenJid ? 'unknown_relay_token' : 'cross_project_read_blocked' });
+      }
+    }
     if (!jid.endsWith('@g.us') || !sock) {
       return res.status(400).json({ error: 'Not a group JID or socket not ready' });
     }
     try {
       const meta = await sock.groupMetadata(jid);
-      const participants = meta.participants.map((p) => {
-        // No in-memory contact store is maintained (the `store` global never existed —
-        // this path used to throw and fail the whole endpoint). Names are unavailable
-        // here; return jid/phone/admin and let callers resolve names elsewhere.
-        const contact = {};
-        const phone = p.id.split('@')[0];
-        const name = contact.notify || contact.name || contact.verifiedName || null;
-        return { jid: p.id, phone, name, admin: p.admin || null };
+      // Drop Viko's own account so it never shows as a candidate member and the model
+      // never has to guess which number is "itself" (it would otherwise mislabel one).
+      const selfIds = new Set(
+        [normalizeWhatsAppId(sock.user?.id), normalizeWhatsAppId(sock.user?.lid)].filter(Boolean),
+      );
+      const participants = meta.participants
+        .filter((p) => !selfIds.has(normalizeWhatsAppId(p.id)))
+        .map((p) => {
+        // WhatsApp now returns participants as @lid (privacy). Resolve to a real phone
+        // via the session LID→phone map; fall back to null (NOT the raw LID) so callers
+        // never register a LID as if it were a phone number. Names come from pushNames
+        // we've observed — unavailable for members who have never sent a message.
+        const isLid = p.id.endsWith('@lid');
+        const num = p.id.split('@')[0];
+        const phone = isLid ? _lidToPhone[num] || null : num;
+        const name = _nameByNumber[num] || (phone && _nameByNumber[phone]) || null;
+        return {
+          jid: p.id,
+          lid: isLid ? num : null,
+          phone,
+          name,
+          resolved: !!phone,
+          admin: p.admin || null,
+        };
       });
       res.json({ group: meta.subject, jid, participants });
     } catch (e) {
@@ -1444,8 +1605,13 @@ if (RELAY_MODE) {
     }
   });
 
-  // Health check
+  // Health check. Stays open (no token required) so liveness probes work, but
+  // non-loopback callers get a minimal payload — the per-port queue map and routing
+  // counts are internal topology and must not leak to project relays (A1).
   app.get('/health', (req, res) => {
+    if (!_isLoopback(req)) {
+      return res.json({ status: connectionState, uptime: process.uptime() });
+    }
     res.json({
       status: connectionState,
       queueLength: messageQueue.length + globalQueue.length,

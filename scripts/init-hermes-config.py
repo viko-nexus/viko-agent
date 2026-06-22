@@ -89,10 +89,13 @@ DESIRED = {
     # channel_prompts.default applies to all chats - safe to set here.
     # Per-group JID prompts are deployment-specific -> configure directly in config.yaml.
     "whatsapp": {
-        # Admin only sees DMs and unregistered groups (registered groups are
-        # routed to per-project Hermes before reaching admin). No need to gate
-        # on @mention - we want Viko to respond to any message in these contexts.
-        "require_mention": False,
+        # Admin sees DMs + unregistered groups -> respond to any message (no @mention
+        # gate). BUT this same override also runs (via cont-init 04) inside each PROJECT
+        # container, which lives in a busy group chat and must ONLY answer when addressed.
+        # VIKO_PROJECT_SLUG is set only in project containers -> gate on @mention there so
+        # Viko doesn't butt into every group message. Without this it clobbers the
+        # require_mention:True that spawn-hermes.py writes for projects.
+        "require_mention": bool(os.environ.get("VIKO_PROJECT_SLUG")),
         "unauthorized_dm_behavior": "ignore",
         "channel_prompts": {
             "default": "Balas dalam Bahasa Indonesia. Jika pengguna menulis dalam English, balas dalam English. Jawa/Sunda -> Indonesia.",

@@ -11,8 +11,8 @@ no-op.
 Mode via VIKO_ISOLATION_GUARD:
   enforce  → on failure: tombstone + best-effort alert + go INERT (block startup,
              gateway never starts, container reports unhealthy). NOT a crash-loop.
-  warn     → on failure: tombstone + log, but continue startup. (default — safe to
-             ship; flip to enforce once proven.)
+             (default — fail-closed.)
+  warn     → on failure: tombstone + log, but continue startup.
   off      → skip entirely.
 
 The capability layer (per-project mount, per-project SSH key, dropped token,
@@ -30,7 +30,7 @@ SSH_ALLOWED = {"id_viko", "id_viko.pub", "config", "known_hosts"}
 
 
 def main() -> int:
-    mode = os.environ.get("VIKO_ISOLATION_GUARD", "warn").strip().lower()
+    mode = os.environ.get("VIKO_ISOLATION_GUARD", "enforce").strip().lower()
     slug = os.environ.get("VIKO_PROJECT_SLUG", "").strip()
     if not slug or mode == "off":
         return 0  # admin container or disabled → no-op

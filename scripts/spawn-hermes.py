@@ -24,7 +24,6 @@ import shutil
 import secrets
 import argparse
 import subprocess
-import yaml
 from pathlib import Path
 
 REPO_DIR = Path(__file__).parent.parent.resolve()
@@ -73,9 +72,15 @@ def load_routing() -> dict:
 
 def save_routing(routing: dict) -> None:
     ROUTING_FILE.parent.mkdir(parents=True, exist_ok=True)
+    # routing.json holds per-project relay_token secrets — lock the dir + file down.
+    ROUTING_FILE.parent.chmod(0o700)
     tmp = ROUTING_FILE.with_suffix(".json.tmp")
     tmp.write_text(json.dumps(routing, indent=2))
+    # chmod the tmp BEFORE rename so the secret is never world-readable, not even
+    # in the brief window between write and rename (write_text creates it 0644).
+    tmp.chmod(0o600)
     tmp.rename(ROUTING_FILE)
+    ROUTING_FILE.chmod(0o600)
 
 
 def _container_running(name: str) -> bool:
@@ -96,15 +101,52 @@ def _container_exists(name: str) -> bool:
     return r.returncode == 0
 
 
-def _wait_healthy(name: str, timeout: int = 90) -> None:
-    """Wait until container is running. Raises RuntimeError on timeout."""
+def _restart_count(name: str) -> int:
+    """Container's Docker RestartCount (rises when it crash-loops)."""
+    r = subprocess.run(
+        ["docker", "inspect", "-f", "{{.RestartCount}}", name],
+        capture_output=True, text=True
+    )
+    try:
+        return int(r.stdout.strip()) if r.returncode == 0 else 0
+    except ValueError:
+        return 0
+
+
+def _dashboard_ok(name: str) -> bool:
+    """True if the container's dashboard answers 200. Probed via `docker exec`
+    against the container's OWN localhost:9119, so it works whether this script
+    runs on the host OR inside the admin container (docker-out-of-docker). A
+    host-port probe (127.0.0.1:{port+900}) is WRONG when spawn runs inside admin:
+    127.0.0.1 there is the admin's loopback, not the host, so it never answers."""
+    r = subprocess.run(
+        ["docker", "exec", name, "sh", "-c",
+         "curl -fsS -o /dev/null -w '%{http_code}' http://localhost:9119/ 2>/dev/null"],
+        capture_output=True, text=True,
+    )
+    return r.returncode == 0 and r.stdout.strip() == "200"
+
+
+def _wait_healthy(name: str, port: int = 0, timeout: int = 90) -> bool:
+    """Wait until the container is genuinely up: Running across 2 consecutive
+    polls, RestartCount not rising (no crash-loop), and — when a port is given —
+    the dashboard HTTP port returns 200. Returns True on success.
+    Raises RuntimeError on timeout or detected crash-loop."""
     import time
     deadline = time.time() + timeout
+    baseline_restarts = _restart_count(name)
+    running_streak = 0
     while time.time() < deadline:
+        if _restart_count(name) > baseline_restarts:
+            raise RuntimeError(f"Container {name} is crash-looping (RestartCount rose)")
         if _container_running(name):
-            return
+            running_streak += 1
+        else:
+            running_streak = 0
+        if running_streak >= 2 and (port == 0 or _dashboard_ok(name)):
+            return True
         time.sleep(2)
-    raise RuntimeError(f"Container {name} did not start within {timeout}s")
+    raise RuntimeError(f"Container {name} did not become healthy within {timeout}s")
 
 
 def _entry_port(val) -> int:
@@ -204,6 +246,13 @@ def _build_project_ssh_dir(slug: str, vps_host: str, vps_user: str, vps_port: st
             f"    IdentitiesOnly yes\n"
             f"    StrictHostKeyChecking accept-new\n"
             f"    UserKnownHostsFile /opt/data/.ssh/known_hosts\n"
+            # Non-interactive + bounded: the agent never sits interactively, so a hung
+            # connect (unreachable host, key prompt) must fail fast instead of blocking
+            # a terminal tool call for minutes (which stalls the whole agent loop).
+            f"    BatchMode yes\n"
+            f"    ConnectTimeout 10\n"
+            f"    ServerAliveInterval 5\n"
+            f"    ServerAliveCountMax 2\n"
         )
     else:
         (proj_dir / "config").write_text("# no VPS configured for this project\n")
@@ -211,14 +260,47 @@ def _build_project_ssh_dir(slug: str, vps_host: str, vps_user: str, vps_port: st
     # Pre-seed known_hosts from the shared file so accept-new doesn't need to
     # write into the read-only mount on first connect. Also seed github.com so
     # the container can `git push` over SSH (scoped per-repo deploy key).
+    #
+    # We write the seed to the real known_hosts file first, then use
+    # `ssh-keygen -F <host> -f <file>` to test membership — it does a proper
+    # host-key-line lookup (handles hashed entries + the [host]:port form), so it
+    # won't false-skip the way a naive `host in text` substring test does when one
+    # IP/host is a substring of an already-seeded entry.
+    kh_path = proj_dir / "known_hosts"
     shared_kh = SSH_DIR / "known_hosts"
-    kh = shared_kh.read_text() if shared_kh.exists() else ""
-    if "github.com" not in kh:
+    kh_path.write_text(shared_kh.read_text() if shared_kh.exists() else "")
+
+    def _kh_has(host: str) -> bool:
+        return _run(["ssh-keygen", "-F", host, "-f", str(kh_path)]).returncode == 0
+
+    def _kh_append(text: str) -> None:
+        if text:
+            with kh_path.open("a") as fh:
+                fh.write(text)
+
+    if not _kh_has("github.com"):
         try:
-            kh += _run(["ssh-keyscan", "-t", "ed25519", "github.com"]).stdout
+            _kh_append(_run(["ssh-keyscan", "-t", "ed25519", "github.com"]).stdout)
         except Exception:
             pass
-    (proj_dir / "known_hosts").write_text(kh)
+    # Pre-seed the project VPS host key too. Without it, the first `ssh {slug}-prod`
+    # over the read-only known_hosts mount can't accept-new (can't write), so the agent
+    # improvises `ssh-keyscan >> known_hosts` — which trips the dangerous-command guard
+    # and still fails. Seeding here makes the very first connect trusted and silent.
+    # When a non-default port is in play, ssh stores the key under the [host]:port
+    # token, so probe with that exact form.
+    if vps_host:
+        kh_lookup = vps_host
+        scan = ["ssh-keyscan"]
+        if vps_port and vps_port != "22":
+            scan += ["-p", str(vps_port)]
+            kh_lookup = f"[{vps_host}]:{vps_port}"
+        scan += [vps_host]
+        if not _kh_has(kh_lookup):
+            try:
+                _kh_append(_run(scan).stdout)
+            except Exception:
+                pass
     return proj_dir
 
 
@@ -258,9 +340,13 @@ def preflight(slug: str, projects_root: Path, proj_ssh_dir: Path, vps_host: str)
     print(f"  ✓ preflight passed (code={project_code.name}, ssh=1 alias, key present)")
 
 
-def _build_project_config(slug: str, group_jid: str, env: dict) -> dict:
+def _build_project_config(slug: str, group_jid: str, env: dict, workspace: str = "") -> dict:
     ninerouter_url = env.get("OPENAI_BASE_URL", "http://viko-9router:20128/v1")
     ninerouter_key = env.get("OPENAI_API_KEY", "")
+    projects_root = env.get("VIKO_PROJECTS_ROOT", str(Path.home() / "Projects"))
+    # Scope the terminal to THIS project's workspace, never the projects ROOT
+    # (whose siblings are other projects) — defense-in-depth against cd-ing out.
+    terminal_cwd = workspace or f"{projects_root}/{slug}"
 
     prompt = (
         f"Kamu ada di group WhatsApp {slug.upper()}. Project aktif: {slug.upper()} — hanya {slug}.\n\n"
@@ -303,7 +389,7 @@ def _build_project_config(slug: str, group_jid: str, env: dict) -> dict:
             "guard_agent_created": True,
         },
         "terminal": {
-            "cwd": env.get("VIKO_PROJECTS_ROOT", str(Path.home() / "Projects"))
+            "cwd": terminal_cwd
         },
         "timezone": "Asia/Makassar",
         "kanban": {"auto_decompose": False, "max_in_progress_per_profile": 1},
@@ -406,10 +492,13 @@ def create_hermes_data_dir(slug: str, port: int, group_jid: str, env: dict) -> P
         f"GATEWAY_ALLOW_ALL_USERS=true\n"
     )
 
-    # Write config.yaml
-    config = _build_project_config(slug, group_jid, env)
+    # Write config.yaml. JSON is a strict subset of YAML, so emitting JSON keeps this
+    # script pure-stdlib (no PyYAML import) — it then runs under any python3, including
+    # the container's system interpreter which lacks pyyaml. Hermes loads it via a YAML
+    # parser, which reads the JSON form identically.
+    config = _build_project_config(slug, group_jid, env, workspace)
     (data_dir / "config.yaml").write_text(
-        yaml.dump(config, allow_unicode=True, default_flow_style=False, sort_keys=False)
+        json.dumps(config, indent=2, ensure_ascii=False) + "\n"
     )
 
     # Viko identity (SOUL.md) — project-scoped. Loaded fresh each message; without
@@ -423,6 +512,8 @@ def create_hermes_data_dir(slug: str, port: int, group_jid: str, env: dict) -> P
         f"- Istilah teknis/dev (nama variabel, branch, perintah, kode, output tool) biarkan natural "
         f"(English/aslinya) — jangan dipaksa diterjemahkan. Intinya: kalimat Indonesia, istilah dev apa adanya.\n"
         f"- Ringkas dan to-the-point; bullet untuk hal teknis; jangan kaku/formal.\n"
+        f"- **Ramah & hangat** ke siapa pun — tapi **baca situasi**: pas santai boleh witty, "
+        f"pas ada insiden/bug/hal serius fokus dan to-the-point, tahan dulu bercandanya.\n"
         f"- Sisipkan humor ringan yang **berkelas & profesional** — witty, cerdas, "
         f"sesekali sarkas halus. Kayak senior dev yang asik diajak ngobrol. "
         f"Jangan maksa lucu / cringe / emoji berlebihan: substansi dulu, humor jadi bumbu.\n\n"
@@ -434,6 +525,13 @@ def create_hermes_data_dir(slug: str, port: int, group_jid: str, env: dict) -> P
         f"## Identitas\n"
         f"- Kamu Viko — bukan agent/orang/layanan lain. Kamu AI. Satu agent, satu otak.\n"
         f"- JANGAN mengaku 'Claude Code' atau menawarkan '/help' generik. Kamu Viko untuk {slug}.\n\n"
+        f"## Sikap Kerja — Teliti & Kritis terhadap Bug\n"
+        f"- **Teliti**: cek detail, baca kode/error/output beneran sebelum nyimpulin. "
+        f"Jangan asal 'kayaknya udah jalan' — verifikasi dulu, baru ngomong selesai.\n"
+        f"- **Kritis terhadap bug**: curigai edge case, asumsi yang belum diuji, dan happy-path semu. "
+        f"Kalau ada yang janggal di kode/PR/permintaan, angkat — jangan diem demi enak.\n"
+        f"- Lebih baik nemu masalah sekarang daripada meledak di prod. "
+        f"Tapi sampaikan dengan cara membangun, bukan nge-judge.\n\n"
         f"## Authorization\n"
         f"- Hanya **Eksa** yang bisa authorize eksekusi (deploy, infra, ops destruktif).\n"
         f"- Minta approval dulu sebelum aksi yang irreversible.\n\n"
@@ -460,7 +558,7 @@ def create_hermes_data_dir(slug: str, port: int, group_jid: str, env: dict) -> P
         f"- SSH ke server project: pakai alias `{slug}-prod` (config + key `/opt/data/.ssh/id_viko` udah siap). "
         f"Contoh: `ssh {slug}-prod 'perintah'`. Jangan ngarang host/user/key.\n"
         f"- **Akses DB lewat SSH TUNNEL** (DB gak ke-expose publik, jangan konek langsung): "
-        f"baca `DATABASE_URL` dari `.env` project DI SERVER (`ssh {slug}-prod 'cat <path>/.env'`), "
+        f"baca `DATABASE_URL` dari file `.env` project DI SERVER (`ssh {slug}-prod 'grep DATABASE_URL <path>/.env'`), "
         f"buka tunnel ke host:port DB-nya — `ssh -fN -L 5433:<db_host>:<db_port> {slug}-prod` — "
         f"lalu query ke `127.0.0.1:5433`. Tipe DB dari scheme DATABASE_URL, client udah keinstall semua: "
         f"`postgresql`->psql/psycopg2, `mysql`->mysql/PyMySQL, `mongodb`->pymongo, `redis`->redis-cli/redis, "
@@ -525,10 +623,20 @@ def spawn_container(slug: str, port: int, data_dir: Path, env: dict, proj_ssh_di
     home_channel = env.get("WHATSAPP_HOME_CHANNEL", "")
     vroot = f"{projects_root}/viko-agent"   # == REPO_DIR (same path host↔container)
 
+    # proj_ssh_dir is a HERMES_HOME-relative path (/opt/data/home/.viko/ssh/...) when this
+    # script runs INSIDE the hermes container. `docker run` resolves -v SOURCES on the HOST,
+    # where /opt/data is bind-mounted from {REPO_DIR}/data/hermes (see docker-compose.yml).
+    # Translate so the SSH mount source is a real host path (docker-out-of-docker). On a host
+    # without that prefix (script run directly on a VPS), the replace is a harmless no-op.
+    proj_ssh_src = str(proj_ssh_dir).replace("/opt/data", f"{REPO_DIR}/data/hermes", 1)
+
     cmd = [
         "docker", "run", "-d",
         "--name", f"viko-hermes-{slug}",
         "--restart", "unless-stopped",
+        # Cap per-project container logs so they can't grow unbounded on the host.
+        "--log-opt", "max-size=10m",
+        "--log-opt", "max-file=3",
         "--network", "viko_default",
         "-p", f"127.0.0.1:{port + 900}:9119",
         # ── Volumes ── HARD ISOLATION: only this project's code + its own slice of
@@ -544,10 +652,16 @@ def spawn_container(slug: str, port: int, data_dir: Path, env: dict, proj_ssh_di
         "-v", f"{REPO_DIR}/projects/{slug}:{vroot}/projects/{slug}:rw",
         # Per-project SSH: only this project's key + 1-alias config (no id_viko,
         # no other {slug}-vps aliases). Cannot reach another project's VPS.
-        "-v", f"{proj_ssh_dir}:/opt/data/.ssh:ro",
-        "-v", f"{proj_ssh_dir}:/opt/data/home/.ssh:ro",
+        "-v", f"{proj_ssh_src}:/opt/data/.ssh:ro",
+        "-v", f"{proj_ssh_src}:/opt/data/home/.ssh:ro",
         "-v", f"{REPO_DIR}/hooks:/opt/data/hooks:ro",
         "-v", f"{REPO_DIR}/skills:/opt/viko/skills:ro",
+        # WhatsApp bridge — bind-mount the repo's relay-aware bridge over the image's
+        # baked copy, same as the admin's docker-compose.override.yml. Project containers
+        # then always run the CURRENT bridge (relay mode, mention gate, LID resolution)
+        # without needing an image rebuild on every bridge edit. The baked copy is only
+        # a fallback. Host-identical path → valid as a docker-run source on host + VPS.
+        "-v", f"{REPO_DIR}/patches/whatsapp-bridge.js:/opt/hermes/scripts/whatsapp-bridge/bridge.js:ro",
         # NOTE: mcp-servers/ deliberately NOT mounted — projects-gateway.py exposes
         # cross-project ssh_exec. Project containers must not carry it.
         # Environment
@@ -569,8 +683,8 @@ def spawn_container(slug: str, port: int, data_dir: Path, env: dict, proj_ssh_di
         "-e", f"VIKO_PROJECTS_ROOT={projects_root}",
         "-e", f"VIKO_PROJECT_SLUG={slug}",
         # Boot isolation guard: warn (log+tombstone) | enforce (inert on fail) | off.
-        # Default warn — flip to enforce in .env once proven across real boots.
-        "-e", f"VIKO_ISOLATION_GUARD={env.get('VIKO_ISOLATION_GUARD', 'warn')}",
+        # Default enforce — fail-closed; override to warn/off in .env if ever needed.
+        "-e", f"VIKO_ISOLATION_GUARD={env.get('VIKO_ISOLATION_GUARD', 'enforce')}",
         "-e", "SSL_CERT_FILE=/opt/hermes/.venv/lib/python3.13/site-packages/certifi/cacert.pem",
         "-e", "REQUESTS_CA_BUNDLE=/opt/hermes/.venv/lib/python3.13/site-packages/certifi/cacert.pem",
         "-e", "HERMES_DASHBOARD=true",
@@ -648,7 +762,7 @@ def main():
         routing[group_jid] = {"port": port, "slug": slug, "relay_token": relay_token}
         save_routing(routing)
         spawn_container(slug, port, data_dir, env, proj_ssh_dir, relay_token)
-        _wait_healthy(container_name)
+        _wait_healthy(container_name, port)
         print("  ✓ Container re-spawned and healthy (relay token rotated)")
         print(f"\nHermes-{slug} running on port {port}")
         print(f"SPAWN_COMPLETE port={port}")
@@ -666,6 +780,17 @@ def main():
 
     container_id = spawn_container(slug, port, data_dir, env, proj_ssh_dir, relay_token)
     print(f"  ✓ Container started: {container_id[:12]}")
+
+    # Wait for genuine health before declaring success. routing.json was already
+    # written for this group_jid, so a dead container would otherwise leave an
+    # orphan route pointing at nothing — roll it back before re-raising.
+    try:
+        _wait_healthy(f"viko-hermes-{slug}", port)
+    except Exception:
+        routing.pop(group_jid, None)
+        save_routing(routing)
+        raise
+    print("  ✓ Container healthy")
 
     print(f"\nHermes-{slug} running on port {port}")
     print(f"Dashboard: http://localhost:{port + 900}")

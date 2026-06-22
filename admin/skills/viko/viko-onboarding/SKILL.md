@@ -108,27 +108,35 @@ Minta **sekali** pakai format:
 
 ### Langkah 4 — Members
 
-Baca anggota grup otomatis:
+Baca anggota grup sebagai **REFERENSI** (bukan auto-daftar semua):
 ```bash
 curl http://localhost:3000/group/{group_jid}/participants
 ```
 
-Response berisi `participants` array `{ phone, name, admin }`. Filter nomor Viko
-sendiri (bot). Tampilkan dan minta konfirmasi:
+Response: `participants` array `{ jid, lid, phone, name, resolved, admin }`.
+- `resolved:true` → `phone` adalah **nomor HP asli** (sudah di-resolve dari LID). Hanya ini yang boleh didaftarkan.
+- `resolved:false` → no HP belum terhubung di session (anggota itu belum pernah chat / belum di kontak). `phone` = `null`. **JANGAN daftarkan `lid` sebagai nomor** — itu identifier internal WhatsApp, BUKAN no HP.
+- `name` bisa `null` (anggota yang belum pernah kirim pesan) — tampilkan nomornya saja.
 
-> "Anggota grup yang akan didaftarkan:
-> - SDR Brother (628xxx)
-> - Budi (628yyy)
+Filter nomor Viko sendiri (bot), lalu tampilkan sebagai referensi dan minta owner **pilih**:
+
+> "Anggota grup (referensi dari WhatsApp):
+> - Budi (6287884834521)
+> - 6282235383168 (nama belum kebaca)
+> - 1 anggota lagi no HP-nya belum kebaca — kasih nomornya kalau mau dimasukkan
 >
-> Lanjut semua? Atau ada yang dikecualikan?"
+> Mau daftarkan yang mana jadi member? Bales nomor/nama yang dipilih, `semua yang ada nomornya`, atau `skip`."
 
-Owner bisa: konfirmasi semua, exclude sebagian ("buang Budi"), ATAU kasih nomor
-manual format `628xxx, 628yyy, dst` (comma-separated) buat override daftar.
-Validasi nomor: digits only, 10–15 digit. (Nomor manual yang nggak valid → tanya
-ulang nomor itu.)
+**WAJIB:**
+- Hanya masukkan nomor dengan `resolved:true`, ATAU nomor manual valid dari owner.
+- JANGAN PERNAH masukkan `lid` (mis. `84942340026497`) ke `members_csv` — itu lolos cek "10–15 digit" tapi bukan no HP. Ini akar bug member ke-daftar nyasar.
+- Default **bukan** "semua masuk" — owner pilih eksplisit. Kalau owner bilang "semua", pakai semua yang `resolved:true` saja.
 
-Kalau daftar akhirnya **kosong** (grup cuma ada Viko, atau semua dikecualikan) →
-`members_csv` kosong; nanti pas eksekusi `--members` di-OMIT (script otomatis baca grup).
+Owner bisa: pilih sebagian, kasih nomor manual `628xxx, 628yyy` (comma-separated), atau `skip`.
+Validasi nomor manual: digits only, 10–15 digit, diawali kode negara. (Nomor manual yang nggak valid → tanya ulang nomor itu.)
+
+Kalau daftar akhirnya **kosong** (owner `skip` / cuma ada Viko) → `members_csv` kosong;
+nanti pas eksekusi `--members` di-OMIT.
 
 ### Langkah 5 — Konfirmasi
 
@@ -235,7 +243,7 @@ ke Handoff. Nggak ada SSH yang perlu diverifikasi.
 
 **Kalau ada server:**
 ```bash
-docker exec viko-hermes-{slug} ssh {slug}-prod "echo viko-ok"
+docker exec -u hermes viko-hermes-{slug} ssh {slug}-prod "echo viko-ok"
 ```
 
 - Success → proceed

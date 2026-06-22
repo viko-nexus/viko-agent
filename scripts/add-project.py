@@ -223,6 +223,15 @@ def main():
     repo_line = f"- `{repo_label}`: {github_url}"
     server_line = f"{vps_user}@{vps_host}:{vps_port}" if vps_host else "Lokal (tanpa SSH)"
     members_line = ", ".join(member_phones) if member_phones else "(dibaca otomatis dari grup)"
+    # Owner identity so Viko-Project knows WHO authorizes execution and can greet them
+    # by name. The bridge stamps [CTX caller=owner] on the owner's messages; this line
+    # lets the agent map that to a name + number instead of treating the owner as a stranger.
+    owner_name = _get_env_val(REPO_DIR / ".env", "VIKO_OWNER_NAME") or os.environ.get("VIKO_OWNER_NAME", "")
+    owner_number = _get_env_val(REPO_DIR / ".env", "WHATSAPP_OWNER_NUMBER") or os.environ.get("WHATSAPP_OWNER_NUMBER", "")
+    owner_line = (
+        f"{owner_name} ({owner_number})" if owner_name and owner_number
+        else owner_number or owner_name or "(set WHATSAPP_OWNER_NUMBER / VIKO_OWNER_NAME)"
+    )
 
     if context_file.exists():
         text = context_file.read_text()
@@ -240,6 +249,7 @@ def main():
             f"# Project: {slug}\n\n"
             f"## Info\n"
             f"- WA Group JID: {group_jid}\n"
+            f"- Owner: {owner_line} — yang authorize eksekusi (deploy/infra/ops destruktif)\n"
             f"- Server: {server_line}\n"
             f"- Members: {members_line}\n"
             f"- Onboarded: {datetime.now().strftime('%Y-%m-%d')}\n\n"
@@ -299,7 +309,7 @@ def main():
     print(f"  1. Scan codebase: ls {project_dir}/ dan baca file utama")
     print(f"  2. Update {context_dir}/context.md dengan stack dan info project")
     print("  3. Restart hermes (admin instance) jika WHATSAPP_ALLOWED_USERS diubah:")
-    print("     cd ~/projects/viko-agent && docker compose --profile full up -d --force-recreate hermes-admin")
+    print("     cd ~/projects/viko-agent && docker compose --profile full up -d --force-recreate hermes")
     print("  (spawn-hermes.py output above shows status of isolated Hermes instance)")
 
 
