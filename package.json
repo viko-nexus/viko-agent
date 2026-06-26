@@ -1,6 +1,6 @@
 {
   "name": "viko-agent",
-  "version": "0.4.5",
+  "version": "0.4.6",
   "description": "Tooling for the Viko WhatsApp bridge (lint, format, type-check). Not a runtime package.",
   "private": true,
   "scripts": {
