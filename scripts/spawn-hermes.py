@@ -103,6 +103,17 @@ def save_routing(routing: dict) -> None:
     tmp.chmod(0o600)
     tmp.rename(ROUTING_FILE)
     ROUTING_FILE.chmod(0o600)
+    # If this script ran as root (e.g. via `docker exec` without -u hermes), the
+    # renamed file lands root:root on the host bind-mount. Chown to the hermes
+    # user so the bridge container can always read it regardless of caller context.
+    if os.getuid() == 0:
+        try:
+            import pwd
+            pw = pwd.getpwnam("hermes")
+            os.chown(ROUTING_FILE, pw.pw_uid, pw.pw_gid)
+            os.chown(ROUTING_FILE.parent, pw.pw_uid, pw.pw_gid)
+        except (KeyError, OSError):
+            pass
 
 
 def _container_running(name: str) -> bool:
