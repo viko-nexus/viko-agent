@@ -133,10 +133,22 @@ header {
 .nav-sub { color: var(--red); font-size: 16px; letter-spacing: 3px; margin-left: 2px; }
 .nav-links { display: flex; align-items: center; gap: 32px; }
 .nav-link {
-  font-size: 12px; color: var(--dim); letter-spacing: 2px;
+  font-size: 12px; color: var(--body); letter-spacing: 2px;
   text-decoration: none; text-transform: uppercase; transition: color 0.2s;
 }
 .nav-link:hover { color: var(--pri); }
+.nav-link.active {
+  color: var(--pri);
+  position: relative;
+}
+.nav-link.active::after {
+  content: '';
+  position: absolute;
+  bottom: -4px; left: 0; right: 0;
+  height: 2px;
+  background: var(--pri);
+  border-radius: 1px;
+}
 .nav-cta {
   padding: 8px 20px; background: var(--pri); color: #fff;
   font-family: 'Courier New', monospace; font-size: 11px;
@@ -157,6 +169,36 @@ header {
 .lang-btn:hover  { color: var(--pri); background: rgba(91,53,213,0.07); }
 .lang-btn.active { color: var(--pri); }
 .lang-sep { font-size: 11px; color: var(--dim); user-select: none; }
+
+/* ── Scroll-to-top button ── */
+.scroll-top-btn {
+  position: fixed;
+  bottom: 32px;
+  right: 32px;
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  background: var(--pri);
+  color: #fff;
+  border: none;
+  font-size: 18px;
+  font-family: 'Courier New', Courier, monospace;
+  cursor: pointer;
+  opacity: 0;
+  transform: translateY(12px);
+  transition: opacity 0.25s, transform 0.25s;
+  pointer-events: none;
+  z-index: 999;
+  box-shadow: 0 4px 16px rgba(91,53,213,0.25);
+}
+.scroll-top-btn.visible {
+  opacity: 1;
+  transform: translateY(0);
+  pointer-events: auto;
+}
+.scroll-top-btn:hover {
+  background: #7B52E8;
+}
 
 /* ════ HERO ════ */
 .hero {
@@ -234,6 +276,14 @@ header {
 }
 .hero-tagline { font-size: 21px; color: var(--txt); line-height: 1.5; font-weight: 600; }
 .hero-desc { font-size: 17px; color: var(--body); line-height: 1.9; max-width: 440px; }
+.hero-desc a {
+  color: var(--pri);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  font-weight: 500;
+  transition: color 0.2s;
+}
+.hero-desc a:hover { color: #7B52E8; }
 .hero-cta { display: flex; gap: 12px; margin-top: 8px; }
 
 /* ════ STORY ════ */
@@ -292,6 +342,324 @@ header {
 .feature-card.red   .feature-icon { color: var(--red); }
 .feature-name { font-size: 13px; font-weight: bold; color: var(--txt); letter-spacing: 1.5px; line-height: 1.3; }
 .feature-desc { font-size: 14px; color: var(--body); line-height: 1.8; flex: 1; font-family: 'Inter', system-ui, -apple-system, sans-serif; }
+
+/* ════ ARCH FLOW DIAGRAM ════ */
+.arch-flow {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 8px 16px 40px;
+  gap: 0;
+}
+
+/* ── Base node ── */
+.af-node {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 5px;
+  text-align: center;
+  padding: 18px 28px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  box-shadow: 0 2px 8px rgba(91,53,213,0.06);
+  min-width: 220px;
+  max-width: 380px;
+  width: 100%;
+  position: relative;
+  transition: box-shadow 0.3s;
+}
+.af-node:hover {
+  box-shadow: 0 4px 20px rgba(91,53,213,0.11);
+}
+.af-icon {
+  font-size: 18px;
+  color: var(--pri);
+  line-height: 1;
+}
+.af-name {
+  font-family: 'Courier New', Courier, monospace;
+  font-size: 11px;
+  font-weight: bold;
+  letter-spacing: 2px;
+  color: var(--txt);
+}
+.af-meta {
+  font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  font-size: 12px;
+  color: var(--dim);
+  max-width: 280px;
+  line-height: 1.5;
+}
+
+/* Hub: Admin Bridge — enlarged, branded */
+.af-hub {
+  min-width: 300px;
+  max-width: 460px;
+  border-color: rgba(91,53,213,0.35);
+  background: linear-gradient(135deg, rgba(91,53,213,0.04) 0%, rgba(24,120,180,0.03) 100%);
+  box-shadow: 0 0 0 3px rgba(91,53,213,0.07), 0 4px 20px rgba(91,53,213,0.10);
+}
+.af-hub .af-icon { color: var(--pri); font-size: 20px; }
+
+/* WA node */
+.af-wa { border-color: rgba(24,120,180,0.3); }
+.af-wa .af-icon { color: var(--blu); }
+
+/* Project node */
+.af-project { border-color: rgba(24,120,180,0.3); }
+.af-project .af-icon { color: var(--blu); }
+
+/* Admin AI node */
+.af-admin-node { border-color: rgba(201,110,16,0.3); }
+.af-admin-node .af-icon { color: var(--amb); }
+
+/* 9Router node */
+.af-router {
+  min-width: 300px;
+  max-width: 460px;
+  border-color: rgba(91,53,213,0.3);
+}
+.af-router .af-icon { color: var(--pri); }
+
+/* ── Capability tags on project node ── */
+.af-caps {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  justify-content: center;
+  margin-top: 6px;
+}
+.af-caps span {
+  font-family: 'Courier New', Courier, monospace;
+  font-size: 10px;
+  letter-spacing: 0.5px;
+  padding: 2px 8px;
+  border: 1px solid var(--border);
+  border-radius: 99px;
+  color: var(--dim);
+  background: rgba(24,120,180,0.04);
+}
+
+/* ── 9Router combo rows ── */
+.af-routes {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  width: 100%;
+  margin-top: 8px;
+}
+.af-route {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 12px;
+  border-radius: 5px;
+  font-size: 12px;
+}
+.af-route-chat { background: rgba(91,53,213,0.06); }
+.af-route-code { background: rgba(201,110,16,0.06); }
+.af-rkey {
+  font-family: 'Courier New', Courier, monospace;
+  font-weight: bold;
+  font-size: 11px;
+  letter-spacing: 0.5px;
+  color: var(--txt);
+  min-width: 76px;
+}
+.af-rarr { color: var(--dim); flex-shrink: 0; }
+.af-route-chat .af-rval { color: var(--pri); }
+.af-route-code .af-rval { color: var(--amb); }
+.af-rval {
+  font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  font-size: 11px;
+}
+
+/* ── Vertical connector line ── */
+.af-vline {
+  width: 2px;
+  height: 44px;
+  background: linear-gradient(to bottom, rgba(91,53,213,0.3), rgba(24,120,180,0.25));
+  position: relative;
+  flex-shrink: 0;
+}
+
+/* ── Animated dots (vertical) ── */
+.af-dot {
+  position: absolute;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--pri);
+  left: -3px;
+  top: 0;
+  box-shadow: 0 0 6px rgba(91,53,213,0.55);
+  animation: afDotV 2.7s ease-in-out infinite;
+}
+.af-dot-amb {
+  background: var(--amb);
+  box-shadow: 0 0 6px rgba(201,110,16,0.55);
+}
+
+@keyframes afDotV {
+  0%   { top: 0;    opacity: 0;   transform: scale(0.5); }
+  12%  { opacity: 1; transform: scale(1); }
+  88%  { opacity: 1; transform: scale(1); }
+  100% { top: 100%; opacity: 0;   transform: scale(0.5); }
+}
+
+/* Horizontal dot sliding left (toward project arm) */
+.af-dot-slide-left {
+  left: 50%;
+  top: -3px;
+  animation: afDotLeft 2.7s ease-in-out infinite;
+}
+@keyframes afDotLeft {
+  0%   { left: 50%; opacity: 0;   transform: scale(0.5); }
+  10%  { opacity: 1; transform: scale(1); }
+  90%  { opacity: 1; transform: scale(1); }
+  100% { left: 0%;  opacity: 0;   transform: scale(0.5); }
+}
+
+/* Horizontal dot sliding right (toward admin arm) */
+.af-dot-slide-right {
+  left: 50%;
+  top: -3px;
+  animation: afDotRight 2.7s ease-in-out infinite;
+}
+@keyframes afDotRight {
+  0%   { left: 50%; opacity: 0;   transform: scale(0.5); }
+  10%  { opacity: 1; transform: scale(1); }
+  90%  { opacity: 1; transform: scale(1); }
+  100% { left: 100%; opacity: 0;  transform: scale(0.5); }
+}
+
+/* Horizontal dot sliding center (merge → 9router) */
+.af-dot-slide-center {
+  left: 0%;
+  top: -3px;
+  animation: afDotCenter 2.7s ease-in-out infinite;
+}
+@keyframes afDotCenter {
+  0%   { left: 0%;   opacity: 0;   transform: scale(0.5); }
+  5%   { opacity: 1; transform: scale(1); }
+  45%  { left: 50%;  opacity: 1; }
+  55%  { left: 50%;  opacity: 1; }
+  95%  { opacity: 1; transform: scale(1); }
+  100% { left: 100%; opacity: 0;   transform: scale(0.5); }
+}
+
+/* ── Fork connector (Bridge → Project | Admin) ── */
+.af-fork {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: 100%;
+  max-width: 480px;
+}
+.af-fork-stem {
+  width: 2px;
+  height: 20px;
+  background: linear-gradient(to bottom, rgba(91,53,213,0.3), rgba(91,53,213,0.25));
+}
+.af-fork-bar {
+  width: 100%;
+  height: 2px;
+  background: linear-gradient(90deg, var(--pri), var(--blu));
+  position: relative;
+  overflow: visible;
+}
+.af-fork-legs {
+  width: 100%;
+  display: flex;
+  justify-content: space-between;
+}
+
+/* ── Merge connector (Project | Admin → 9Router) ── */
+.af-merge {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: 100%;
+  max-width: 480px;
+}
+.af-merge-legs {
+  width: 100%;
+  display: flex;
+  justify-content: space-between;
+}
+.af-merge-bar {
+  width: 100%;
+  height: 2px;
+  background: linear-gradient(90deg, var(--pri), var(--blu));
+  position: relative;
+  overflow: visible;
+}
+.af-merge-stem {
+  width: 2px;
+  height: 20px;
+  background: linear-gradient(to bottom, rgba(91,53,213,0.25), rgba(91,53,213,0.3));
+}
+
+/* Shared leg (vertical drop/rise on fork and merge) */
+.af-leg {
+  width: 2px;
+  height: 24px;
+}
+.af-leg-left  { background: var(--pri); }
+.af-leg-right { background: var(--blu); }
+
+/* ── Peer row (Project + Admin side by side) ── */
+.af-peers {
+  display: flex;
+  gap: 24px;
+  width: 100%;
+  max-width: 480px;
+  justify-content: center;
+}
+.af-peer {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  flex: 1;
+  min-width: 0;
+}
+.af-peer-label {
+  font-family: 'Courier New', Courier, monospace;
+  font-size: 10px;
+  color: var(--dim);
+  letter-spacing: 0.5px;
+  padding: 2px 8px;
+  background: rgba(91,53,213,0.04);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  white-space: nowrap;
+  text-align: center;
+}
+.af-peer .af-node {
+  width: 100%;
+  min-width: 0;
+  max-width: none;
+}
+
+/* ── Responsive ── */
+@media (max-width: 700px) {
+  .af-peers     { flex-direction: column; align-items: center; gap: 12px; }
+  .af-fork-bar,
+  .af-merge-bar { width: 80%; align-self: center; }
+  .af-fork-legs,
+  .af-merge-legs { width: 80%; }
+  .af-hub, .af-router { min-width: 260px; }
+  .af-peer      { width: 100%; max-width: 320px; }
+  .af-peer-label { white-space: normal; }
+}
+@media (max-width: 500px) {
+  .af-routes { gap: 3px; }
+  .af-route  { flex-wrap: wrap; gap: 4px; }
+  .af-rval   { font-size: 10px; }
+}
 
 /* ════ ARCHITECTURE ════ */
 .architecture { padding: 96px 64px; border-bottom: 1px solid var(--border); }

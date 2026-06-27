@@ -41,9 +41,9 @@
         <div class="hero-eyebrow" data-i18n="hero.eyebrow">▶ Self-Hosted AI Agent Infrastructure</div>
         <div class="hero-title">VIKO<br><span>AGENT</span></div>
         <div class="hero-tagline" data-i18n="hero.tagline">One number. Many projects. Full isolation.</div>
-        <div class="hero-desc" data-i18n="hero.desc">
+        <div class="hero-desc" data-i18n-html="hero.desc">
           Deploy an AI developer agent for every project — each one fully isolated,
-          communicating via WhatsApp, powered by Claude and Groq.
+          communicating via WhatsApp, powered by <a href="https://github.com/NousResearch/hermes-agent" target="_blank" rel="noopener">Hermes-Agent</a> and <a href="https://github.com/viko-nexus/viko-agent#9router" target="_blank" rel="noopener">9Router</a>.
           Self-hosted. Open architecture.
         </div>
         <div class="hero-cta">
@@ -146,26 +146,100 @@
       <div class="section-sub" data-i18n="arch.sub">The admin routes, the agents deliver. Each project stays in its own lane.</div>
     </div>
     <div class="arch-diagram reveal">
-      <pre class="arch-code">WhatsApp message
-       │
-       ▼
- ┌─────────────────────────────────────────┐
- │  viko-hermes (Admin container)          │
- │                                         │
- │  bridge: routing.json check             │
- │    known JID   → relay to project ─────►│─── viko-{slug}
- │    unknown JID → Admin LLM              │
- └─────────────────────────────────────────┘
-                   │
-                   │ OpenAI-compat API
-                   ▼
-          ┌─────────────────┐
-          │  viko-9router   │
-          │                 │
-          │  viko-chat      │ → Claude Haiku
-          │  viko-code      │ → Claude Sonnet
-          │  (fallback)     │ → Groq Llama
-          └─────────────────┘</pre>
+      <div class="arch-flow">
+
+        <!-- Layer 1: WhatsApp input -->
+        <div class="af-node af-wa">
+          <span class="af-icon">◉</span>
+          <span class="af-name">WHATSAPP</span>
+          <span class="af-meta">standalone Baileys bridge · one number</span>
+        </div>
+
+        <!-- Vertical connector: WA → Bridge -->
+        <div class="af-vline">
+          <span class="af-dot" style="animation-delay:0s"></span>
+          <span class="af-dot" style="animation-delay:.9s"></span>
+          <span class="af-dot" style="animation-delay:1.8s"></span>
+        </div>
+
+        <!-- Layer 2: Admin Bridge hub -->
+        <div class="af-node af-hub">
+          <span class="af-icon">⚡</span>
+          <span class="af-name">ADMIN BRIDGE</span>
+          <span class="af-meta">routing.json lookup · relay token auth · [CTX] stamping</span>
+        </div>
+
+        <!-- Fork connector: Bridge → two branches -->
+        <div class="af-fork">
+          <div class="af-fork-stem"></div>
+          <div class="af-fork-bar">
+            <span class="af-dot af-dot-slide-left"  style="animation-delay:0s"></span>
+            <span class="af-dot af-dot-slide-right af-dot-amb" style="animation-delay:1.35s"></span>
+          </div>
+          <div class="af-fork-legs">
+            <div class="af-leg af-leg-left"></div>
+            <div class="af-leg af-leg-right"></div>
+          </div>
+        </div>
+
+        <!-- Layer 3: Project Agent | Admin AI -->
+        <div class="af-peers">
+          <div class="af-peer">
+            <div class="af-peer-label">known group JID</div>
+            <div class="af-node af-project">
+              <span class="af-icon">◈</span>
+              <span class="af-name">PROJECT AGENT</span>
+              <span class="af-meta">viko-{slug} · fully isolated</span>
+              <div class="af-caps">
+                <span>git + deploy key</span>
+                <span>SSH exec · MCP</span>
+                <span>own memory DB</span>
+                <span>token-scoped relay</span>
+              </div>
+            </div>
+          </div>
+          <div class="af-peer">
+            <div class="af-peer-label">owner · DM · unregistered</div>
+            <div class="af-node af-admin-node">
+              <span class="af-icon">◎</span>
+              <span class="af-name">ADMIN AI</span>
+              <span class="af-meta">onboarding · management · DMs</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Merge connector: two branches → 9Router -->
+        <div class="af-merge">
+          <div class="af-merge-legs">
+            <div class="af-leg af-leg-left"></div>
+            <div class="af-leg af-leg-right"></div>
+          </div>
+          <div class="af-merge-bar">
+            <span class="af-dot af-dot-slide-center" style="animation-delay:.4s"></span>
+          </div>
+          <div class="af-merge-stem"></div>
+        </div>
+
+        <!-- Layer 4: 9Router -->
+        <div class="af-node af-router">
+          <span class="af-icon">◆</span>
+          <span class="af-name">9ROUTER GATEWAY</span>
+          <div class="af-routes">
+            <div class="af-route af-route-chat">
+              <span class="af-rkey">viko-chat</span>
+              <span class="af-rarr">→</span>
+              <span class="af-rval">Claude Sonnet 4.6 · Opus 4.8 fallback</span>
+            </div>
+            <div class="af-route af-route-code">
+              <span class="af-rkey">viko-code</span>
+              <span class="af-rarr">→</span>
+              <span class="af-rval">Claude Opus 4.8 · Sonnet 4.6 fallback</span>
+            </div>
+          </div>
+          <span class="af-meta">keyword auto-routing · /model override supported</span>
+        </div>
+
+      </div>
     </div>
     <div class="arch-cards reveal">
       <div class="arch-card">
@@ -263,6 +337,7 @@
     <div class="footer-copy">Non-commercial · © 2026 Viko Nexus</div>
   </footer>
 
+  <button class="scroll-top-btn" id="scrollTopBtn" aria-label="Scroll to top">↑</button>
   <script src="assets/landing/i18n.js"></script>
   <script src="assets/landing/main.js"></script>
 </body>
