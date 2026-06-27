@@ -19,6 +19,10 @@
 
 ---
 
+> **Revision note:** Project container limit was revised from 900m → 1500m during implementation
+> (siprodev was observed at 1.576 GB in production). --memory-swap was also dropped as too aggressive.
+> All committed code uses 1500m. The task steps below reflect the original draft values.
+
 ### Task 1: Add MALLOC_ARENA_MAX + memory limit to admin container (docker-compose.yml)
 
 **Files:**
