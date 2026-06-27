@@ -42,6 +42,8 @@ All services run in Docker. Runtime data lives in `./data/` (gitignored).
 
 ## Quick Start
 
+> **VPS RAM:** 8 GB recommended. Each active project agent container uses ~500–700 MB. See [DEPLOYMENT.md](docs/overview/DEPLOYMENT.md) for full resource breakdown.
+
 ```bash
 git clone git@github.com:viko-nexus/viko-agent.git
 cd viko-agent
