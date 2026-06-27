@@ -2,24 +2,25 @@
 *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
 
 :root {
-  --black:  #0A1628;   /* dark navy — distinctly blue, not black */
-  --card:   #0D1E38;   /* elevated card surface */
-  --txt:    #F0F4FF;
-  --body:   #C8D4F0;
-  --dim:    #7080AA;
-  --pri:    #7C4DFF;   /* electric violet — matches logo gradient midpoint */
-  --amb:    #FF9B48;   /* amber accent */
-  --red:    #FF3366;   /* crimson — matches logo gradient bottom */
-  --blu:    #4FC3F7;   /* ice blue — matches logo gradient top */
-  --border: #1B2E4A;
+  --bg:      #F7F9FF;   /* page background — soft blue-tinted white */
+  --surface: #FFFFFF;   /* pure white for elevated surfaces */
+  --card:    #FFFFFF;   /* card background */
+  --txt:     #0D1729;   /* near-black headings */
+  --body:    #3B4C72;   /* mid-navy body text */
+  --dim:     #7A8AAD;   /* muted/secondary text */
+  --pri:     #5B35D5;   /* electric violet — contrast-safe on white */
+  --amb:     #C96E10;   /* amber — darkened for white bg */
+  --red:     #C41E50;   /* crimson — darkened for white bg */
+  --blu:     #1878B4;   /* blue — darkened for white bg */
+  --border:  #E0E8F5;   /* light blue-tinted border */
 }
 
 html { scroll-behavior: smooth; }
 
 /* ── Body: dot-grid vector background + ambient glows ── */
 body {
-  background-color: var(--black);
-  background-image: radial-gradient(circle, rgba(124,77,255,0.13) 1px, transparent 1px);
+  background-color: var(--bg);
+  background-image: radial-gradient(circle, rgba(91,53,213,0.06) 1px, transparent 1px);
   background-size: 40px 40px;
   color: var(--txt);
   font-family: 'Courier New', Courier, monospace;
@@ -35,8 +36,8 @@ body::before {
   position: fixed;
   inset: 0;
   background:
-    radial-gradient(ellipse 70% 55% at 0% 0%,   rgba(124,77,255,0.09) 0%, transparent 65%),
-    radial-gradient(ellipse 55% 45% at 100% 100%, rgba(79,195,247,0.06) 0%, transparent 65%);
+    radial-gradient(ellipse 70% 55% at 0% 0%,   rgba(91,53,213,0.05) 0%, transparent 65%),
+    radial-gradient(ellipse 55% 45% at 100% 100%, rgba(24,120,180,0.04) 0%, transparent 65%);
   pointer-events: none;
   z-index: 0;
 }
@@ -95,7 +96,7 @@ body > * { position: relative; z-index: 1; }
 /* ════ HEADER ════ */
 header {
   position: sticky; top: 0; z-index: 100;
-  background: rgba(10,22,40,0.88);
+  background: rgba(247,249,255,0.92);
   backdrop-filter: blur(16px);
   border-bottom: 1px solid var(--border);
   padding: 0 48px; height: 64px;
@@ -128,17 +129,17 @@ header {
 
 .hero-fade-top {
   position: absolute; top: 0; left: 0; right: 0; height: 80px;
-  background: linear-gradient(to bottom, #0A1628, transparent); z-index: 2;
+  background: linear-gradient(to bottom, var(--bg), transparent); z-index: 2;
 }
 .hero-fade-bottom {
   position: absolute; bottom: 0; left: 0; right: 0; height: 140px;
-  background: linear-gradient(to bottom, transparent, #0A1628); z-index: 2;
+  background: linear-gradient(to bottom, transparent, var(--bg)); z-index: 2;
 }
 
 /* Animated dot grid canvas — layered on top of body dot grid */
 .hero-grid {
   position: absolute; inset: 0; z-index: 0;
-  opacity: 0.2;
+  opacity: 0.12;
 }
 
 .hero-content {
@@ -182,8 +183,9 @@ header {
 
 .story-stats { display: flex; flex-direction: column; gap: 24px; }
 .stat-block {
-  padding: 28px 32px; background: var(--card);
+  padding: 28px 32px; background: var(--surface);
   border: 1px solid var(--border); border-left: 3px solid var(--pri);
+  border-radius: 4px;
 }
 .stat-block.amber { border-left-color: var(--amb); }
 .stat-block.red   { border-left-color: var(--red); }
@@ -200,15 +202,20 @@ header {
 .features-intro { margin-bottom: 48px; }
 .features-grid {
   display: grid; grid-template-columns: repeat(4, 1fr);
-  gap: 1px; background: var(--border);
-  border: 1px solid var(--border);
+  gap: 16px;
 }
 .feature-card {
   background: var(--card); padding: 28px 24px;
   display: flex; flex-direction: column; gap: 10px;
-  transition: background 0.2s;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.04), 0 4px 16px rgba(91,53,213,0.05);
+  transition: box-shadow 0.2s, transform 0.2s;
 }
-.feature-card:hover { background: #162444; }
+.feature-card:hover {
+  box-shadow: 0 4px 24px rgba(91,53,213,0.12);
+  transform: translateY(-2px);
+}
 .feature-icon { font-size: 20px; color: var(--pri); line-height: 1; }
 .feature-card.amber .feature-icon { color: var(--amb); }
 .feature-card.red   .feature-icon { color: var(--red); }
@@ -231,8 +238,9 @@ header {
   gap: 16px;
 }
 .arch-card {
-  padding: 24px 20px; background: var(--card);
+  padding: 24px 20px; background: var(--surface);
   border: 1px solid var(--border);
+  border-radius: 8px;
   display: flex; flex-direction: column; gap: 10px;
 }
 .arch-card-icon {

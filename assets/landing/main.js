@@ -56,7 +56,7 @@ document.querySelectorAll('.reveal').forEach(el => revealObserver.observe(el));
         ];
         ctx.beginPath();
         ctx.arc(x, y, DOT_R, 0, Math.PI * 2);
-        ctx.fillStyle = `rgba(${R},${G},${B},0.6)`;
+        ctx.fillStyle = `rgba(${R},${G},${B},0.25)`;
         ctx.fill();
       }
     }
