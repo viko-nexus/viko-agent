@@ -144,6 +144,20 @@ header {
   border-radius: 2px; text-decoration: none;
 }
 
+.lang-switcher {
+  display: flex; align-items: center; gap: 4px;
+}
+.lang-btn {
+  background: none; border: none; cursor: pointer;
+  font-family: 'Courier New', monospace;
+  font-size: 11px; font-weight: bold; letter-spacing: 1.5px;
+  color: var(--dim); padding: 4px 6px; border-radius: 3px;
+  transition: color 0.2s, background 0.15s;
+}
+.lang-btn:hover  { color: var(--pri); background: rgba(91,53,213,0.07); }
+.lang-btn.active { color: var(--pri); }
+.lang-sep { font-size: 11px; color: var(--dim); user-select: none; }
+
 /* ════ HERO ════ */
 .hero {
   position: relative; min-height: 580px;
@@ -429,6 +443,7 @@ footer { padding: 40px 64px; display: flex; justify-content: space-between; alig
 @media (max-width: 600px) {
   header { padding: 0 20px; }
   .nav-links .nav-link { display: none; }
+  .lang-switcher { display: none; }
   .nav-cta { font-size: 10px; padding: 7px 14px; }
 
   .hero { padding: 80px 0 48px; min-height: 460px; }
