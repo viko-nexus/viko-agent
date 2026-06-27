@@ -133,7 +133,7 @@ header {
 .nav-sub { color: var(--red); font-size: 16px; letter-spacing: 3px; margin-left: 2px; }
 .nav-links { display: flex; align-items: center; gap: 32px; }
 .nav-link {
-  font-size: 12px; color: var(--dim); letter-spacing: 2px;
+  font-size: 12px; color: var(--body); letter-spacing: 2px;
   text-decoration: none; text-transform: uppercase; transition: color 0.2s;
 }
 .nav-link:hover { color: var(--pri); }
@@ -234,6 +234,14 @@ header {
 }
 .hero-tagline { font-size: 21px; color: var(--txt); line-height: 1.5; font-weight: 600; }
 .hero-desc { font-size: 17px; color: var(--body); line-height: 1.9; max-width: 440px; }
+.hero-desc a {
+  color: var(--pri);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  font-weight: 500;
+  transition: color 0.2s;
+}
+.hero-desc a:hover { color: #7B52E8; }
 .hero-cta { display: flex; gap: 12px; margin-top: 8px; }
 
 /* ════ STORY ════ */

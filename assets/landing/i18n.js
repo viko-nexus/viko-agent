@@ -10,7 +10,7 @@ const TRANSLATIONS = {
 
     'hero.eyebrow': '▶ Self-Hosted AI Agent Infrastructure',
     'hero.tagline': 'One number. Many projects. Full isolation.',
-    'hero.desc':    'Deploy an AI developer agent for every project — each one fully isolated, communicating via WhatsApp, powered by Claude and Groq. Self-hosted. Open architecture.',
+    'hero.desc':    'Deploy an AI developer agent for every project — each one fully isolated, communicating via WhatsApp, powered by <a href="https://hermes-agent.nousresearch.com/" target="_blank" rel="noopener">Hermes-Agent</a> and <a href="https://9router.com/" target="_blank" rel="noopener">9Router</a>. Self-hosted. Open architecture.',
     'hero.cta1':    'VIEW ON GITHUB →',
     'hero.cta2':    'EXPLORE FEATURES ↓',
 
@@ -88,7 +88,7 @@ const TRANSLATIONS = {
 
     'hero.eyebrow': '▶ Infrastruktur AI Agent yang Dihosting Sendiri',
     'hero.tagline': 'Satu nomor. Banyak proyek. Isolasi penuh.',
-    'hero.desc':    'Deploy AI developer agent untuk setiap proyek — masing-masing terisolasi penuh, berkomunikasi via WhatsApp, didukung Claude dan Groq. Self-hosted. Arsitektur terbuka.',
+    'hero.desc':    'Deploy AI developer agent untuk setiap proyek — masing-masing terisolasi penuh, berkomunikasi via WhatsApp, didukung <a href="https://hermes-agent.nousresearch.com/" target="_blank" rel="noopener">Hermes-Agent</a> dan <a href="https://9router.com/" target="_blank" rel="noopener">9Router</a>. Self-hosted. Arsitektur terbuka.',
     'hero.cta1':    'LIHAT DI GITHUB →',
     'hero.cta2':    'JELAJAHI FITUR ↓',
 
