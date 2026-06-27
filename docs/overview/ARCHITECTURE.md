@@ -139,7 +139,7 @@ Each container has explicit Docker memory limits to prevent a single runaway age
 |-----------|-------------|
 | `viko-hermes` (admin) | 1536 MB |
 | `viko-9router` | 512 MB |
-| `viko-hermes-{slug}` (project) | 900 MB |
+| `viko-hermes-{slug}` (project) | 1500 MB |
 
 Python's glibc malloc arena count is capped via `MALLOC_ARENA_MAX=2` in all Hermes containers, reducing baseline RAM usage by 20–40% vs the default (8 arenas per CPU core).
 
