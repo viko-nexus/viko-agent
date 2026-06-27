@@ -182,7 +182,7 @@ function applyLang(lang) {
     btn.setAttribute('aria-pressed', String(active));
   });
 
-  try { localStorage.setItem('lang', lang); } catch (_) {}
+  try { localStorage.setItem('lang', lang); } catch { /* storage unavailable */ }
 }
 
 document.querySelectorAll('.lang-btn').forEach(btn => {
@@ -190,7 +190,7 @@ document.querySelectorAll('.lang-btn').forEach(btn => {
 });
 
 const savedLang = (() => {
-  try { return localStorage.getItem('lang') || 'en'; } catch (_) { return 'en'; }
+  try { return localStorage.getItem('lang') || 'en'; } catch { return 'en'; }
 })();
 
 if (document.readyState === 'loading') {
