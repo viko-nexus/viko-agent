@@ -154,6 +154,18 @@ system self-hostable.
 
 ---
 
+## Contributing
+
+Contributions are welcome — viko-agent is built in the open.
+
+- **Code:** Pick an [open issue](https://github.com/viko-nexus/viko-agent/issues), fork the repo, and send a PR
+- **Docs:** Help improve setup guides, architecture docs, or translate content  
+- **Bugs:** [Open an issue](https://github.com/viko-nexus/viko-agent/issues/new) with reproduction steps
+
+See [CONTRIBUTING.md](docs/overview/CONTRIBUTING.md) for full guidelines.
+
+---
+
 ## Docs
 
 - [docs/overview/ARCHITECTURE.md](docs/overview/ARCHITECTURE.md) — system design, component breakdown

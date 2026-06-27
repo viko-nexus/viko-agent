@@ -315,6 +315,68 @@ header {
   border-radius: 2px;
 }
 
+/* ════ CONTRIBUTE ════ */
+.contribute {
+  padding: 96px 64px;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface);
+}
+.contribute-inner {
+  max-width: 860px;
+  margin: 0 auto;
+  display: flex; flex-direction: column; align-items: center;
+  text-align: center; gap: 0;
+}
+.contribute-inner .sep { margin: 0 auto 20px; }
+.contribute-sub {
+  font-size: 17px; color: var(--body); max-width: 540px;
+  line-height: 1.9; margin-bottom: 40px;
+  font-family: 'Inter', system-ui, sans-serif;
+}
+.contribute-cards {
+  display: grid; grid-template-columns: repeat(3, 1fr);
+  gap: 20px; width: 100%; margin-bottom: 32px;
+}
+.contribute-card {
+  background: var(--card); border: 1px solid var(--border);
+  border-radius: 10px; padding: 28px 24px;
+  display: flex; flex-direction: column; gap: 10px;
+  text-align: left;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+  transition: box-shadow 0.2s, transform 0.2s;
+}
+.contribute-card:hover {
+  box-shadow: 0 4px 20px rgba(91,53,213,0.10);
+  transform: translateY(-2px);
+}
+.contribute-card-icon {
+  font-size: 22px; color: var(--pri); line-height: 1;
+}
+.contribute-card-title {
+  font-size: 13px; font-weight: bold; color: var(--txt);
+  letter-spacing: 1.5px; font-family: 'Courier New', monospace;
+}
+.contribute-card-desc {
+  font-size: 14px; color: var(--body); line-height: 1.8; flex: 1;
+  font-family: 'Inter', system-ui, sans-serif;
+}
+.contribute-link {
+  font-size: 12px; color: var(--pri); letter-spacing: 1px;
+  text-decoration: none; font-family: 'Courier New', monospace;
+  font-weight: bold;
+  transition: color 0.2s;
+}
+.contribute-link:hover { color: #7B52E8; }
+
+@media (max-width: 900px) {
+  .contribute { padding: 64px 40px; }
+  .contribute-cards { grid-template-columns: 1fr 1fr; }
+}
+@media (max-width: 600px) {
+  .contribute { padding: 56px 24px; }
+  .contribute-cards { grid-template-columns: 1fr; }
+}
+
 /* ════ GITHUB CTA ════ */
 .github-cta {
   padding: 96px 64px; border-bottom: 1px solid var(--border);
