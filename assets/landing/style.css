@@ -142,10 +142,41 @@ header {
   opacity: 0.12;
 }
 
+.hero-inner {
+  position: relative; z-index: 5;
+  width: 100%;
+  padding: 0 64px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 48px;
+}
+
 .hero-content {
   position: relative; z-index: 5;
-  padding: 0 64px; max-width: 640px;
+  max-width: 560px;
   display: flex; flex-direction: column; gap: 16px;
+  padding: 0;
+}
+
+.hero-visual {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.hero-logo-img {
+  width: 320px;
+  height: auto;
+  opacity: 0.9;
+  filter: drop-shadow(0 8px 32px rgba(91,53,213,0.18));
+  animation: heroLogoFloat 6s ease-in-out infinite;
+}
+
+@keyframes heroLogoFloat {
+  0%, 100% { transform: translateY(0); }
+  50%       { transform: translateY(-10px); }
 }
 
 .hero-eyebrow { font-size: 11px; color: var(--blu); letter-spacing: 5px; text-transform: uppercase; }
@@ -292,7 +323,8 @@ footer { padding: 40px 64px; display: flex; justify-content: space-between; alig
   .features-grid { grid-template-columns: repeat(2, 1fr); }
   .arch-cards { grid-template-columns: repeat(2, 1fr); }
   .story { grid-template-columns: 1fr; gap: 48px; padding: 64px 40px; }
-  .hero-content { padding: 0 40px; }
+  .hero-inner { padding: 0 40px; gap: 32px; }
+  .hero-logo-img { width: 220px; }
   .hero-title { font-size: 56px; }
   .hero-title span { font-size: 40px; }
   .features, .architecture, .github-cta { padding: 64px 40px; }
@@ -305,7 +337,8 @@ footer { padding: 40px 64px; display: flex; justify-content: space-between; alig
   .nav-cta { font-size: 10px; padding: 7px 14px; }
 
   .hero { padding: 80px 0 48px; min-height: 460px; }
-  .hero-content { padding: 0 24px; }
+  .hero-inner { padding: 0 24px; flex-direction: column-reverse; gap: 24px; }
+  .hero-logo-img { width: 160px; }
   .hero-title { font-size: 48px; letter-spacing: 4px; }
   .hero-title span { font-size: 32px; }
   .hero-tagline { font-size: 18px; }
