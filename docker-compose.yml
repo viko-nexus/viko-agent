@@ -24,8 +24,7 @@ services:
       JWT_SECRET: ${NINEROUTER_JWT_SECRET}
       INITIAL_PASSWORD: ${NINEROUTER_INITIAL_PASSWORD}
       API_KEY_SECRET: ${NINEROUTER_API_KEY_SECRET}
-      # Python glibc malloc arena tuning — reduces memory fragmentation by
-      # capping arena count. 20–40% RAM reduction with zero functional impact.
+      # No-op on Node.js; set for env-var parity with the hermes service.
       MALLOC_ARENA_MAX: "2"
     restart: unless-stopped
     mem_limit: 512m
