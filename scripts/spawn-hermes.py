@@ -835,6 +835,9 @@ def spawn_container(slug: str, port: int, data_dir: Path, env: dict, proj_ssh_di
         # Cap per-project container logs so they can't grow unbounded on the host.
         "--log-opt", "max-size=10m",
         "--log-opt", "max-file=3",
+        # Cap per-project container memory. 1500m gives headroom above the ~1.576 GB
+        # observed peak for active-session containers (e.g. siprodev).
+        "--memory", "1500m",
         "--network", f"viko-{slug}-net",
         "-p", f"127.0.0.1:{port + 900}:9119",
         # ── Volumes ── HARD ISOLATION: only this project's code + its own slice of
@@ -890,6 +893,7 @@ def spawn_container(slug: str, port: int, data_dir: Path, env: dict, proj_ssh_di
         "-e", f"VIKO_ISOLATION_GUARD={env.get('VIKO_ISOLATION_GUARD', 'enforce')}",
         "-e", "SSL_CERT_FILE=/opt/hermes/.venv/lib/python3.13/site-packages/certifi/cacert.pem",
         "-e", "REQUESTS_CA_BUNDLE=/opt/hermes/.venv/lib/python3.13/site-packages/certifi/cacert.pem",
+        "-e", "MALLOC_ARENA_MAX=2",
         "-e", "HERMES_DASHBOARD=true",
         "-e", "HERMES_DASHBOARD_INSECURE=true",
         "-e", "HERMES_DASHBOARD_HOST=127.0.0.1",

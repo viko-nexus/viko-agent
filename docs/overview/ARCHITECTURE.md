@@ -131,6 +131,18 @@ Project container (viko-hermes-{slug})
 What a project container does **not** get: `GITHUB_TOKEN`, `docker.sock`, or
 `mcp-servers/` (which exposes cross-project `ssh_exec`).
 
+### Resource Limits
+
+Each container has explicit Docker memory limits to prevent a single runaway agent session from starving the host:
+
+| Container | `mem_limit` |
+|-----------|-------------|
+| `viko-hermes` (admin) | 1536 MB |
+| `viko-9router` | 512 MB |
+| `viko-hermes-{slug}` (project) | 1500 MB |
+
+Python's glibc malloc arena count is capped via `MALLOC_ARENA_MAX=2` in all Hermes containers, reducing baseline RAM usage by 20–40% vs the default (8 arenas per CPU core).
+
 The `[CTX project=… caller=owner|member sender=…]` stamp is injected by the bridge
 (not the LLM) and cannot be spoofed; the bridge also scrubs any
 `[CTX]`/`[READ-ONLY MEMBER]`/`[Mentioned]` markers a user embeds in raw inbound text

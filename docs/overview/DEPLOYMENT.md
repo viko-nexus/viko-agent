@@ -7,6 +7,22 @@
 - SSH access for the `deploy` user
 - Outbound internet access (for WhatsApp, GitHub, Anthropic/Groq APIs)
 
+### VPS Requirements
+
+| Resource | Minimum | Recommended |
+|----------|---------|-------------|
+| RAM | 4 GB | 8 GB |
+| CPU | 2 vCPU | 4 vCPU |
+| Disk | 40 GB | 100 GB |
+
+**Memory budget per container (with MALLOC_ARENA_MAX=2 tuning):**
+- `viko-hermes` (admin + bridge): ~770 MB baseline, limit 1.5 GB
+- `viko-9router`: ~150 MB baseline, limit 512 MB
+- `viko-hermes-{slug}` (per project): ~500–700 MB baseline, limit 1500 MB
+- Infra (postgres, redis, minio, traefik): ~280 MB combined
+
+**Practical capacity:** 8 GB RAM comfortably supports ~7–8 simultaneous active project containers.
+
 ---
 
 ## First-Time VPS Setup
