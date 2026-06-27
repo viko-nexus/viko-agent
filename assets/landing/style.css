@@ -137,6 +137,18 @@ header {
   text-decoration: none; text-transform: uppercase; transition: color 0.2s;
 }
 .nav-link:hover { color: var(--pri); }
+.nav-link.active {
+  color: var(--pri);
+  position: relative;
+}
+.nav-link.active::after {
+  content: '';
+  position: absolute;
+  bottom: -4px; left: 0; right: 0;
+  height: 2px;
+  background: var(--pri);
+  border-radius: 1px;
+}
 .nav-cta {
   padding: 8px 20px; background: var(--pri); color: #fff;
   font-family: 'Courier New', monospace; font-size: 11px;
@@ -157,6 +169,36 @@ header {
 .lang-btn:hover  { color: var(--pri); background: rgba(91,53,213,0.07); }
 .lang-btn.active { color: var(--pri); }
 .lang-sep { font-size: 11px; color: var(--dim); user-select: none; }
+
+/* ── Scroll-to-top button ── */
+.scroll-top-btn {
+  position: fixed;
+  bottom: 32px;
+  right: 32px;
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  background: var(--pri);
+  color: #fff;
+  border: none;
+  font-size: 18px;
+  font-family: 'Courier New', Courier, monospace;
+  cursor: pointer;
+  opacity: 0;
+  transform: translateY(12px);
+  transition: opacity 0.25s, transform 0.25s;
+  pointer-events: none;
+  z-index: 999;
+  box-shadow: 0 4px 16px rgba(91,53,213,0.25);
+}
+.scroll-top-btn.visible {
+  opacity: 1;
+  transform: translateY(0);
+  pointer-events: auto;
+}
+.scroll-top-btn:hover {
+  background: #7B52E8;
+}
 
 /* ════ HERO ════ */
 .hero {
