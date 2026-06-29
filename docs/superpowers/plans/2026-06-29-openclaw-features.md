@@ -819,7 +819,7 @@ git commit -m "feat(patches): soft-trim stale tool results before LLM call (in-m
 - Produces: just before hermes compaction fires, a tool call to `write_file` is injected with a prompt to save key facts to `/opt/data/context.md`
 - The write happens via hermes's existing `write_file` tool — no new tool needed
 
-- [ ] **Step 1: Find the compaction trigger in hermes**
+- [x] **Step 1: Find the compaction trigger in hermes**
 
 ```bash
 ssh doasas "docker exec viko-hermes bash -c \"
@@ -839,7 +839,7 @@ ssh doasas "docker exec viko-hermes bash -c \"
 
 Note: the file and function where compaction is triggered.
 
-- [ ] **Step 2: Read the compaction function**
+- [x] **Step 2: Read the compaction function**
 
 ```bash
 ssh doasas "docker exec viko-hermes bash -c \"
@@ -853,7 +853,7 @@ Identify:
 - What happens just before the LLM summarization call
 - Any existing hooks or callbacks that fire pre-compaction
 
-- [ ] **Step 3: Create patches/patch-memory-flush-compact.py**
+- [x] **Step 3: Create patches/patch-memory-flush-compact.py**
 
 ```python
 #!/usr/bin/env python3
@@ -916,14 +916,14 @@ if __name__ == "__main__":
     sys.exit(main())
 ```
 
-- [ ] **Step 4: Add to Dockerfile.hermes**
+- [x] **Step 4: Add to Dockerfile.hermes**
 
 ```dockerfile
 COPY patches/patch-memory-flush-compact.py /tmp/patch-memory-flush-compact.py
 RUN python3 /tmp/patch-memory-flush-compact.py
 ```
 
-- [ ] **Step 5: Build and verify**
+- [x] **Step 5: Build and verify**
 
 ```bash
 ssh doasas "cd /home/deploy/viko-agent && git pull && docker compose build hermes 2>&1 | grep 'patch-memory-flush'"
@@ -931,7 +931,7 @@ ssh doasas "cd /home/deploy/viko-agent && git pull && docker compose build herme
 
 Expected: `✓ patch-memory-flush-compact: applied`
 
-- [ ] **Step 6: Integration test**
+- [x] **Step 6: Integration test**
 
 Trigger compaction by sending many messages to a project Hermes until context fills. Check `context.md`:
 
@@ -941,7 +941,7 @@ ssh doasas "cat /home/deploy/viko-agent/data/hermes-<slug>/context.md | grep 'Me
 
 Expected: lines starting with `## Memory Flush <timestamp>`.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add patches/patch-memory-flush-compact.py Dockerfile.hermes
