@@ -674,7 +674,7 @@ git commit -m "feat(patches): tool call repair — retry once on malformed LLM J
 - Produces: tool result messages older than `TOOL_RESULT_PRUNE_AFTER_MIN` (default: 5) minutes get soft-trimmed before each LLM call
 - Full transcript on disk is never modified
 
-- [ ] **Step 1: Find the LLM call site in hermes**
+- [x] **Step 1: Find the LLM call site in hermes**
 
 ```bash
 ssh doasas "docker exec viko-hermes bash -c \"
@@ -694,7 +694,7 @@ ssh doasas "docker exec viko-hermes bash -c \"
 
 Note the file and function where the `messages` list is built just before calling the LLM.
 
-- [ ] **Step 2: Read the identified function**
+- [x] **Step 2: Read the identified function**
 
 ```bash
 ssh doasas "docker exec viko-hermes bash -c \"
@@ -708,7 +708,7 @@ Identify:
 - The structure of tool result messages (e.g. `{"role": "tool", "content": ..., "timestamp": ...}`)
 - Whether timestamps are available on individual messages
 
-- [ ] **Step 3: Create patches/patch-tool-result-pruning.py**
+- [x] **Step 3: Create patches/patch-tool-result-pruning.py**
 
 ```python
 #!/usr/bin/env python3
@@ -783,14 +783,14 @@ if __name__ == "__main__":
     sys.exit(main())
 ```
 
-- [ ] **Step 4: Add to Dockerfile.hermes**
+- [x] **Step 4: Add to Dockerfile.hermes**
 
 ```dockerfile
 COPY patches/patch-tool-result-pruning.py /tmp/patch-tool-result-pruning.py
 RUN python3 /tmp/patch-tool-result-pruning.py
 ```
 
-- [ ] **Step 5: Build and verify**
+- [x] **Step 5: Build and verify**
 
 ```bash
 ssh doasas "cd /home/deploy/viko-agent && git pull && docker compose build hermes 2>&1 | grep 'patch-tool-result'"
@@ -798,7 +798,7 @@ ssh doasas "cd /home/deploy/viko-agent && git pull && docker compose build herme
 
 Expected: `✓ patch-tool-result-pruning: applied`
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add patches/patch-tool-result-pruning.py Dockerfile.hermes
