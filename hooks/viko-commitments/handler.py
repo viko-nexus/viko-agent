@@ -3,7 +3,6 @@
 Fires on agent:end. Uses simple pattern matching first; skips LLM call for speed.
 Commitment patterns (Indonesian + English): "besok", "nanti", "follow up", etc.
 """
-import asyncio
 import json
 import os
 import re
@@ -31,7 +30,7 @@ _DUE_OFFSET = {
     "after deploy": timedelta(hours=2),
 }
 
-DATA_ROOT = Path(os.environ.get("HERMES_HOME", "/opt/data")).parent.parent / "viko-agent" / "data"
+HERMES_HOME = Path(os.environ.get("HERMES_HOME", "/opt/data"))
 
 
 def _detect_commitment(text: str) -> str | None:
@@ -67,7 +66,8 @@ async def handle(event_type: str, context) -> None:
     if not slug:
         return
 
-    commitments_file = DATA_ROOT / f"hermes-{slug}" / "commitments.json"
+    # Write to /opt/data (mounted from host data/hermes-{slug}/) so deliver_commitments.py can read it
+    commitments_file = HERMES_HOME / "commitments.json"
     commitments_file.parent.mkdir(parents=True, exist_ok=True)
 
     data: dict = {"pending": []}
