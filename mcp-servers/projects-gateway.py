@@ -35,13 +35,11 @@ def _load_projects() -> dict:
     except (json.JSONDecodeError, OSError):
         return {}
 
-PROJECTS: dict[str, dict] = _load_projects()
-PROJECT_NAMES: list[str] = list(PROJECTS.keys())
-
-
 @server.list_tools()
 async def list_tools() -> list[Tool]:
-    projects_str = ", ".join(PROJECT_NAMES) if PROJECT_NAMES else "(none configured)"
+    projects = _load_projects()
+    project_names = list(projects.keys())
+    projects_str = ", ".join(project_names) if project_names else "(none configured)"
     return [
         Tool(
             name="ssh_exec",
@@ -55,7 +53,7 @@ async def list_tools() -> list[Tool]:
                 "properties": {
                     "project": {
                         "type": "string",
-                        "enum": PROJECT_NAMES,
+                        "enum": project_names,
                         "description": f"Project slug. Available: {projects_str}",
                     },
                     "command": {
@@ -74,13 +72,15 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
     if name != "ssh_exec":
         return [TextContent(type="text", text=f"Unknown tool: {name}")]
 
+    projects = _load_projects()
     project = arguments.get("project", "")
     command = arguments.get("command", "")
 
-    if project not in PROJECTS:
-        return [TextContent(type="text", text=f"Unknown project: {project}. Available: {PROJECT_NAMES}")]
+    if project not in projects:
+        project_names = list(projects.keys())
+        return [TextContent(type="text", text=f"Unknown project: {project}. Available: {', '.join(project_names)}")]
 
-    ssh_host = PROJECTS[project]["ssh_host"]
+    ssh_host = projects[project]["ssh_host"]
 
     try:
         result = subprocess.run(
