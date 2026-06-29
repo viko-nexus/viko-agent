@@ -349,7 +349,7 @@ git commit -m "fix(mcp): reload projects.json on every tool call (no restart nee
 - Produces: relay tokens get 20 sends/minute (configurable via `RELAY_RATE_LIMIT` env var)
 - Loopback calls (admin hermes) are never rate-limited
 
-- [ ] **Step 1: Add rate-limit state and helper (admin mode block)**
+- [x] **Step 1: Add rate-limit state and helper (admin mode block)**
 
 In `bridge/whatsapp-bridge.js`, inside the `} else {` admin mode block (after line 281), before the `bearerToken` helper, add:
 
@@ -378,7 +378,7 @@ In `bridge/whatsapp-bridge.js`, inside the `} else {` admin mode block (after li
   }
 ```
 
-- [ ] **Step 2: Add rate-limit middleware after the scope middleware**
+- [x] **Step 2: Add rate-limit middleware after the scope middleware**
 
 After the scope enforcement middleware (the `app.use` block ending around line 322), add:
 
@@ -399,7 +399,7 @@ After the scope enforcement middleware (the `app.use` block ending around line 3
   });
 ```
 
-- [ ] **Step 3: Verify order of middleware**
+- [x] **Step 3: Verify order of middleware**
 
 Confirm the order in the file is: scope check → rate limit → actual POST handlers. Run:
 
@@ -415,7 +415,7 @@ Expected output (line numbers may differ but order must be ascending):
 456:  app.post('/send', ...         ← actual handler
 ```
 
-- [ ] **Step 4: Manual smoke test on server**
+- [x] **Step 4: Manual smoke test on server**
 
 ```bash
 ssh doasas "
@@ -442,7 +442,7 @@ Expected: sends 1–20 return 403 (scope-denied on fake chatId — that's correc
 
 Note: The rate limit only triggers AFTER scope check passes. To really test, you'd need a valid relay token + valid JID combo. The middleware order ensures: authenticated sends deduct from bucket even when chatId is valid.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add bridge/whatsapp-bridge.js
