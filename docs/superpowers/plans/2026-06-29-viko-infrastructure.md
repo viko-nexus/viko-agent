@@ -688,7 +688,7 @@ git commit -m "feat(bridge): enrich /health with uptime, connected_duration, and
 - Produces: hourly cron that runs `prune-idle-sessions.py --idle-hours 1` as `deploy` user
 - Log goes to `data/prune.log` (gitignored)
 
-- [ ] **Step 1: Create scripts/setup-cron.sh**
+- [x] **Step 1: Create scripts/setup-cron.sh**
 
 ```bash
 #!/usr/bin/env bash
@@ -725,7 +725,7 @@ Make it executable:
 chmod +x scripts/setup-cron.sh
 ```
 
-- [ ] **Step 2: Run on server**
+- [x] **Step 2: Run on server**
 
 ```bash
 ssh doasas-deploy "bash /home/deploy/viko-agent/scripts/setup-cron.sh"
@@ -738,7 +738,7 @@ Expected:
 0 * * * * python3 /home/deploy/viko-agent/scripts/prune-idle-sessions.py ...
 ```
 
-- [ ] **Step 3: Verify cron is registered**
+- [x] **Step 3: Verify cron is registered**
 
 ```bash
 ssh doasas-deploy "crontab -l | grep viko"
@@ -746,7 +746,7 @@ ssh doasas-deploy "crontab -l | grep viko"
 
 Expected: the prune entry appears.
 
-- [ ] **Step 4: Dry-run the prune script to confirm it works**
+- [x] **Step 4: Dry-run the prune script to confirm it works**
 
 ```bash
 ssh doasas-deploy "python3 /home/deploy/viko-agent/scripts/prune-idle-sessions.py --dry-run"
@@ -754,7 +754,7 @@ ssh doasas-deploy "python3 /home/deploy/viko-agent/scripts/prune-idle-sessions.p
 
 Expected: outputs `=== prune-idle-sessions ===` header and lists projects with sessions counts.
 
-- [ ] **Step 5: Add note to DEPLOYMENT.md**
+- [x] **Step 5: Add note to DEPLOYMENT.md**
 
 In `docs/overview/DEPLOYMENT.md`, find the "First-Time Setup" or post-deploy checklist section. Add:
 
@@ -770,7 +770,7 @@ Installs:
 - 15-min commitment delivery checker (see OpenClaw features plan)
 ```
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add scripts/setup-cron.sh docs/overview/DEPLOYMENT.md
