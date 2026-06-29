@@ -570,7 +570,7 @@ git commit -m "feat(bridge): owner priority queue — owner messages drain befor
 - Produces: `/health` returns `{ok, status, relay, routes, uptime_ms, connected_duration_ms, queue}`
 - Relay mode `/health` proxies to admin and adds `{relay: true, port_filter}`
 
-- [ ] **Step 1: Add connectedAt tracking variable (admin mode)**
+- [x] **Step 1: Add connectedAt tracking variable (admin mode)**
 
 Inside the `} else {` admin mode block, after the `let connState = 'disconnected';` line (around line 346), add:
 
@@ -579,7 +579,7 @@ Inside the `} else {` admin mode block, after the `let connState = 'disconnected
   const bridgeStartedAt = Date.now();
 ```
 
-- [ ] **Step 2: Set connectedAt when WA connects**
+- [x] **Step 2: Set connectedAt when WA connects**
 
 In the `connection.update` handler (around line 382), find:
 
@@ -598,7 +598,7 @@ Add `connectedAt = Date.now();` on the next line:
         console.log('[bridge] WhatsApp connected');
 ```
 
-- [ ] **Step 3: Replace the /health endpoint (admin mode)**
+- [x] **Step 3: Replace the /health endpoint (admin mode)**
 
 Find the current `/health` in admin mode (around line 508):
 
@@ -634,7 +634,7 @@ Replace with:
   });
 ```
 
-- [ ] **Step 4: Verify relay mode /health still works**
+- [x] **Step 4: Verify relay mode /health still works**
 
 Relay mode `/health` (around line 267) proxies to admin and merges `{relay: true, port_filter}`. It will automatically pick up the new fields from admin since it spreads the response. No change needed — confirm by reading:
 
@@ -644,7 +644,7 @@ grep -n -A 7 "app.get.*health" bridge/whatsapp-bridge.js
 
 Expected: relay mode returns `{...adminFields, relay: true, port_filter: PORT_FILTER}`.
 
-- [ ] **Step 5: Live test on server**
+- [x] **Step 5: Live test on server**
 
 ```bash
 ssh doasas "curl -s http://localhost:3000/health | python3 -m json.tool"
@@ -667,7 +667,7 @@ Expected output (values will vary):
 }
 ```
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add bridge/whatsapp-bridge.js
