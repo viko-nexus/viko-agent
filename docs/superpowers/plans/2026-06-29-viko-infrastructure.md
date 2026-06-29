@@ -32,7 +32,7 @@
 - Produces: `ARG HERMES_COMMIT=<sha>` usable in CI via `--build-arg HERMES_COMMIT=<new-sha>`
 - Produces: Build fails loudly (non-zero exit) if any patch cannot find its injection point
 
-- [ ] **Step 1: Record the current hermes SHA to pin**
+- [x] **Step 1: Record the current hermes SHA to pin**
 
 ```bash
 curl -s https://api.github.com/repos/NousResearch/hermes-agent/commits/main \
@@ -41,7 +41,7 @@ curl -s https://api.github.com/repos/NousResearch/hermes-agent/commits/main \
 
 Expected output: `f1345290edb87a5da7b28288dc39c46b0be79313` (or newer if hermes has since updated — use whatever this returns, that's the pin).
 
-- [ ] **Step 2: Pin the hermes clone in Dockerfile.hermes**
+- [x] **Step 2: Pin the hermes clone in Dockerfile.hermes**
 
 In `Dockerfile.hermes`, find the hermes_source stage (around line 10–14):
 
@@ -66,7 +66,7 @@ RUN git clone https://github.com/NousResearch/hermes-agent.git /opt/hermes && \
     git -C /opt/hermes checkout "$HERMES_COMMIT"
 ```
 
-- [ ] **Step 3: Fix patch-model-router.py to fail loudly**
+- [x] **Step 3: Fix patch-model-router.py to fail loudly**
 
 In `patches/patch-model-router.py`, find the warning block (around line 67–72):
 
@@ -90,7 +90,7 @@ Change `sys.exit(0)` to `sys.exit(1)`:
         sys.exit(1)
 ```
 
-- [ ] **Step 4: Fix patch-ssh-guard.py to fail loudly**
+- [x] **Step 4: Fix patch-ssh-guard.py to fail loudly**
 
 In `patches/patch-ssh-guard.py`, find the "Pattern not found" exit:
 
@@ -111,7 +111,7 @@ if OLD not in original:
     sys.exit(1)
 ```
 
-- [ ] **Step 5: Fix patch-approval-sql-context.py to fail loudly**
+- [x] **Step 5: Fix patch-approval-sql-context.py to fail loudly**
 
 In `patches/patch-approval-sql-context.py`, find both exit points in `main()`:
 
@@ -134,7 +134,7 @@ These already return 1 (correct). Only verify the idempotent check exits cleanly
 
 Confirm `return 0` is there — no change needed.
 
-- [ ] **Step 6: Verify the build succeeds with pinned SHA**
+- [x] **Step 6: Verify the build succeeds with pinned SHA**
 
 ```bash
 ssh doasas "cd /home/deploy/viko-agent && docker compose build hermes 2>&1 | tail -20"
@@ -142,7 +142,7 @@ ssh doasas "cd /home/deploy/viko-agent && docker compose build hermes 2>&1 | tai
 
 Expected: build completes, all patches print `✓ patch-*: applied`.
 
-- [ ] **Step 7: Verify the build fails with a bad SHA**
+- [x] **Step 7: Verify the build fails with a bad SHA**
 
 Temporarily change `HERMES_COMMIT` in the ARG line to `0000000000000000000000000000000000000000`, run build, confirm failure, then revert.
 
@@ -156,7 +156,7 @@ ssh doasas "cd /home/deploy/viko-agent && \
 
 Expected: build fails with git checkout error. Revert restores correct SHA.
 
-- [ ] **Step 8: Commit**
+- [x] **Step 8: Commit**
 
 ```bash
 git add Dockerfile.hermes patches/patch-model-router.py patches/patch-ssh-guard.py patches/patch-approval-sql-context.py
