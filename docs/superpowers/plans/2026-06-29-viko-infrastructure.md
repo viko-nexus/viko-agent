@@ -175,7 +175,7 @@ git commit -m "fix(build): pin hermes to f1345290 + fail-fast on patch injection
 **Interfaces:**
 - Produces: `_load_projects()` returns fresh data on every call (no module-level cache)
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Create `scripts/test_mcp_reload.py`:
 
@@ -222,7 +222,7 @@ print("After fix: those names should only appear inside function bodies, not at 
 Run: `grep -n "^PROJECTS\|^PROJECT_NAMES" mcp-servers/projects-gateway.py`
 Expected BEFORE fix: lines 18–19 show module-level assignments.
 
-- [ ] **Step 2: Remove module-level PROJECTS and PROJECT_NAMES**
+- [x] **Step 2: Remove module-level PROJECTS and PROJECT_NAMES**
 
 In `mcp-servers/projects-gateway.py`, delete these two lines (currently around lines 18–19):
 
@@ -231,7 +231,7 @@ PROJECTS: dict[str, dict] = _load_projects()
 PROJECT_NAMES: list[str] = list(PROJECTS.keys())
 ```
 
-- [ ] **Step 3: Update list_tools() to reload fresh**
+- [x] **Step 3: Update list_tools() to reload fresh**
 
 Find `list_tools()` (currently uses module-level `PROJECT_NAMES`). Replace:
 
@@ -288,7 +288,7 @@ async def list_tools() -> list[Tool]:
     ]
 ```
 
-- [ ] **Step 4: Update call_tool() to reload fresh**
+- [x] **Step 4: Update call_tool() to reload fresh**
 
 Find `call_tool()` (currently references `PROJECTS` and `PROJECT_NAMES`). Replace:
 
@@ -310,7 +310,7 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
     # ... rest of the function unchanged
 ```
 
-- [ ] **Step 5: Verify no module-level references remain**
+- [x] **Step 5: Verify no module-level references remain**
 
 ```bash
 grep -n "^PROJECTS\|^PROJECT_NAMES" mcp-servers/projects-gateway.py
@@ -318,7 +318,7 @@ grep -n "^PROJECTS\|^PROJECT_NAMES" mcp-servers/projects-gateway.py
 
 Expected: no output (both names removed from module scope).
 
-- [ ] **Step 6: Live test on server**
+- [x] **Step 6: Live test on server**
 
 ```bash
 ssh doasas "
@@ -329,7 +329,7 @@ ssh doasas "
 "
 ```
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add mcp-servers/projects-gateway.py
