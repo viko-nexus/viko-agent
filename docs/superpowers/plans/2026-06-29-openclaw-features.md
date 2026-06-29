@@ -251,7 +251,7 @@ git commit -m "feat(scripts): dreaming — summarize sessions to context.md befo
 - Stores to `data/hermes-{slug}/commitments.json` as `{"pending": [{id, text, due_at, created_at}]}`
 - Cron script reads routing.json to find JID per slug, POSTs due commitments to bridge loopback
 
-- [ ] **Step 1: Discover the agent:end context structure**
+- [x] **Step 1: Discover the agent:end context structure**
 
 ```bash
 ssh doasas "
@@ -262,7 +262,7 @@ ssh doasas "
 
 Note: the `context` object fields used by the existing hook (e.g. `context.reply`, `context.event`, `context.session_key`). Use the same field names in the commitment hook.
 
-- [ ] **Step 2: Create hooks/viko-commitments/HOOK.yaml**
+- [x] **Step 2: Create hooks/viko-commitments/HOOK.yaml**
 
 ```yaml
 name: viko-commitments
@@ -271,7 +271,7 @@ events:
   - agent:end
 ```
 
-- [ ] **Step 3: Create hooks/viko-commitments/handler.py**
+- [x] **Step 3: Create hooks/viko-commitments/handler.py**
 
 ```python
 """Detect commitment language in agent replies and store to commitments.json.
@@ -372,7 +372,7 @@ async def handle(event_type: str, context) -> None:
     print(f"[commitments] stored follow-up for {slug}: due {commitment['due_at']}")
 ```
 
-- [ ] **Step 4: Create scripts/deliver_commitments.py**
+- [x] **Step 4: Create scripts/deliver_commitments.py**
 
 ```python
 #!/usr/bin/env python3
@@ -465,7 +465,7 @@ if __name__ == "__main__":
     main()
 ```
 
-- [ ] **Step 5: Register deliver_commitments in the host cron**
+- [x] **Step 5: Register deliver_commitments in the host cron**
 
 Update `scripts/setup-cron.sh` to add the delivery entry. In the file created by infrastructure Task 6, add after the prune install_cron call:
 
@@ -474,7 +474,7 @@ DELIVER_ENTRY="*/15 * * * * python3 $REPO_DIR/scripts/deliver_commitments.py >> 
 install_cron "$DELIVER_ENTRY" "deliver_commitments.py"
 ```
 
-- [ ] **Step 6: Verify hook is recognized by hermes**
+- [x] **Step 6: Verify hook is recognized by hermes**
 
 Hermes loads hooks from the `/opt/data/hooks/` directory (mounted from the host). Confirm the hooks dir is mounted:
 
@@ -490,7 +490,7 @@ for m in mounts:
 
 If `hooks/` is mounted, the new hook will be picked up on next container restart. If not, check `docker-compose.yml` for the hooks volume mount.
 
-- [ ] **Step 7: Test commitment detection locally**
+- [x] **Step 7: Test commitment detection locally**
 
 ```bash
 python3 -c "
@@ -519,7 +519,7 @@ for text, expected in tests:
 
 Expected: all 4 lines show `✓`.
 
-- [ ] **Step 8: Commit**
+- [x] **Step 8: Commit**
 
 ```bash
 git add hooks/viko-commitments/ scripts/deliver_commitments.py scripts/setup-cron.sh
