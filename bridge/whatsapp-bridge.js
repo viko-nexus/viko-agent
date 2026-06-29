@@ -141,23 +141,25 @@ if (!RELAY_MODE) {
 
 // ── Message queues (admin mode) ───────────────────────────────────────────────
 
-const perPortQueues = {}; // { "3001": [message, ...] }
+const perPortOwnerQueues = {}; // { "3001": [owner messages] }
+const perPortMemberQueues = {}; // { "3001": [member messages] }
 const globalQueue = []; // unrouted messages → Admin Hermes
 
 function enqueue(port, event) {
   const key = String(port);
-  const q = (perPortQueues[key] = perPortQueues[key] || []);
+  const queues = event.isOwner ? perPortOwnerQueues : perPortMemberQueues;
+  const q = (queues[key] = queues[key] || []);
   q.push(event);
   if (q.length > MAX_QUEUE_SIZE) q.shift();
 }
 
 function dequeuePort(port) {
   const key = String(port);
-  const q = perPortQueues[key];
-  if (!q || q.length === 0) return [];
-  const msgs = q.splice(0);
-  perPortQueues[key] = [];
-  return msgs;
+  const ownerMsgs = (perPortOwnerQueues[key] || []).splice(0);
+  const memberMsgs = (perPortMemberQueues[key] || []).splice(0);
+  perPortOwnerQueues[key] = [];
+  perPortMemberQueues[key] = [];
+  return [...ownerMsgs, ...memberMsgs];
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -280,6 +282,29 @@ if (RELAY_MODE) {
 } else {
   // ── ADMIN MODE ────────────────────────────────────────────────────────────────
 
+  // ── Relay rate limiting ────────────────────────────────────────────────────
+  // Limits outbound sends per relay token to prevent runaway project containers
+  // from spamming WhatsApp. Loopback calls (admin hermes) are never limited.
+  const _rateBuckets = new Map(); // token -> { tokens, lastRefill }
+  const RATE_LIMIT_MAX = parseInt(process.env.RELAY_RATE_LIMIT || '20', 10);
+  const RATE_LIMIT_WINDOW_MS = 60_000;
+
+  function consumeRateLimit(token) {
+    const now = Date.now();
+    let b = _rateBuckets.get(token);
+    if (!b) {
+      b = { tokens: RATE_LIMIT_MAX, lastRefill: now };
+      _rateBuckets.set(token, b);
+    }
+    if (now - b.lastRefill >= RATE_LIMIT_WINDOW_MS) {
+      b.tokens = RATE_LIMIT_MAX;
+      b.lastRefill = now;
+    }
+    if (b.tokens <= 0) return false;
+    b.tokens -= 1;
+    return true;
+  }
+
   // Outbound scope enforcement:
   //   - Loopback (127.0.0.1): Admin Hermes — unrestricted
   //   - Bearer token:         Project relay — scoped to token's JID only
@@ -321,6 +346,21 @@ if (RELAY_MODE) {
     next();
   });
 
+  // Rate limit relay tokens on outbound paths (not loopback admin)
+  app.use((req, res, next) => {
+    if (req.method === 'POST' && SCOPED_PATHS.has(req.path)) {
+      const token = bearerToken(req);
+      if (token && !consumeRateLimit(token)) {
+        console.warn(`[bridge] rate-limit ${req.path} token=${token.slice(0, 8)}…`);
+        return res.status(429).json({
+          error: 'rate_limited',
+          retry_after_ms: RATE_LIMIT_WINDOW_MS,
+        });
+      }
+    }
+    next();
+  });
+
   // Token introspection — project containers can self-verify their isolation scope
   app.get('/relay/scope', (req, res) => {
     const jid = _tokenToJid[bearerToken(req)];
@@ -343,6 +383,8 @@ if (RELAY_MODE) {
 
   let sock = null;
   let connState = 'disconnected';
+  let connectedAt = null;
+  const bridgeStartedAt = Date.now();
   const PAIR_ONLY = process.argv.includes('--pair-only');
 
   async function startSocket() {
@@ -381,6 +423,7 @@ if (RELAY_MODE) {
         setTimeout(startSocket, delay);
       } else if (connection === 'open') {
         connState = 'connected';
+        connectedAt = Date.now();
         console.log('[bridge] WhatsApp connected');
         if (PAIR_ONLY) {
           console.log('[bridge] Pairing complete. Credentials saved.');
@@ -506,10 +549,20 @@ if (RELAY_MODE) {
   });
 
   app.get('/health', (req, res) => {
+    const ownerPending = Object.values(perPortOwnerQueues).reduce((s, q) => s + q.length, 0);
+    const memberPending = Object.values(perPortMemberQueues).reduce((s, q) => s + q.length, 0);
     res.json({
+      ok: connState === 'connected',
       status: connState,
-      routes: Object.keys(_routing).length,
       relay: false,
+      routes: Object.keys(_routing).length,
+      uptime_ms: Date.now() - bridgeStartedAt,
+      connected_duration_ms: connectedAt ? Date.now() - connectedAt : null,
+      queue: {
+        admin: globalQueue.length,
+        owner: ownerPending,
+        member: memberPending,
+      },
     });
   });
 

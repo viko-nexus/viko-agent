@@ -32,7 +32,7 @@
 - Uses `OPENAI_BASE_URL` and `OPENAI_API_KEY` env vars (same as 9router)
 - Produces: `context.md` per project gets a timestamped append after each pruned session with meaningful content
 
-- [ ] **Step 1: Understand sessions.json structure**
+- [x] **Step 1: Understand sessions.json structure**
 
 ```bash
 ssh doasas "
@@ -43,7 +43,7 @@ ssh doasas "
 
 Expected: shows session fields like `['messages', 'updated_at', 'created_at', ...]`. Note the exact field name for conversation history (likely `messages` or `history`).
 
-- [ ] **Step 2: Create scripts/dream-sessions.py**
+- [x] **Step 2: Create scripts/dream-sessions.py**
 
 ```python
 #!/usr/bin/env python3
@@ -147,7 +147,7 @@ def dream_session(slug: str, sessions_file: Path, session_key: str, session_data
     return True
 ```
 
-- [ ] **Step 3: Verify the LLM endpoint is reachable**
+- [x] **Step 3: Verify the LLM endpoint is reachable**
 
 ```bash
 ssh doasas "
@@ -162,7 +162,7 @@ ssh doasas "
 
 Expected: short response (any text). If this fails, check 9router is running.
 
-- [ ] **Step 4: Integrate dream_session into prune-idle-sessions.py**
+- [x] **Step 4: Integrate dream_session into prune-idle-sessions.py**
 
 In `scripts/prune-idle-sessions.py`, at the top add the import:
 
@@ -197,14 +197,14 @@ In `prune_project()`, just before writing the pruned session file, add the dream
 
 Note: `dream_sessions` must be importable as `dream_sessions` not `dream-sessions` — name the file without hyphen.
 
-- [ ] **Step 5: Rename file to use underscore**
+- [x] **Step 5: Rename file to use underscore**
 
 ```bash
 mv scripts/dream-sessions.py scripts/dream_sessions.py
 git mv scripts/dream-sessions.py scripts/dream_sessions.py 2>/dev/null || true
 ```
 
-- [ ] **Step 6: Dry-run test**
+- [x] **Step 6: Dry-run test**
 
 ```bash
 ssh doasas "
@@ -215,7 +215,7 @@ ssh doasas "
 
 Expected: lists sessions that would be pruned. With `--dry-run`, dreaming is skipped (check `if not dry_run` guard).
 
-- [ ] **Step 7: Live test (destructive — only run when idle sessions exist)**
+- [x] **Step 7: Live test (destructive — only run when idle sessions exist)**
 
 ```bash
 ssh doasas "
@@ -228,7 +228,7 @@ ssh doasas "
 
 Expected: prints `[dream] → context.md updated` for each session that had content, then pruned.
 
-- [ ] **Step 8: Commit**
+- [x] **Step 8: Commit**
 
 ```bash
 git add scripts/dream_sessions.py scripts/prune-idle-sessions.py
@@ -251,7 +251,7 @@ git commit -m "feat(scripts): dreaming — summarize sessions to context.md befo
 - Stores to `data/hermes-{slug}/commitments.json` as `{"pending": [{id, text, due_at, created_at}]}`
 - Cron script reads routing.json to find JID per slug, POSTs due commitments to bridge loopback
 
-- [ ] **Step 1: Discover the agent:end context structure**
+- [x] **Step 1: Discover the agent:end context structure**
 
 ```bash
 ssh doasas "
@@ -262,7 +262,7 @@ ssh doasas "
 
 Note: the `context` object fields used by the existing hook (e.g. `context.reply`, `context.event`, `context.session_key`). Use the same field names in the commitment hook.
 
-- [ ] **Step 2: Create hooks/viko-commitments/HOOK.yaml**
+- [x] **Step 2: Create hooks/viko-commitments/HOOK.yaml**
 
 ```yaml
 name: viko-commitments
@@ -271,7 +271,7 @@ events:
   - agent:end
 ```
 
-- [ ] **Step 3: Create hooks/viko-commitments/handler.py**
+- [x] **Step 3: Create hooks/viko-commitments/handler.py**
 
 ```python
 """Detect commitment language in agent replies and store to commitments.json.
@@ -372,7 +372,7 @@ async def handle(event_type: str, context) -> None:
     print(f"[commitments] stored follow-up for {slug}: due {commitment['due_at']}")
 ```
 
-- [ ] **Step 4: Create scripts/deliver_commitments.py**
+- [x] **Step 4: Create scripts/deliver_commitments.py**
 
 ```python
 #!/usr/bin/env python3
@@ -465,7 +465,7 @@ if __name__ == "__main__":
     main()
 ```
 
-- [ ] **Step 5: Register deliver_commitments in the host cron**
+- [x] **Step 5: Register deliver_commitments in the host cron**
 
 Update `scripts/setup-cron.sh` to add the delivery entry. In the file created by infrastructure Task 6, add after the prune install_cron call:
 
@@ -474,7 +474,7 @@ DELIVER_ENTRY="*/15 * * * * python3 $REPO_DIR/scripts/deliver_commitments.py >> 
 install_cron "$DELIVER_ENTRY" "deliver_commitments.py"
 ```
 
-- [ ] **Step 6: Verify hook is recognized by hermes**
+- [x] **Step 6: Verify hook is recognized by hermes**
 
 Hermes loads hooks from the `/opt/data/hooks/` directory (mounted from the host). Confirm the hooks dir is mounted:
 
@@ -490,7 +490,7 @@ for m in mounts:
 
 If `hooks/` is mounted, the new hook will be picked up on next container restart. If not, check `docker-compose.yml` for the hooks volume mount.
 
-- [ ] **Step 7: Test commitment detection locally**
+- [x] **Step 7: Test commitment detection locally**
 
 ```bash
 python3 -c "
@@ -519,7 +519,7 @@ for text, expected in tests:
 
 Expected: all 4 lines show `✓`.
 
-- [ ] **Step 8: Commit**
+- [x] **Step 8: Commit**
 
 ```bash
 git add hooks/viko-commitments/ scripts/deliver_commitments.py scripts/setup-cron.sh
@@ -540,7 +540,7 @@ git commit -m "feat: commitments — detect follow-ups in agent replies, deliver
 - Produces: malformed tool call → LLM sees its own bad output + correction prompt → one retry
 - Max 1 retry (not a loop); if second attempt also malformed, raise original error
 
-- [ ] **Step 1: Find the tool call parsing code in hermes**
+- [x] **Step 1: Find the tool call parsing code in hermes**
 
 ```bash
 ssh doasas "docker exec viko-hermes bash -c \"
@@ -558,7 +558,7 @@ ssh doasas "docker exec viko-hermes bash -c \"
 
 Note the file path and line number where tool call arguments are parsed from the model's response. This is the injection point for the repair logic.
 
-- [ ] **Step 2: Read the identified file**
+- [x] **Step 2: Read the identified file**
 
 ```bash
 ssh doasas "docker exec viko-hermes bash -c \"
@@ -573,7 +573,7 @@ Identify:
 - The variable name holding the raw arguments string
 - The surrounding context (what variable holds the LLM response object)
 
-- [ ] **Step 3: Write patches/patch-tool-call-repair.py**
+- [x] **Step 3: Write patches/patch-tool-call-repair.py**
 
 Replace `<TARGET_FILE>`, `<INJECT_AFTER>`, `<EXCEPTION_TYPE>`, and `<args_var>` with values found in Steps 1–2:
 
@@ -636,7 +636,7 @@ if __name__ == "__main__":
 
 **Note:** This patch is a template. The exact `INJECT_AFTER` and `INJECT_CODE` strings must be filled in based on what Step 2 reveals. The principle is the same as all other patches — find the right line, inject the repair wrapper.
 
-- [ ] **Step 4: Add patch to Dockerfile.hermes**
+- [x] **Step 4: Add patch to Dockerfile.hermes**
 
 After the existing patch COPY+RUN block (the `# ── Viko patches ──` section), add:
 
@@ -645,7 +645,7 @@ COPY patches/patch-tool-call-repair.py /tmp/patch-tool-call-repair.py
 RUN python3 /tmp/patch-tool-call-repair.py
 ```
 
-- [ ] **Step 5: Build and verify**
+- [x] **Step 5: Build and verify**
 
 ```bash
 ssh doasas "cd /home/deploy/viko-agent && git pull && docker compose build hermes 2>&1 | grep 'patch-tool-call-repair'"
@@ -653,7 +653,7 @@ ssh doasas "cd /home/deploy/viko-agent && git pull && docker compose build herme
 
 Expected: `✓ patch-tool-call-repair: applied`
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add patches/patch-tool-call-repair.py Dockerfile.hermes
@@ -674,7 +674,7 @@ git commit -m "feat(patches): tool call repair — retry once on malformed LLM J
 - Produces: tool result messages older than `TOOL_RESULT_PRUNE_AFTER_MIN` (default: 5) minutes get soft-trimmed before each LLM call
 - Full transcript on disk is never modified
 
-- [ ] **Step 1: Find the LLM call site in hermes**
+- [x] **Step 1: Find the LLM call site in hermes**
 
 ```bash
 ssh doasas "docker exec viko-hermes bash -c \"
@@ -694,7 +694,7 @@ ssh doasas "docker exec viko-hermes bash -c \"
 
 Note the file and function where the `messages` list is built just before calling the LLM.
 
-- [ ] **Step 2: Read the identified function**
+- [x] **Step 2: Read the identified function**
 
 ```bash
 ssh doasas "docker exec viko-hermes bash -c \"
@@ -708,7 +708,7 @@ Identify:
 - The structure of tool result messages (e.g. `{"role": "tool", "content": ..., "timestamp": ...}`)
 - Whether timestamps are available on individual messages
 
-- [ ] **Step 3: Create patches/patch-tool-result-pruning.py**
+- [x] **Step 3: Create patches/patch-tool-result-pruning.py**
 
 ```python
 #!/usr/bin/env python3
@@ -783,14 +783,14 @@ if __name__ == "__main__":
     sys.exit(main())
 ```
 
-- [ ] **Step 4: Add to Dockerfile.hermes**
+- [x] **Step 4: Add to Dockerfile.hermes**
 
 ```dockerfile
 COPY patches/patch-tool-result-pruning.py /tmp/patch-tool-result-pruning.py
 RUN python3 /tmp/patch-tool-result-pruning.py
 ```
 
-- [ ] **Step 5: Build and verify**
+- [x] **Step 5: Build and verify**
 
 ```bash
 ssh doasas "cd /home/deploy/viko-agent && git pull && docker compose build hermes 2>&1 | grep 'patch-tool-result'"
@@ -798,7 +798,7 @@ ssh doasas "cd /home/deploy/viko-agent && git pull && docker compose build herme
 
 Expected: `✓ patch-tool-result-pruning: applied`
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add patches/patch-tool-result-pruning.py Dockerfile.hermes
@@ -819,7 +819,7 @@ git commit -m "feat(patches): soft-trim stale tool results before LLM call (in-m
 - Produces: just before hermes compaction fires, a tool call to `write_file` is injected with a prompt to save key facts to `/opt/data/context.md`
 - The write happens via hermes's existing `write_file` tool — no new tool needed
 
-- [ ] **Step 1: Find the compaction trigger in hermes**
+- [x] **Step 1: Find the compaction trigger in hermes**
 
 ```bash
 ssh doasas "docker exec viko-hermes bash -c \"
@@ -839,7 +839,7 @@ ssh doasas "docker exec viko-hermes bash -c \"
 
 Note: the file and function where compaction is triggered.
 
-- [ ] **Step 2: Read the compaction function**
+- [x] **Step 2: Read the compaction function**
 
 ```bash
 ssh doasas "docker exec viko-hermes bash -c \"
@@ -853,7 +853,7 @@ Identify:
 - What happens just before the LLM summarization call
 - Any existing hooks or callbacks that fire pre-compaction
 
-- [ ] **Step 3: Create patches/patch-memory-flush-compact.py**
+- [x] **Step 3: Create patches/patch-memory-flush-compact.py**
 
 ```python
 #!/usr/bin/env python3
@@ -916,14 +916,14 @@ if __name__ == "__main__":
     sys.exit(main())
 ```
 
-- [ ] **Step 4: Add to Dockerfile.hermes**
+- [x] **Step 4: Add to Dockerfile.hermes**
 
 ```dockerfile
 COPY patches/patch-memory-flush-compact.py /tmp/patch-memory-flush-compact.py
 RUN python3 /tmp/patch-memory-flush-compact.py
 ```
 
-- [ ] **Step 5: Build and verify**
+- [x] **Step 5: Build and verify**
 
 ```bash
 ssh doasas "cd /home/deploy/viko-agent && git pull && docker compose build hermes 2>&1 | grep 'patch-memory-flush'"
@@ -931,7 +931,7 @@ ssh doasas "cd /home/deploy/viko-agent && git pull && docker compose build herme
 
 Expected: `✓ patch-memory-flush-compact: applied`
 
-- [ ] **Step 6: Integration test**
+- [x] **Step 6: Integration test**
 
 Trigger compaction by sending many messages to a project Hermes until context fills. Check `context.md`:
 
@@ -941,7 +941,7 @@ ssh doasas "cat /home/deploy/viko-agent/data/hermes-<slug>/context.md | grep 'Me
 
 Expected: lines starting with `## Memory Flush <timestamp>`.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add patches/patch-memory-flush-compact.py Dockerfile.hermes

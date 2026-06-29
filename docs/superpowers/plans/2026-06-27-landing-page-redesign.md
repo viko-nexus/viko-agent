@@ -1,6 +1,6 @@
 # Landing Page Redesign Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [x]`) syntax for tracking.
 
 **Goal:** Redesign the GitHub Pages landing page (`index.html`) with a bright light theme, hero logo, human-crafted typography, contributor section, and EN/ID i18n — all without a build step (pure HTML/CSS/JS).
 
@@ -32,14 +32,14 @@
 
 > NOTE: Rename `--black` → `--bg` and `--card` → keep `--card` but update its value. Add `--surface` for pure-white elevated elements.
 
-- [ ] **Step 1: Create branch**
+- [x] **Step 1: Create branch**
 
 ```bash
 git checkout main && git pull origin main
 git checkout -b feat/landing-redesign
 ```
 
-- [ ] **Step 2: Replace `:root` custom properties**
+- [x] **Step 2: Replace `:root` custom properties**
 
 In `assets/landing/style.css`, replace the entire `:root { ... }` block (lines 4–15) with:
 
@@ -59,7 +59,7 @@ In `assets/landing/style.css`, replace the entire `:root { ... }` block (lines 4
 }
 ```
 
-- [ ] **Step 3: Update body background and dot grid**
+- [x] **Step 3: Update body background and dot grid**
 
 Replace the body rule (currently starting at line ~21):
 
@@ -77,7 +77,7 @@ body {
 }
 ```
 
-- [ ] **Step 4: Update ambient glows for light bg**
+- [x] **Step 4: Update ambient glows for light bg**
 
 Replace the `body::before` block:
 
@@ -94,7 +94,7 @@ body::before {
 }
 ```
 
-- [ ] **Step 5: Fix hardcoded dark colors**
+- [x] **Step 5: Fix hardcoded dark colors**
 
 Find and replace these 5 hardcoded values in `style.css`:
 
@@ -107,11 +107,11 @@ Find and replace these 5 hardcoded values in `style.css`:
 
 Leave `.arch-code { background: rgba(13,30,56,0.85) }` unchanged — code blocks stay dark (intentional contrast island).
 
-- [ ] **Step 6: Update hero grid opacity in CSS**
+- [x] **Step 6: Update hero grid opacity in CSS**
 
 In `.hero-grid`, change `opacity: 0.2` to `opacity: 0.12`.
 
-- [ ] **Step 7: Update feature grid background**
+- [x] **Step 7: Update feature grid background**
 
 Replace:
 ```css
@@ -145,13 +145,13 @@ And update `.feature-card`:
 }
 ```
 
-- [ ] **Step 8: Update nav dim text color for light header**
+- [x] **Step 8: Update nav dim text color for light header**
 
 In `.nav-link`, `.nav-name`, `.nav-cta`, `.nav-sub` — the CSS variable references will auto-update. But verify that `.nav-link:hover { color: var(--pri); }` still works (it will).
 
 Also add a subtle bottom border on header: add `border-bottom: 1px solid var(--border);` to the `header` rule if not already present.
 
-- [ ] **Step 9: Update stat-block and arch-card for light bg**
+- [x] **Step 9: Update stat-block and arch-card for light bg**
 
 ```css
 .stat-block {
@@ -167,11 +167,11 @@ Also add a subtle bottom border on header: add `border-bottom: 1px solid var(--b
 }
 ```
 
-- [ ] **Step 10: Reduce hero canvas dot opacity**
+- [x] **Step 10: Reduce hero canvas dot opacity**
 
 In `assets/landing/main.js`, find `ctx.fillStyle = \`rgba(${R},${G},${B},0.6)\`` and change to `rgba(${R},${G},${B},0.25)`.
 
-- [ ] **Step 11: Visual check**
+- [x] **Step 11: Visual check**
 
 ```bash
 cd /Users/eksa/Projects/viko-nexus/viko-agent
@@ -185,7 +185,7 @@ Open `http://localhost:8080` and verify:
 - ASCII art code block is still dark
 - Hero dot grid is visible but subtle
 
-- [ ] **Step 12: Commit**
+- [x] **Step 12: Commit**
 
 ```bash
 git add assets/landing/style.css assets/landing/main.js
@@ -204,7 +204,7 @@ git commit -m "feat(landing): switch to light theme with bright blue-white color
 - Consumes: `--bg`, `--pri`, `--txt` from Task 1
 - Produces: `.hero-logo` image class; hero section becomes 2-column (text left, logo right)
 
-- [ ] **Step 1: Add logo to hero section**
+- [x] **Step 1: Add logo to hero section**
 
 In `index.html`, inside `<section class="hero">`, change the hero structure to add a logo column. Replace:
 
@@ -259,7 +259,7 @@ With:
   </section>
 ```
 
-- [ ] **Step 2: Add hero-inner and hero-visual CSS**
+- [x] **Step 2: Add hero-inner and hero-visual CSS**
 
 Add to `assets/landing/style.css`, inside the `/* ════ HERO ════ */` section, after `.hero-content`:
 
@@ -305,7 +305,7 @@ Add to `assets/landing/style.css`, inside the `/* ════ HERO ════
 
 Also remove `padding: 0 64px; max-width: 640px;` from the old `.hero-content` rule (now `hero-inner` handles padding).
 
-- [ ] **Step 3: Update responsive breakpoints for hero**
+- [x] **Step 3: Update responsive breakpoints for hero**
 
 In the `@media (max-width: 900px)` block, add:
 
@@ -323,7 +323,7 @@ In the `@media (max-width: 600px)` block, add:
 
 Also in `@media (max-width: 600px)`, remove `.hero-content { padding: 0 24px; }` if it still refers to the old rule (the `hero-inner` handles padding now).
 
-- [ ] **Step 4: Visual check**
+- [x] **Step 4: Visual check**
 
 ```bash
 python3 -m http.server 8080
@@ -335,7 +335,7 @@ Open `http://localhost:8080` and verify:
 - Logo visible and not clipped
 - Mobile (resize to 480px): logo appears above text, full width
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add index.html assets/landing/style.css
@@ -354,7 +354,7 @@ git commit -m "feat(landing): add hero logo with float animation and two-column 
 - Consumes: `--txt`, `--body`, `--dim`, `--border` from Task 1
 - Produces: Inter font loaded; body uses sans-serif; Courier New kept only for brand/code elements; improved button and card design
 
-- [ ] **Step 1: Add Google Fonts to `<head>`**
+- [x] **Step 1: Add Google Fonts to `<head>`**
 
 In `index.html`, inside `<head>`, after the `<meta name="description">` line but before `<title>`, add:
 
@@ -364,7 +364,7 @@ In `index.html`, inside `<head>`, after the `<meta name="description">` line but
   <link href="https://fonts.googleapis.com/css2?family=Inter:ital,opsz,wght@0,14..32,400;0,14..32,500;0,14..32,600;0,14..32,700;1,14..32,400&display=swap" rel="stylesheet">
 ```
 
-- [ ] **Step 2: Switch body font to Inter**
+- [x] **Step 2: Switch body font to Inter**
 
 In `assets/landing/style.css`, in the `body` rule, change:
 
@@ -374,7 +374,7 @@ In `assets/landing/style.css`, in the `body` rule, change:
 
 (was `'Courier New', Courier, monospace`)
 
-- [ ] **Step 3: Keep Courier New for brand and code elements**
+- [x] **Step 3: Keep Courier New for brand and code elements**
 
 Add a block immediately after the body rule to re-apply monospace where it belongs:
 
@@ -395,7 +395,7 @@ code {
 }
 ```
 
-- [ ] **Step 4: Improve body text readability**
+- [x] **Step 4: Improve body text readability**
 
 Update typography sizes in `assets/landing/style.css`:
 
@@ -408,7 +408,7 @@ Update typography sizes in `assets/landing/style.css`:
 .arch-card-desc { font-size: 14px; color: var(--body); line-height: 1.8; font-family: 'Inter', system-ui, sans-serif; }
 ```
 
-- [ ] **Step 5: Improve button design**
+- [x] **Step 5: Improve button design**
 
 Replace the button rules:
 
@@ -444,7 +444,7 @@ Replace the button rules:
 }
 ```
 
-- [ ] **Step 6: Improve section header typography**
+- [x] **Step 6: Improve section header typography**
 
 ```css
 .section-title {
@@ -464,7 +464,7 @@ Replace the button rules:
 }
 ```
 
-- [ ] **Step 7: Update `.github-cta-sub` and tech pills**
+- [x] **Step 7: Update `.github-cta-sub` and tech pills**
 
 ```css
 .github-cta-sub { font-size: 17px; color: var(--body); max-width: 500px; line-height: 1.9; font-family: 'Inter', system-ui, sans-serif; }
@@ -476,7 +476,7 @@ Replace the button rules:
 .tech-pill.amber  { border-color: rgba(201,110,16,0.3); color: var(--amb); background: rgba(201,110,16,0.05); }
 ```
 
-- [ ] **Step 8: Visual check**
+- [x] **Step 8: Visual check**
 
 ```bash
 python3 -m http.server 8080
@@ -490,7 +490,7 @@ Open `http://localhost:8080` and verify:
 - Section titles are heavier and have tight letter-spacing (-0.5px)
 - Text is comfortable to read (no harsh contrast, good line-height)
 
-- [ ] **Step 9: Commit**
+- [x] **Step 9: Commit**
 
 ```bash
 git add index.html assets/landing/style.css
@@ -510,7 +510,7 @@ git commit -m "feat(landing): add Inter font, preserve Courier New for brand ele
 - Consumes: `--bg`, `--surface`, `--card`, `--txt`, `--body`, `--pri`, `--border`, Inter font — all from Tasks 1 and 3
 - Produces: `<section class="contribute" id="contribute">` in `index.html`; "Contribute" nav link in header
 
-- [ ] **Step 1: Add Contribute nav link**
+- [x] **Step 1: Add Contribute nav link**
 
 In `index.html`, inside `<nav class="nav-links">`, add before the `<a class="nav-cta"...>` line:
 
@@ -518,7 +518,7 @@ In `index.html`, inside `<nav class="nav-links">`, add before the `<a class="nav
       <a class="nav-link" href="#contribute">Contribute</a>
 ```
 
-- [ ] **Step 2: Add contributor section HTML**
+- [x] **Step 2: Add contributor section HTML**
 
 In `index.html`, replace:
 
@@ -564,7 +564,7 @@ With (insert the new contribute section BEFORE the github-cta section):
   <section class="github-cta" id="github">
 ```
 
-- [ ] **Step 3: Add contributor section CSS**
+- [x] **Step 3: Add contributor section CSS**
 
 Add to `assets/landing/style.css` before the `/* ════ GITHUB CTA ════ */` block:
 
@@ -632,7 +632,7 @@ Add to `assets/landing/style.css` before the `/* ════ GITHUB CTA ══�
 }
 ```
 
-- [ ] **Step 4: Update README.md**
+- [x] **Step 4: Update README.md**
 
 In `README.md`, find the line that starts the `## Docs` section. Insert BEFORE it:
 
@@ -651,7 +651,7 @@ See [CONTRIBUTING.md](docs/overview/CONTRIBUTING.md) for full guidelines.
 
 ```
 
-- [ ] **Step 5: Visual check**
+- [x] **Step 5: Visual check**
 
 ```bash
 python3 -m http.server 8080
@@ -664,7 +664,7 @@ Open `http://localhost:8080` and verify:
 - "CONTRIBUTING GUIDE →" button opens the correct GitHub URL (check in browser)
 - Section has white background (distinct from `--bg` dot-grid body)
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add index.html assets/landing/style.css README.md
@@ -687,7 +687,7 @@ git commit -m "feat(landing): add contributor section with 3 cards; add Contribu
 
 > **Key design:** `data-i18n="key"` sets `el.textContent`. `data-i18n-html="key"` sets `el.innerHTML` (use only for elements that contain HTML like `<em>` or `<code>`). Language is saved in `localStorage('lang')` and applied on `DOMContentLoaded`.
 
-- [ ] **Step 1: Add `<script>` for i18n in `index.html`**
+- [x] **Step 1: Add `<script>` for i18n in `index.html`**
 
 In `index.html`, find the line `<script src="assets/landing/main.js"></script>` and replace with:
 
@@ -696,7 +696,7 @@ In `index.html`, find the line `<script src="assets/landing/main.js"></script>` 
   <script src="assets/landing/main.js"></script>
 ```
 
-- [ ] **Step 2: Add language switcher to nav in `index.html`**
+- [x] **Step 2: Add language switcher to nav in `index.html`**
 
 In `index.html`, inside `<header>`, add the language switcher inside `<nav class="nav-links">`, BEFORE the `<a class="nav-cta"...>` button:
 
@@ -708,7 +708,7 @@ In `index.html`, inside `<header>`, add the language switcher inside `<nav class
       </div>
 ```
 
-- [ ] **Step 3: Add `data-i18n` attributes to all translatable elements in `index.html`**
+- [x] **Step 3: Add `data-i18n` attributes to all translatable elements in `index.html`**
 
 Apply attributes throughout the file. Show each element change:
 
@@ -801,7 +801,7 @@ Apply attributes throughout the file. Show each element change:
 <a class="footer-link" href="..." data-i18n="footer.docs">Docs</a>
 ```
 
-- [ ] **Step 4: Create `assets/landing/i18n.js`**
+- [x] **Step 4: Create `assets/landing/i18n.js`**
 
 Create the file with the full translation dictionary and `applyLang`:
 
@@ -1008,7 +1008,7 @@ if (document.readyState === 'loading') {
 }
 ```
 
-- [ ] **Step 5: Add language switcher CSS to `assets/landing/style.css`**
+- [x] **Step 5: Add language switcher CSS to `assets/landing/style.css`**
 
 Add inside the `/* ════ HEADER ════ */` block:
 
@@ -1034,7 +1034,7 @@ Also add in `@media (max-width: 600px)`:
 ```
 (On mobile the nav is already cramped; users can reload in their browser-preferred language.)
 
-- [ ] **Step 6: Visual + functional check**
+- [x] **Step 6: Visual + functional check**
 
 ```bash
 python3 -m http.server 8080
@@ -1049,7 +1049,7 @@ Open `http://localhost:8080` and verify:
 - `document.documentElement.lang` shows `id` when ID is active (check via DevTools)
 - ASCII art diagram and logo are NOT translated (correct)
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add index.html assets/landing/i18n.js assets/landing/style.css assets/landing/main.js

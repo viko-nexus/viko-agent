@@ -1,6 +1,6 @@
 # Landing Page UX Fixes + Animated Workflow Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [x]`) syntax for tracking.
 
 **Goal:** Fix text contrast and nav usability, then replace the static ASCII architecture diagram with a fully animated HTML/CSS workflow visualization that accurately represents viko-agent's runtime architecture.
 
@@ -33,7 +33,7 @@
 **Interfaces:**
 - Produces: hero desc with linked tech names; `.nav-link` darker color; `.hero-desc a` link style
 
-- [ ] **Step 1: Create branch**
+- [x] **Step 1: Create branch**
 
 ```bash
 cd /Users/eksa/Projects/viko-nexus/viko-agent
@@ -41,7 +41,7 @@ git checkout main && git pull origin main
 git checkout -b fix/landing-ux
 ```
 
-- [ ] **Step 2: Change hero desc to use `data-i18n-html`**
+- [x] **Step 2: Change hero desc to use `data-i18n-html`**
 
 In `index.html`, find:
 ```html
@@ -67,21 +67,21 @@ Deploy an AI developer agent for every project — each one fully isolated,
         Self-hosted. Open architecture.
 ```
 
-- [ ] **Step 3: Update i18n.js EN translation for `hero.desc`**
+- [x] **Step 3: Update i18n.js EN translation for `hero.desc`**
 
 In `assets/landing/i18n.js`, find the EN block and update:
 ```js
     'hero.desc':    'Deploy an AI developer agent for every project — each one fully isolated, communicating via WhatsApp, powered by <a href="https://github.com/NousResearch/hermes-agent" target="_blank" rel="noopener">Hermes-Agent</a> and <a href="https://github.com/viko-nexus/viko-agent#9router" target="_blank" rel="noopener">9Router</a>. Self-hosted. Open architecture.',
 ```
 
-- [ ] **Step 4: Update i18n.js ID translation for `hero.desc`**
+- [x] **Step 4: Update i18n.js ID translation for `hero.desc`**
 
 In `assets/landing/i18n.js`, find the ID block and update:
 ```js
     'hero.desc':    'Deploy AI developer agent untuk setiap proyek — masing-masing terisolasi penuh, berkomunikasi via WhatsApp, didukung <a href="https://github.com/NousResearch/hermes-agent" target="_blank" rel="noopener">Hermes-Agent</a> dan <a href="https://github.com/viko-nexus/viko-agent#9router" target="_blank" rel="noopener">9Router</a>. Self-hosted. Arsitektur terbuka.',
 ```
 
-- [ ] **Step 5: Fix nav link color contrast**
+- [x] **Step 5: Fix nav link color contrast**
 
 In `assets/landing/style.css`, find the `.nav-link` rule:
 ```css
@@ -98,7 +98,7 @@ Change `color: var(--dim)` to `color: var(--body)`:
 }
 ```
 
-- [ ] **Step 6: Add hero desc link styles**
+- [x] **Step 6: Add hero desc link styles**
 
 In `assets/landing/style.css`, add after the `.hero-desc` rule:
 ```css
@@ -112,7 +112,7 @@ In `assets/landing/style.css`, add after the `.hero-desc` rule:
 .hero-desc a:hover { color: #7B52E8; }
 ```
 
-- [ ] **Step 7: Verify**
+- [x] **Step 7: Verify**
 
 ```bash
 python3 -c "from html.parser import HTMLParser; p=HTMLParser(); p.feed(open('index.html').read()); print('HTML OK')"
@@ -123,7 +123,7 @@ grep 'color: var(--body)' assets/landing/style.css
 
 Expected: all 4 checks produce output.
 
-- [ ] **Step 8: Commit**
+- [x] **Step 8: Commit**
 
 ```bash
 git add index.html assets/landing/i18n.js assets/landing/style.css
@@ -142,7 +142,7 @@ git commit -m "fix(landing): hero links for Hermes-Agent/9Router; darken nav lin
 - Consumes: existing nav `<a class="nav-link" href="#features">` etc. targeting section ids `features`, `architecture`, `contribute`, `github`
 - Produces: `.nav-link.active` class toggled on scroll; active link has underline accent
 
-- [ ] **Step 1: Add active nav CSS**
+- [x] **Step 1: Add active nav CSS**
 
 In `assets/landing/style.css`, add after the `.nav-link:hover` rule:
 ```css
@@ -160,7 +160,7 @@ In `assets/landing/style.css`, add after the `.nav-link:hover` rule:
 }
 ```
 
-- [ ] **Step 2: Add scroll-tracking IntersectionObserver to `main.js`**
+- [x] **Step 2: Add scroll-tracking IntersectionObserver to `main.js`**
 
 In `assets/landing/main.js`, append at the end:
 ```js
@@ -186,7 +186,7 @@ In `assets/landing/main.js`, append at the end:
 })();
 ```
 
-- [ ] **Step 3: Verify**
+- [x] **Step 3: Verify**
 
 ```bash
 python3 -c "open('assets/landing/main.js').read(); print('main.js OK')"
@@ -195,7 +195,7 @@ grep -c 'trackActiveSection' assets/landing/main.js
 
 Expected: `main.js OK` and count `1`.
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add assets/landing/main.js assets/landing/style.css
@@ -220,7 +220,7 @@ git commit -m "feat(landing): active nav link highlight on scroll (IntersectionO
 > - `init-9router.py`: 3 combos — `viko-chat` (Sonnet 4.6 → Opus 4.8 fallback), `viko-code` (Opus 4.8 → Sonnet 4.6 fallback), `viko-combo`
 > - `patch-model-router.py`: auto-routes by keyword (debug/fix/code → viko-code, else viko-chat)
 
-- [ ] **Step 1: Replace `.arch-diagram` block in `index.html`**
+- [x] **Step 1: Replace `.arch-diagram` block in `index.html`**
 
 Find this entire block in `index.html`:
 ```html
@@ -348,7 +348,7 @@ Replace with:
     </div>
 ```
 
-- [ ] **Step 2: Add all `.af-*` CSS and `@keyframes` to `style.css`**
+- [x] **Step 2: Add all `.af-*` CSS and `@keyframes` to `style.css`**
 
 Add before the `/* ════ ARCHITECTURE ════ */` block comment (or immediately after it, before `.architecture {`). Add this entire block:
 
@@ -672,7 +672,7 @@ Add before the `/* ════ ARCHITECTURE ════ */` block comment (or 
 }
 ```
 
-- [ ] **Step 3: Verify HTML and CSS**
+- [x] **Step 3: Verify HTML and CSS**
 
 ```bash
 python3 -c "from html.parser import HTMLParser; p=HTMLParser(); p.feed(open('index.html').read()); print('HTML OK')"
@@ -683,7 +683,7 @@ grep -c '@keyframes afDot' assets/landing/style.css
 
 Expected: HTML OK, CSS OK, `af-node` count ≥ 4, `@keyframes afDot` count ≥ 3.
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add index.html assets/landing/style.css

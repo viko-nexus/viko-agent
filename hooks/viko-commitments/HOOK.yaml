@@ -1,0 +1,4 @@
+name: viko-commitments
+description: "Detect follow-up commitments in agent replies and store for later delivery"
+events:
+  - agent:end

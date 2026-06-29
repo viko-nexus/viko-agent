@@ -32,7 +32,7 @@
 - Produces: `ARG HERMES_COMMIT=<sha>` usable in CI via `--build-arg HERMES_COMMIT=<new-sha>`
 - Produces: Build fails loudly (non-zero exit) if any patch cannot find its injection point
 
-- [ ] **Step 1: Record the current hermes SHA to pin**
+- [x] **Step 1: Record the current hermes SHA to pin**
 
 ```bash
 curl -s https://api.github.com/repos/NousResearch/hermes-agent/commits/main \
@@ -41,7 +41,7 @@ curl -s https://api.github.com/repos/NousResearch/hermes-agent/commits/main \
 
 Expected output: `f1345290edb87a5da7b28288dc39c46b0be79313` (or newer if hermes has since updated — use whatever this returns, that's the pin).
 
-- [ ] **Step 2: Pin the hermes clone in Dockerfile.hermes**
+- [x] **Step 2: Pin the hermes clone in Dockerfile.hermes**
 
 In `Dockerfile.hermes`, find the hermes_source stage (around line 10–14):
 
@@ -66,7 +66,7 @@ RUN git clone https://github.com/NousResearch/hermes-agent.git /opt/hermes && \
     git -C /opt/hermes checkout "$HERMES_COMMIT"
 ```
 
-- [ ] **Step 3: Fix patch-model-router.py to fail loudly**
+- [x] **Step 3: Fix patch-model-router.py to fail loudly**
 
 In `patches/patch-model-router.py`, find the warning block (around line 67–72):
 
@@ -90,7 +90,7 @@ Change `sys.exit(0)` to `sys.exit(1)`:
         sys.exit(1)
 ```
 
-- [ ] **Step 4: Fix patch-ssh-guard.py to fail loudly**
+- [x] **Step 4: Fix patch-ssh-guard.py to fail loudly**
 
 In `patches/patch-ssh-guard.py`, find the "Pattern not found" exit:
 
@@ -111,7 +111,7 @@ if OLD not in original:
     sys.exit(1)
 ```
 
-- [ ] **Step 5: Fix patch-approval-sql-context.py to fail loudly**
+- [x] **Step 5: Fix patch-approval-sql-context.py to fail loudly**
 
 In `patches/patch-approval-sql-context.py`, find both exit points in `main()`:
 
@@ -134,7 +134,7 @@ These already return 1 (correct). Only verify the idempotent check exits cleanly
 
 Confirm `return 0` is there — no change needed.
 
-- [ ] **Step 6: Verify the build succeeds with pinned SHA**
+- [x] **Step 6: Verify the build succeeds with pinned SHA**
 
 ```bash
 ssh doasas "cd /home/deploy/viko-agent && docker compose build hermes 2>&1 | tail -20"
@@ -142,7 +142,7 @@ ssh doasas "cd /home/deploy/viko-agent && docker compose build hermes 2>&1 | tai
 
 Expected: build completes, all patches print `✓ patch-*: applied`.
 
-- [ ] **Step 7: Verify the build fails with a bad SHA**
+- [x] **Step 7: Verify the build fails with a bad SHA**
 
 Temporarily change `HERMES_COMMIT` in the ARG line to `0000000000000000000000000000000000000000`, run build, confirm failure, then revert.
 
@@ -156,7 +156,7 @@ ssh doasas "cd /home/deploy/viko-agent && \
 
 Expected: build fails with git checkout error. Revert restores correct SHA.
 
-- [ ] **Step 8: Commit**
+- [x] **Step 8: Commit**
 
 ```bash
 git add Dockerfile.hermes patches/patch-model-router.py patches/patch-ssh-guard.py patches/patch-approval-sql-context.py
@@ -175,7 +175,7 @@ git commit -m "fix(build): pin hermes to f1345290 + fail-fast on patch injection
 **Interfaces:**
 - Produces: `_load_projects()` returns fresh data on every call (no module-level cache)
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Create `scripts/test_mcp_reload.py`:
 
@@ -222,7 +222,7 @@ print("After fix: those names should only appear inside function bodies, not at 
 Run: `grep -n "^PROJECTS\|^PROJECT_NAMES" mcp-servers/projects-gateway.py`
 Expected BEFORE fix: lines 18–19 show module-level assignments.
 
-- [ ] **Step 2: Remove module-level PROJECTS and PROJECT_NAMES**
+- [x] **Step 2: Remove module-level PROJECTS and PROJECT_NAMES**
 
 In `mcp-servers/projects-gateway.py`, delete these two lines (currently around lines 18–19):
 
@@ -231,7 +231,7 @@ PROJECTS: dict[str, dict] = _load_projects()
 PROJECT_NAMES: list[str] = list(PROJECTS.keys())
 ```
 
-- [ ] **Step 3: Update list_tools() to reload fresh**
+- [x] **Step 3: Update list_tools() to reload fresh**
 
 Find `list_tools()` (currently uses module-level `PROJECT_NAMES`). Replace:
 
@@ -288,7 +288,7 @@ async def list_tools() -> list[Tool]:
     ]
 ```
 
-- [ ] **Step 4: Update call_tool() to reload fresh**
+- [x] **Step 4: Update call_tool() to reload fresh**
 
 Find `call_tool()` (currently references `PROJECTS` and `PROJECT_NAMES`). Replace:
 
@@ -310,7 +310,7 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
     # ... rest of the function unchanged
 ```
 
-- [ ] **Step 5: Verify no module-level references remain**
+- [x] **Step 5: Verify no module-level references remain**
 
 ```bash
 grep -n "^PROJECTS\|^PROJECT_NAMES" mcp-servers/projects-gateway.py
@@ -318,7 +318,7 @@ grep -n "^PROJECTS\|^PROJECT_NAMES" mcp-servers/projects-gateway.py
 
 Expected: no output (both names removed from module scope).
 
-- [ ] **Step 6: Live test on server**
+- [x] **Step 6: Live test on server**
 
 ```bash
 ssh doasas "
@@ -329,7 +329,7 @@ ssh doasas "
 "
 ```
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add mcp-servers/projects-gateway.py
@@ -349,7 +349,7 @@ git commit -m "fix(mcp): reload projects.json on every tool call (no restart nee
 - Produces: relay tokens get 20 sends/minute (configurable via `RELAY_RATE_LIMIT` env var)
 - Loopback calls (admin hermes) are never rate-limited
 
-- [ ] **Step 1: Add rate-limit state and helper (admin mode block)**
+- [x] **Step 1: Add rate-limit state and helper (admin mode block)**
 
 In `bridge/whatsapp-bridge.js`, inside the `} else {` admin mode block (after line 281), before the `bearerToken` helper, add:
 
@@ -378,7 +378,7 @@ In `bridge/whatsapp-bridge.js`, inside the `} else {` admin mode block (after li
   }
 ```
 
-- [ ] **Step 2: Add rate-limit middleware after the scope middleware**
+- [x] **Step 2: Add rate-limit middleware after the scope middleware**
 
 After the scope enforcement middleware (the `app.use` block ending around line 322), add:
 
@@ -399,7 +399,7 @@ After the scope enforcement middleware (the `app.use` block ending around line 3
   });
 ```
 
-- [ ] **Step 3: Verify order of middleware**
+- [x] **Step 3: Verify order of middleware**
 
 Confirm the order in the file is: scope check → rate limit → actual POST handlers. Run:
 
@@ -415,7 +415,7 @@ Expected output (line numbers may differ but order must be ascending):
 456:  app.post('/send', ...         ← actual handler
 ```
 
-- [ ] **Step 4: Manual smoke test on server**
+- [x] **Step 4: Manual smoke test on server**
 
 ```bash
 ssh doasas "
@@ -442,7 +442,7 @@ Expected: sends 1–20 return 403 (scope-denied on fake chatId — that's correc
 
 Note: The rate limit only triggers AFTER scope check passes. To really test, you'd need a valid relay token + valid JID combo. The middleware order ensures: authenticated sends deduct from bucket even when chatId is valid.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add bridge/whatsapp-bridge.js
@@ -462,7 +462,7 @@ git commit -m "feat(bridge): relay rate limiting — 20 sends/min per token (REL
 - Produces: `dequeuePort(port)` returns owner messages before member messages
 - `enqueue(port, event)` routes based on `event.isOwner` (already set by the bridge)
 
-- [ ] **Step 1: Replace perPortQueues with split queues**
+- [x] **Step 1: Replace perPortQueues with split queues**
 
 In `bridge/whatsapp-bridge.js`, find the current queue declarations (around lines 134–136):
 
@@ -479,7 +479,7 @@ const perPortMemberQueues = {}; // { "3001": [member messages] }
 const globalQueue = []; // unrouted messages → Admin Hermes
 ```
 
-- [ ] **Step 2: Update enqueue() to route by isOwner**
+- [x] **Step 2: Update enqueue() to route by isOwner**
 
 Find the `enqueue` function (around lines 138–143):
 
@@ -504,7 +504,7 @@ function enqueue(port, event) {
 }
 ```
 
-- [ ] **Step 3: Update dequeuePort() to drain owner first**
+- [x] **Step 3: Update dequeuePort() to drain owner first**
 
 Find `dequeuePort` (around lines 145–151):
 
@@ -532,7 +532,7 @@ function dequeuePort(port) {
 }
 ```
 
-- [ ] **Step 4: Verify no stale perPortQueues reference remains**
+- [x] **Step 4: Verify no stale perPortQueues reference remains**
 
 ```bash
 grep -n "perPortQueues" bridge/whatsapp-bridge.js
@@ -540,7 +540,7 @@ grep -n "perPortQueues" bridge/whatsapp-bridge.js
 
 Expected: zero results (all references replaced).
 
-- [ ] **Step 5: Smoke test — verify isOwner field exists on enqueued events**
+- [x] **Step 5: Smoke test — verify isOwner field exists on enqueued events**
 
 The `isOwner` field is set at line ~403: `const isOwner = OWNER_WA && phone === OWNER_WA;` and included in the event object at line ~421: `isOwner,`. Confirm:
 
@@ -550,7 +550,7 @@ grep -n "isOwner" bridge/whatsapp-bridge.js
 
 Expected: lines for both the assignment and the event property.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add bridge/whatsapp-bridge.js
@@ -570,7 +570,7 @@ git commit -m "feat(bridge): owner priority queue — owner messages drain befor
 - Produces: `/health` returns `{ok, status, relay, routes, uptime_ms, connected_duration_ms, queue}`
 - Relay mode `/health` proxies to admin and adds `{relay: true, port_filter}`
 
-- [ ] **Step 1: Add connectedAt tracking variable (admin mode)**
+- [x] **Step 1: Add connectedAt tracking variable (admin mode)**
 
 Inside the `} else {` admin mode block, after the `let connState = 'disconnected';` line (around line 346), add:
 
@@ -579,7 +579,7 @@ Inside the `} else {` admin mode block, after the `let connState = 'disconnected
   const bridgeStartedAt = Date.now();
 ```
 
-- [ ] **Step 2: Set connectedAt when WA connects**
+- [x] **Step 2: Set connectedAt when WA connects**
 
 In the `connection.update` handler (around line 382), find:
 
@@ -598,7 +598,7 @@ Add `connectedAt = Date.now();` on the next line:
         console.log('[bridge] WhatsApp connected');
 ```
 
-- [ ] **Step 3: Replace the /health endpoint (admin mode)**
+- [x] **Step 3: Replace the /health endpoint (admin mode)**
 
 Find the current `/health` in admin mode (around line 508):
 
@@ -634,7 +634,7 @@ Replace with:
   });
 ```
 
-- [ ] **Step 4: Verify relay mode /health still works**
+- [x] **Step 4: Verify relay mode /health still works**
 
 Relay mode `/health` (around line 267) proxies to admin and merges `{relay: true, port_filter}`. It will automatically pick up the new fields from admin since it spreads the response. No change needed — confirm by reading:
 
@@ -644,7 +644,7 @@ grep -n -A 7 "app.get.*health" bridge/whatsapp-bridge.js
 
 Expected: relay mode returns `{...adminFields, relay: true, port_filter: PORT_FILTER}`.
 
-- [ ] **Step 5: Live test on server**
+- [x] **Step 5: Live test on server**
 
 ```bash
 ssh doasas "curl -s http://localhost:3000/health | python3 -m json.tool"
@@ -667,7 +667,7 @@ Expected output (values will vary):
 }
 ```
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add bridge/whatsapp-bridge.js
@@ -688,7 +688,7 @@ git commit -m "feat(bridge): enrich /health with uptime, connected_duration, and
 - Produces: hourly cron that runs `prune-idle-sessions.py --idle-hours 1` as `deploy` user
 - Log goes to `data/prune.log` (gitignored)
 
-- [ ] **Step 1: Create scripts/setup-cron.sh**
+- [x] **Step 1: Create scripts/setup-cron.sh**
 
 ```bash
 #!/usr/bin/env bash
@@ -725,7 +725,7 @@ Make it executable:
 chmod +x scripts/setup-cron.sh
 ```
 
-- [ ] **Step 2: Run on server**
+- [x] **Step 2: Run on server**
 
 ```bash
 ssh doasas-deploy "bash /home/deploy/viko-agent/scripts/setup-cron.sh"
@@ -738,7 +738,7 @@ Expected:
 0 * * * * python3 /home/deploy/viko-agent/scripts/prune-idle-sessions.py ...
 ```
 
-- [ ] **Step 3: Verify cron is registered**
+- [x] **Step 3: Verify cron is registered**
 
 ```bash
 ssh doasas-deploy "crontab -l | grep viko"
@@ -746,7 +746,7 @@ ssh doasas-deploy "crontab -l | grep viko"
 
 Expected: the prune entry appears.
 
-- [ ] **Step 4: Dry-run the prune script to confirm it works**
+- [x] **Step 4: Dry-run the prune script to confirm it works**
 
 ```bash
 ssh doasas-deploy "python3 /home/deploy/viko-agent/scripts/prune-idle-sessions.py --dry-run"
@@ -754,7 +754,7 @@ ssh doasas-deploy "python3 /home/deploy/viko-agent/scripts/prune-idle-sessions.p
 
 Expected: outputs `=== prune-idle-sessions ===` header and lists projects with sessions counts.
 
-- [ ] **Step 5: Add note to DEPLOYMENT.md**
+- [x] **Step 5: Add note to DEPLOYMENT.md**
 
 In `docs/overview/DEPLOYMENT.md`, find the "First-Time Setup" or post-deploy checklist section. Add:
 
@@ -770,7 +770,7 @@ Installs:
 - 15-min commitment delivery checker (see OpenClaw features plan)
 ```
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add scripts/setup-cron.sh docs/overview/DEPLOYMENT.md
@@ -789,7 +789,7 @@ git commit -m "feat(scripts): setup-cron.sh — idempotent host cron installer f
 **Interfaces:**
 - Produces: `_vr_caller` parsed from `[CTX ... caller=<value>]` header; `_vr_is_code` requires 2+ keyword hits
 
-- [ ] **Step 1: Understand current INJECT_CODE in the patch**
+- [x] **Step 1: Understand current INJECT_CODE in the patch**
 
 Read lines 17–55 of `patches/patch-model-router.py` to see the full INJECT_CODE string. The relevant lines are:
 
@@ -799,7 +799,7 @@ Read lines 17–55 of `patches/patch-model-router.py` to see the full INJECT_COD
     '            _vr_model = "viko-chat" if _vr_is_member else ("viko-code" if _vr_is_code else "viko-chat")\n'
 ```
 
-- [ ] **Step 2: Replace those three injected lines**
+- [x] **Step 2: Replace those three injected lines**
 
 In `patches/patch-model-router.py`, inside the `INJECT_CODE` string, replace:
 
@@ -820,7 +820,7 @@ With:
     '            _vr_model = "viko-chat" if _vr_is_member else ("viko-code" if _vr_is_code else "viko-chat")\n'
 ```
 
-- [ ] **Step 3: Also update INJECT_CODE (the idempotent check string)**
+- [x] **Step 3: Also update INJECT_CODE (the idempotent check string)**
 
 The patch script checks if it's already applied by looking for `INJECT_CODE` in the file. Since `INJECT_CODE` changed, the marker check still works because the full new string is what we check. No additional change needed — verify:
 
@@ -846,7 +846,7 @@ print('ctx parse:', '_vr_ctx_m' in INJECT_CODE)
 
 Expected: both print `True`.
 
-- [ ] **Step 4: Rebuild hermes image**
+- [x] **Step 4: Rebuild hermes image**
 
 ```bash
 ssh doasas "cd /home/deploy/viko-agent && git pull && docker compose build hermes 2>&1 | grep -E 'patch-model-router|ERROR|Step'"
@@ -854,7 +854,7 @@ ssh doasas "cd /home/deploy/viko-agent && git pull && docker compose build herme
 
 Expected: `✓ patch-model-router: applied (chat→haiku, code→sonnet routing)` (or similar success message).
 
-- [ ] **Step 5: Live routing test**
+- [x] **Step 5: Live routing test**
 
 Send two messages to a registered project group from a member account:
 - "Iya bagus, sip" (no code keywords) → should route to viko-chat
@@ -866,7 +866,7 @@ Check routing decision in hermes logs:
 ssh doasas "docker logs viko-hermes-<slug> --since 1m 2>&1 | grep -i 'viko-chat\|viko-code\|model'"
 ```
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add patches/patch-model-router.py

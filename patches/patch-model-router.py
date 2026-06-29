@@ -48,8 +48,11 @@ INJECT_CODE = (
     '            _vr_code_re = _vr_re.compile(\n'
     '                r"\\b(" + "|".join(_vr_re.escape(_k) for _k in _vr_code_kws) + r")\\b"\n'
     '            )\n'
-    '            _vr_is_code = bool(_vr_code_re.search(_vr_text))\n'
-    '            _vr_is_member = "caller=member" in (_vr_text or "")\n'
+    '            _vr_code_hits = sum(1 for _ in _vr_code_re.finditer(_vr_text))\n'
+    '            _vr_is_code = _vr_code_hits >= 2\n'
+    '            _vr_ctx_m = _vr_re.search(r"\\[CTX[^\\]]*caller=(\\w+)", event.text or "")\n'
+    '            _vr_caller = _vr_ctx_m.group(1) if _vr_ctx_m else "member"\n'
+    '            _vr_is_member = _vr_caller != "owner"\n'
     '            _vr_model = "viko-chat" if _vr_is_member else ("viko-code" if _vr_is_code else "viko-chat")\n'
     '            self._session_model_overrides[session_key] = {\n'
     '                "model": _vr_model,\n'
@@ -74,8 +77,8 @@ def main():
         if INJECT_CODE in content:
             print("✓ patch-model-router: already applied")
             return
-        print("WARNING: injection point not found (Hermes may have updated upstream)")
-        sys.exit(0)
+        print("ERROR: injection point not found — hermes upstream changed; patch must be updated")
+        sys.exit(1)
 
     content = content.replace(INJECT_AFTER, INJECT_CODE, 1)
     TARGET.write_text(content, encoding="utf-8")

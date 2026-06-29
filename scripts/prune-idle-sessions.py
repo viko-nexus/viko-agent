@@ -19,6 +19,14 @@ import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
+# Add repo root to path so dream_sessions can be imported
+sys.path.insert(0, str(Path(__file__).parent))
+try:
+    from dream_sessions import dream_session
+    _DREAMING_AVAILABLE = True
+except ImportError:
+    _DREAMING_AVAILABLE = False
+
 DATA_ROOT = Path("/home/deploy/viko-agent/data")
 DEFAULT_IDLE_HOURS = 1
 
@@ -76,6 +84,13 @@ def prune_project(sessions_file: Path, idle_threshold_hours: float, dry_run: boo
 
     if pruned:
         if not dry_run:
+            # Dream (summarize) each session before deleting it
+            if _DREAMING_AVAILABLE:
+                slug = sessions_file.parts[-3].removeprefix("hermes-")
+                for key, _ in pruned:
+                    session_data = data.get(key, {})
+                    dream_session(slug, sessions_file, key, session_data)
+
             # Backup dulu
             backup = sessions_file.with_suffix(".json.bak")
             shutil.copy2(sessions_file, backup)

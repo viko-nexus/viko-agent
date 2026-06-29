@@ -1,6 +1,6 @@
 # RAM Optimization Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [x]`) syntax for tracking.
 
 **Goal:** Reduce Hermes container memory footprint via Python malloc tuning and Docker memory limits, without degrading agent capability.
 
@@ -31,14 +31,14 @@
 **Interfaces:**
 - Produces: `hermes` service with `MALLOC_ARENA_MAX=2` env var and `mem_limit: 1536m`
 
-- [ ] **Step 1: Create and switch to new branch**
+- [x] **Step 1: Create and switch to new branch**
 
 ```bash
 git checkout main && git pull origin main
 git checkout -b fix/ram-optimization
 ```
 
-- [ ] **Step 2: Add MALLOC_ARENA_MAX to hermes environment block**
+- [x] **Step 2: Add MALLOC_ARENA_MAX to hermes environment block**
 
 In `docker-compose.yml`, find the `environment:` block of the `hermes` service (around line 100). Add after the last existing env var (before `command:`):
 
@@ -48,7 +48,7 @@ In `docker-compose.yml`, find the `environment:` block of the `hermes` service (
       MALLOC_ARENA_MAX: "2"
 ```
 
-- [ ] **Step 3: Add memory limit to hermes service**
+- [x] **Step 3: Add memory limit to hermes service**
 
 In `docker-compose.yml`, add after the `restart: unless-stopped` line of the `hermes` service:
 
@@ -56,7 +56,7 @@ In `docker-compose.yml`, add after the `restart: unless-stopped` line of the `he
     mem_limit: 1536m
 ```
 
-- [ ] **Step 4: Add MALLOC_ARENA_MAX to 9router service**
+- [x] **Step 4: Add MALLOC_ARENA_MAX to 9router service**
 
 In `docker-compose.yml`, find the `environment:` block of the `9router` service. Add:
 
@@ -70,7 +70,7 @@ And add memory limit after `restart: unless-stopped`:
     mem_limit: 512m
 ```
 
-- [ ] **Step 5: Verify compose file is valid**
+- [x] **Step 5: Verify compose file is valid**
 
 ```bash
 cd /Users/eksa/Projects/viko-nexus/viko-agent
@@ -79,7 +79,7 @@ docker compose config --quiet && echo "compose OK"
 
 Expected: `compose OK` with no errors.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add docker-compose.yml
@@ -97,7 +97,7 @@ git commit -m "perf(hermes): add MALLOC_ARENA_MAX=2 + mem_limit to admin + 9rout
 - Consumes: `cmd` list built at line ~830 in `spawn-hermes.py`
 - Produces: all dynamically-spawned `viko-hermes-{slug}` containers with `MALLOC_ARENA_MAX=2` and `--memory 900m`
 
-- [ ] **Step 1: Add --memory flag to docker run command**
+- [x] **Step 1: Add --memory flag to docker run command**
 
 In `scripts/spawn-hermes.py`, find the `cmd = ["docker", "run", "-d", ...]` block (around line 830). After the `"--log-opt", "max-file=3",` lines, add:
 
@@ -108,7 +108,7 @@ In `scripts/spawn-hermes.py`, find the `cmd = ["docker", "run", "-d", ...]` bloc
         "--memory-swap", "900m",  # disable swap for this container
 ```
 
-- [ ] **Step 2: Add MALLOC_ARENA_MAX env var to docker run**
+- [x] **Step 2: Add MALLOC_ARENA_MAX env var to docker run**
 
 In the same `cmd` list, after the SSL cert env vars (around line 892), add:
 
@@ -116,7 +116,7 @@ In the same `cmd` list, after the SSL cert env vars (around line 892), add:
         "-e", "MALLOC_ARENA_MAX=2",
 ```
 
-- [ ] **Step 3: Verify spawn-hermes.py has no syntax errors**
+- [x] **Step 3: Verify spawn-hermes.py has no syntax errors**
 
 ```bash
 python3 -m py_compile scripts/spawn-hermes.py && echo "syntax OK"
@@ -124,7 +124,7 @@ python3 -m py_compile scripts/spawn-hermes.py && echo "syntax OK"
 
 Expected: `syntax OK`
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add scripts/spawn-hermes.py
@@ -141,7 +141,7 @@ git commit -m "perf(spawn): add MALLOC_ARENA_MAX=2 + --memory 900m to project co
 **Interfaces:**
 - Produces: documented RAM requirements and per-container memory budget
 
-- [ ] **Step 1: Add VPS requirements section**
+- [x] **Step 1: Add VPS requirements section**
 
 In `docs/overview/DEPLOYMENT.md`, find the VPS prerequisites section (around line 5). Add or expand with:
 
@@ -163,7 +163,7 @@ In `docs/overview/DEPLOYMENT.md`, find the VPS prerequisites section (around lin
 **Practical capacity:** 8 GB RAM comfortably supports ~7–8 simultaneous active project containers.
 ```
 
-- [ ] **Step 2: Commit**
+- [x] **Step 2: Commit**
 
 ```bash
 git add docs/overview/DEPLOYMENT.md
@@ -180,7 +180,7 @@ git commit -m "docs(deployment): add VPS RAM requirements and per-container memo
 **Interfaces:**
 - Produces: architecture doc with memory isolation model documented
 
-- [ ] **Step 1: Add resource isolation note**
+- [x] **Step 1: Add resource isolation note**
 
 In `docs/overview/ARCHITECTURE.md`, find the section describing per-project Hermes containers. Add a subsection:
 
@@ -198,7 +198,7 @@ Each container has explicit Docker memory limits to prevent a single runaway age
 Python's glibc malloc arena count is capped via `MALLOC_ARENA_MAX=2` in all Hermes containers, reducing baseline RAM usage by 20–40% vs the default (8 arenas per CPU core).
 ```
 
-- [ ] **Step 2: Commit**
+- [x] **Step 2: Commit**
 
 ```bash
 git add docs/overview/ARCHITECTURE.md
@@ -215,7 +215,7 @@ git commit -m "docs(architecture): document container memory limits and malloc t
 **Interfaces:**
 - Produces: README with VPS RAM callout visible to new setup users
 
-- [ ] **Step 1: Add RAM callout to README**
+- [x] **Step 1: Add RAM callout to README**
 
 In `README.md`, find the prerequisites or setup section. Add:
 
@@ -223,7 +223,7 @@ In `README.md`, find the prerequisites or setup section. Add:
 > **VPS RAM:** 8 GB recommended. Each active project agent container uses ~500–700 MB. See [DEPLOYMENT.md](docs/overview/DEPLOYMENT.md) for full resource breakdown.
 ```
 
-- [ ] **Step 2: Commit**
+- [x] **Step 2: Commit**
 
 ```bash
 git add README.md
@@ -237,7 +237,7 @@ git commit -m "docs(readme): add VPS RAM recommendation callout"
 **Files:**
 - No file changes — VPS operation only
 
-- [ ] **Step 1: Push branch and open PR**
+- [x] **Step 1: Push branch and open PR**
 
 ```bash
 git push origin fix/ram-optimization
@@ -252,7 +252,7 @@ gh pr create --title "perf: RAM optimization — MALLOC_ARENA_MAX + memory limit
   --base main
 ```
 
-- [ ] **Step 2: Merge PR then pull on VPS**
+- [x] **Step 2: Merge PR then pull on VPS**
 
 ```bash
 gh pr merge --squash --auto
@@ -260,7 +260,7 @@ gh pr merge --squash --auto
 ssh doasas-deploy "cd /home/deploy/viko-agent && git pull origin main && echo 'pulled OK'"
 ```
 
-- [ ] **Step 3: Recreate admin container to apply new env + limit**
+- [x] **Step 3: Recreate admin container to apply new env + limit**
 
 ```bash
 ssh doasas "cd /home/deploy/viko-agent && docker compose --profile full up -d --force-recreate hermes 9router"
@@ -268,7 +268,7 @@ ssh doasas "cd /home/deploy/viko-agent && docker compose --profile full up -d --
 
 Expected: both containers restart with new `MALLOC_ARENA_MAX` and `mem_limit`.
 
-- [ ] **Step 4: Verify memory reduction**
+- [x] **Step 4: Verify memory reduction**
 
 ```bash
 ssh doasas "sleep 30 && docker stats --no-stream --format 'table {{.Name}}\t{{.MemUsage}}\t{{.MemPerc}}'"
@@ -276,7 +276,7 @@ ssh doasas "sleep 30 && docker stats --no-stream --format 'table {{.Name}}\t{{.M
 
 Expected: `viko-hermes` below 900 MB, `viko-9router` below 200 MB.
 
-- [ ] **Step 5: Note on project containers**
+- [x] **Step 5: Note on project containers**
 
 Project containers (`viko-hermes-{slug}`) pick up the new settings on their next spawn (re-onboard or container restart). Existing running containers are unaffected until restarted. To apply immediately to a specific project:
 
