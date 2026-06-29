@@ -789,7 +789,7 @@ git commit -m "feat(scripts): setup-cron.sh — idempotent host cron installer f
 **Interfaces:**
 - Produces: `_vr_caller` parsed from `[CTX ... caller=<value>]` header; `_vr_is_code` requires 2+ keyword hits
 
-- [ ] **Step 1: Understand current INJECT_CODE in the patch**
+- [x] **Step 1: Understand current INJECT_CODE in the patch**
 
 Read lines 17–55 of `patches/patch-model-router.py` to see the full INJECT_CODE string. The relevant lines are:
 
@@ -799,7 +799,7 @@ Read lines 17–55 of `patches/patch-model-router.py` to see the full INJECT_COD
     '            _vr_model = "viko-chat" if _vr_is_member else ("viko-code" if _vr_is_code else "viko-chat")\n'
 ```
 
-- [ ] **Step 2: Replace those three injected lines**
+- [x] **Step 2: Replace those three injected lines**
 
 In `patches/patch-model-router.py`, inside the `INJECT_CODE` string, replace:
 
@@ -820,7 +820,7 @@ With:
     '            _vr_model = "viko-chat" if _vr_is_member else ("viko-code" if _vr_is_code else "viko-chat")\n'
 ```
 
-- [ ] **Step 3: Also update INJECT_CODE (the idempotent check string)**
+- [x] **Step 3: Also update INJECT_CODE (the idempotent check string)**
 
 The patch script checks if it's already applied by looking for `INJECT_CODE` in the file. Since `INJECT_CODE` changed, the marker check still works because the full new string is what we check. No additional change needed — verify:
 
@@ -846,7 +846,7 @@ print('ctx parse:', '_vr_ctx_m' in INJECT_CODE)
 
 Expected: both print `True`.
 
-- [ ] **Step 4: Rebuild hermes image**
+- [x] **Step 4: Rebuild hermes image**
 
 ```bash
 ssh doasas "cd /home/deploy/viko-agent && git pull && docker compose build hermes 2>&1 | grep -E 'patch-model-router|ERROR|Step'"
@@ -854,7 +854,7 @@ ssh doasas "cd /home/deploy/viko-agent && git pull && docker compose build herme
 
 Expected: `✓ patch-model-router: applied (chat→haiku, code→sonnet routing)` (or similar success message).
 
-- [ ] **Step 5: Live routing test**
+- [x] **Step 5: Live routing test**
 
 Send two messages to a registered project group from a member account:
 - "Iya bagus, sip" (no code keywords) → should route to viko-chat
@@ -866,7 +866,7 @@ Check routing decision in hermes logs:
 ssh doasas "docker logs viko-hermes-<slug> --since 1m 2>&1 | grep -i 'viko-chat\|viko-code\|model'"
 ```
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add patches/patch-model-router.py
