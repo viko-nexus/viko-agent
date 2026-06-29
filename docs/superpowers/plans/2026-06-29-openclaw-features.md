@@ -540,7 +540,7 @@ git commit -m "feat: commitments — detect follow-ups in agent replies, deliver
 - Produces: malformed tool call → LLM sees its own bad output + correction prompt → one retry
 - Max 1 retry (not a loop); if second attempt also malformed, raise original error
 
-- [ ] **Step 1: Find the tool call parsing code in hermes**
+- [x] **Step 1: Find the tool call parsing code in hermes**
 
 ```bash
 ssh doasas "docker exec viko-hermes bash -c \"
@@ -558,7 +558,7 @@ ssh doasas "docker exec viko-hermes bash -c \"
 
 Note the file path and line number where tool call arguments are parsed from the model's response. This is the injection point for the repair logic.
 
-- [ ] **Step 2: Read the identified file**
+- [x] **Step 2: Read the identified file**
 
 ```bash
 ssh doasas "docker exec viko-hermes bash -c \"
@@ -573,7 +573,7 @@ Identify:
 - The variable name holding the raw arguments string
 - The surrounding context (what variable holds the LLM response object)
 
-- [ ] **Step 3: Write patches/patch-tool-call-repair.py**
+- [x] **Step 3: Write patches/patch-tool-call-repair.py**
 
 Replace `<TARGET_FILE>`, `<INJECT_AFTER>`, `<EXCEPTION_TYPE>`, and `<args_var>` with values found in Steps 1–2:
 
@@ -636,7 +636,7 @@ if __name__ == "__main__":
 
 **Note:** This patch is a template. The exact `INJECT_AFTER` and `INJECT_CODE` strings must be filled in based on what Step 2 reveals. The principle is the same as all other patches — find the right line, inject the repair wrapper.
 
-- [ ] **Step 4: Add patch to Dockerfile.hermes**
+- [x] **Step 4: Add patch to Dockerfile.hermes**
 
 After the existing patch COPY+RUN block (the `# ── Viko patches ──` section), add:
 
@@ -645,7 +645,7 @@ COPY patches/patch-tool-call-repair.py /tmp/patch-tool-call-repair.py
 RUN python3 /tmp/patch-tool-call-repair.py
 ```
 
-- [ ] **Step 5: Build and verify**
+- [x] **Step 5: Build and verify**
 
 ```bash
 ssh doasas "cd /home/deploy/viko-agent && git pull && docker compose build hermes 2>&1 | grep 'patch-tool-call-repair'"
@@ -653,7 +653,7 @@ ssh doasas "cd /home/deploy/viko-agent && git pull && docker compose build herme
 
 Expected: `✓ patch-tool-call-repair: applied`
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add patches/patch-tool-call-repair.py Dockerfile.hermes
