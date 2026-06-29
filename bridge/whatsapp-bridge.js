@@ -141,23 +141,25 @@ if (!RELAY_MODE) {
 
 // ── Message queues (admin mode) ───────────────────────────────────────────────
 
-const perPortQueues = {}; // { "3001": [message, ...] }
+const perPortOwnerQueues = {}; // { "3001": [owner messages] }
+const perPortMemberQueues = {}; // { "3001": [member messages] }
 const globalQueue = []; // unrouted messages → Admin Hermes
 
 function enqueue(port, event) {
   const key = String(port);
-  const q = (perPortQueues[key] = perPortQueues[key] || []);
+  const queues = event.isOwner ? perPortOwnerQueues : perPortMemberQueues;
+  const q = (queues[key] = queues[key] || []);
   q.push(event);
   if (q.length > MAX_QUEUE_SIZE) q.shift();
 }
 
 function dequeuePort(port) {
   const key = String(port);
-  const q = perPortQueues[key];
-  if (!q || q.length === 0) return [];
-  const msgs = q.splice(0);
-  perPortQueues[key] = [];
-  return msgs;
+  const ownerMsgs = (perPortOwnerQueues[key] || []).splice(0);
+  const memberMsgs = (perPortMemberQueues[key] || []).splice(0);
+  perPortOwnerQueues[key] = [];
+  perPortMemberQueues[key] = [];
+  return [...ownerMsgs, ...memberMsgs];
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
