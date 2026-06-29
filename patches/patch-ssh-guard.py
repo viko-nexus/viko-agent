@@ -28,8 +28,11 @@ NEW = r"""    # ssh_access narrowed: only block key exfiltration, not SSH connec
     (r'(?:cat|less|more|head|tail|echo|tee|curl|wget|nc|ncat)\s+[^\n]*(?:\$HOME|~)/\.ssh', "ssh_key_exfil", "strict"),"""
 
 if OLD not in original:
-    print("Pattern not found — already patched or threat_patterns.py changed upstream.")
-    sys.exit(0)
+    if NEW in original:
+        print("✓ patch-ssh-guard: already applied")
+        sys.exit(0)
+    print("ERROR: pattern not found — threat_patterns.py changed upstream; patch must be updated")
+    sys.exit(1)
 
 patched = original.replace(OLD, NEW)
 TARGET.write_text(patched)

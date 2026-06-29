@@ -74,8 +74,8 @@ def main():
         if INJECT_CODE in content:
             print("✓ patch-model-router: already applied")
             return
-        print("WARNING: injection point not found (Hermes may have updated upstream)")
-        sys.exit(0)
+        print("ERROR: injection point not found — hermes upstream changed; patch must be updated")
+        sys.exit(1)
 
     content = content.replace(INJECT_AFTER, INJECT_CODE, 1)
     TARGET.write_text(content, encoding="utf-8")
