@@ -462,7 +462,7 @@ git commit -m "feat(bridge): relay rate limiting — 20 sends/min per token (REL
 - Produces: `dequeuePort(port)` returns owner messages before member messages
 - `enqueue(port, event)` routes based on `event.isOwner` (already set by the bridge)
 
-- [ ] **Step 1: Replace perPortQueues with split queues**
+- [x] **Step 1: Replace perPortQueues with split queues**
 
 In `bridge/whatsapp-bridge.js`, find the current queue declarations (around lines 134–136):
 
@@ -479,7 +479,7 @@ const perPortMemberQueues = {}; // { "3001": [member messages] }
 const globalQueue = []; // unrouted messages → Admin Hermes
 ```
 
-- [ ] **Step 2: Update enqueue() to route by isOwner**
+- [x] **Step 2: Update enqueue() to route by isOwner**
 
 Find the `enqueue` function (around lines 138–143):
 
@@ -504,7 +504,7 @@ function enqueue(port, event) {
 }
 ```
 
-- [ ] **Step 3: Update dequeuePort() to drain owner first**
+- [x] **Step 3: Update dequeuePort() to drain owner first**
 
 Find `dequeuePort` (around lines 145–151):
 
@@ -532,7 +532,7 @@ function dequeuePort(port) {
 }
 ```
 
-- [ ] **Step 4: Verify no stale perPortQueues reference remains**
+- [x] **Step 4: Verify no stale perPortQueues reference remains**
 
 ```bash
 grep -n "perPortQueues" bridge/whatsapp-bridge.js
@@ -540,7 +540,7 @@ grep -n "perPortQueues" bridge/whatsapp-bridge.js
 
 Expected: zero results (all references replaced).
 
-- [ ] **Step 5: Smoke test — verify isOwner field exists on enqueued events**
+- [x] **Step 5: Smoke test — verify isOwner field exists on enqueued events**
 
 The `isOwner` field is set at line ~403: `const isOwner = OWNER_WA && phone === OWNER_WA;` and included in the event object at line ~421: `isOwner,`. Confirm:
 
@@ -550,7 +550,7 @@ grep -n "isOwner" bridge/whatsapp-bridge.js
 
 Expected: lines for both the assignment and the event property.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add bridge/whatsapp-bridge.js
