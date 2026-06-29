@@ -280,6 +280,29 @@ if (RELAY_MODE) {
 } else {
   // ── ADMIN MODE ────────────────────────────────────────────────────────────────
 
+  // ── Relay rate limiting ────────────────────────────────────────────────────
+  // Limits outbound sends per relay token to prevent runaway project containers
+  // from spamming WhatsApp. Loopback calls (admin hermes) are never limited.
+  const _rateBuckets = new Map(); // token -> { tokens, lastRefill }
+  const RATE_LIMIT_MAX = parseInt(process.env.RELAY_RATE_LIMIT || '20', 10);
+  const RATE_LIMIT_WINDOW_MS = 60_000;
+
+  function consumeRateLimit(token) {
+    const now = Date.now();
+    let b = _rateBuckets.get(token);
+    if (!b) {
+      b = { tokens: RATE_LIMIT_MAX, lastRefill: now };
+      _rateBuckets.set(token, b);
+    }
+    if (now - b.lastRefill >= RATE_LIMIT_WINDOW_MS) {
+      b.tokens = RATE_LIMIT_MAX;
+      b.lastRefill = now;
+    }
+    if (b.tokens <= 0) return false;
+    b.tokens -= 1;
+    return true;
+  }
+
   // Outbound scope enforcement:
   //   - Loopback (127.0.0.1): Admin Hermes — unrestricted
   //   - Bearer token:         Project relay — scoped to token's JID only
@@ -316,6 +339,21 @@ if (RELAY_MODE) {
           `[bridge] scope-deny ${req.path} chatId=${req.body?.chatId || '?'} (${err.error})`,
         );
         return res.status(err.code).json(err);
+      }
+    }
+    next();
+  });
+
+  // Rate limit relay tokens on outbound paths (not loopback admin)
+  app.use((req, res, next) => {
+    if (req.method === 'POST' && SCOPED_PATHS.has(req.path)) {
+      const token = bearerToken(req);
+      if (token && !consumeRateLimit(token)) {
+        console.warn(`[bridge] rate-limit ${req.path} token=${token.slice(0, 8)}…`);
+        return res.status(429).json({
+          error: 'rate_limited',
+          retry_after_ms: RATE_LIMIT_WINDOW_MS,
+        });
       }
     }
     next();
