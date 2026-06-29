@@ -32,7 +32,7 @@
 - Uses `OPENAI_BASE_URL` and `OPENAI_API_KEY` env vars (same as 9router)
 - Produces: `context.md` per project gets a timestamped append after each pruned session with meaningful content
 
-- [ ] **Step 1: Understand sessions.json structure**
+- [x] **Step 1: Understand sessions.json structure**
 
 ```bash
 ssh doasas "
@@ -43,7 +43,7 @@ ssh doasas "
 
 Expected: shows session fields like `['messages', 'updated_at', 'created_at', ...]`. Note the exact field name for conversation history (likely `messages` or `history`).
 
-- [ ] **Step 2: Create scripts/dream-sessions.py**
+- [x] **Step 2: Create scripts/dream-sessions.py**
 
 ```python
 #!/usr/bin/env python3
@@ -147,7 +147,7 @@ def dream_session(slug: str, sessions_file: Path, session_key: str, session_data
     return True
 ```
 
-- [ ] **Step 3: Verify the LLM endpoint is reachable**
+- [x] **Step 3: Verify the LLM endpoint is reachable**
 
 ```bash
 ssh doasas "
@@ -162,7 +162,7 @@ ssh doasas "
 
 Expected: short response (any text). If this fails, check 9router is running.
 
-- [ ] **Step 4: Integrate dream_session into prune-idle-sessions.py**
+- [x] **Step 4: Integrate dream_session into prune-idle-sessions.py**
 
 In `scripts/prune-idle-sessions.py`, at the top add the import:
 
@@ -197,14 +197,14 @@ In `prune_project()`, just before writing the pruned session file, add the dream
 
 Note: `dream_sessions` must be importable as `dream_sessions` not `dream-sessions` — name the file without hyphen.
 
-- [ ] **Step 5: Rename file to use underscore**
+- [x] **Step 5: Rename file to use underscore**
 
 ```bash
 mv scripts/dream-sessions.py scripts/dream_sessions.py
 git mv scripts/dream-sessions.py scripts/dream_sessions.py 2>/dev/null || true
 ```
 
-- [ ] **Step 6: Dry-run test**
+- [x] **Step 6: Dry-run test**
 
 ```bash
 ssh doasas "
@@ -215,7 +215,7 @@ ssh doasas "
 
 Expected: lists sessions that would be pruned. With `--dry-run`, dreaming is skipped (check `if not dry_run` guard).
 
-- [ ] **Step 7: Live test (destructive — only run when idle sessions exist)**
+- [x] **Step 7: Live test (destructive — only run when idle sessions exist)**
 
 ```bash
 ssh doasas "
@@ -228,7 +228,7 @@ ssh doasas "
 
 Expected: prints `[dream] → context.md updated` for each session that had content, then pruned.
 
-- [ ] **Step 8: Commit**
+- [x] **Step 8: Commit**
 
 ```bash
 git add scripts/dream_sessions.py scripts/prune-idle-sessions.py
