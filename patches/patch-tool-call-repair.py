@@ -9,7 +9,6 @@ Instead of silently swallowing JSONDecodeError with args = {}, this patch:
 
 Idempotent: skips if MARKER is already in the file.
 """
-import ast
 import sys
 from pathlib import Path
 
