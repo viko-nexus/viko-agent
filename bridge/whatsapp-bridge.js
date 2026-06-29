@@ -383,6 +383,8 @@ if (RELAY_MODE) {
 
   let sock = null;
   let connState = 'disconnected';
+  let connectedAt = null;
+  const bridgeStartedAt = Date.now();
   const PAIR_ONLY = process.argv.includes('--pair-only');
 
   async function startSocket() {
@@ -421,6 +423,7 @@ if (RELAY_MODE) {
         setTimeout(startSocket, delay);
       } else if (connection === 'open') {
         connState = 'connected';
+        connectedAt = Date.now();
         console.log('[bridge] WhatsApp connected');
         if (PAIR_ONLY) {
           console.log('[bridge] Pairing complete. Credentials saved.');
@@ -546,10 +549,20 @@ if (RELAY_MODE) {
   });
 
   app.get('/health', (req, res) => {
+    const ownerPending = Object.values(perPortOwnerQueues).reduce((s, q) => s + q.length, 0);
+    const memberPending = Object.values(perPortMemberQueues).reduce((s, q) => s + q.length, 0);
     res.json({
+      ok: connState === 'connected',
       status: connState,
-      routes: Object.keys(_routing).length,
       relay: false,
+      routes: Object.keys(_routing).length,
+      uptime_ms: Date.now() - bridgeStartedAt,
+      connected_duration_ms: connectedAt ? Date.now() - connectedAt : null,
+      queue: {
+        admin: globalQueue.length,
+        owner: ownerPending,
+        member: memberPending,
+      },
     });
   });
 
