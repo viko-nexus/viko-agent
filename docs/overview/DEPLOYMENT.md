@@ -82,6 +82,16 @@ python3 scripts/init-9router.py
 docker logs -f viko-hermes   # scan QR code
 ```
 
+### 8. Maintenance Cron (one-time, run as deploy user)
+
+```bash
+bash /home/deploy/viko-agent/scripts/setup-cron.sh
+```
+
+Installs:
+- Hourly idle-session pruner (sessions > 1h old are cleared)
+- 15-min commitment delivery checker (see OpenClaw features plan)
+
 ---
 
 ## CI/CD Workflow
