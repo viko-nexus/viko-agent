@@ -106,12 +106,12 @@ quality → build → deploy → release
 
 Runs on every push (`ubuntu-latest`). Checks:
 - `ruff check scripts/ patches/ mcp-servers/` — Python lint
-- `npm run check` — lint + format + type-check on the bridge JS (`bridge/`)
+- `npm run check` — lint + format + type-check on the bridge JS (`patches/whatsapp-bridge.js`)
 
 ### Job 2: build
 
 Rebuilds the multi-stage image **only when THIS push touched
-`Dockerfile.hermes`, `patches/`, or `bridge/`** (diffed across the push's
+`Dockerfile.hermes` or `patches/`** (diffed across the push's
 commit range). Unrelated pushes (docs, config, scripts) skip the rebuild and
 reuse the existing image, avoiding a large re-pull on the VPS.
 
@@ -201,7 +201,7 @@ git push origin main
 # CI/CD will restart Hermes and pick up changes
 ```
 
-Patch changes (`patches/`, `bridge/`, or `Dockerfile.hermes`):
+Patch changes (`patches/` or `Dockerfile.hermes`):
 ```bash
 git push origin main
 # CI/CD detects the change → rebuilds image → deploys

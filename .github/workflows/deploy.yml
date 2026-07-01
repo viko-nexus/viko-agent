@@ -72,7 +72,7 @@ jobs:
             CHANGED=$(git diff --name-only "$BEFORE" "$SHA")
           fi
           echo "Changed files in this push:"; echo "$CHANGED"
-          if echo "$CHANGED" | grep -qE '^(Dockerfile\.hermes|patches/|bridge/)'; then
+          if echo "$CHANGED" | grep -qE '^(Dockerfile\.hermes|patches/)'; then
             echo "result=true" >> $GITHUB_OUTPUT
           else
             echo "result=false" >> $GITHUB_OUTPUT

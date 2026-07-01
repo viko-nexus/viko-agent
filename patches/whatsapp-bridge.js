@@ -91,10 +91,32 @@ function _tagMediaOwner(filePath, ownerJid) {
 const _recentMediaByChat = {};
 const RECENT_MEDIA_WINDOW_MS = 5 * 60 * 1000;
 
-// Most recent inbound message per chat, kept so the bot's reply can quote it
-// (WhatsApp reply-threading). Bounded implicitly by the number of active chats.
-const _lastInboundByChat = {};
+// FIFO of recent Viko-directed inbound messages per chat, not yet used as a quote
+// target — so the bot's reply threads onto the message that actually triggered it
+// instead of whatever arrived most recently in the chat (which can belong to a
+// DIFFERENT concurrent turn when two members mention Viko close together).
+// Pushed only where a message is actually forwarded to an agent turn (registered
+// group queue / unregistered group / DM), consumed oldest-first on send.
+//
+// Ordering MUST mirror the message queue's own ordering (see the owner-priority
+// unshift in the registered-group branch below): an owner message jumps ahead of
+// already-queued member messages there, so its agent turn is expected to finish
+// (and call /send) first too. If this FIFO stayed push-only (arrival order) while
+// the queue reorders by priority, a faster-finishing owner turn would shift() the
+// wrong (older, member-authored) entry and quote the member's message instead of
+// its own — reintroducing the exact mismatched-reply bug this FIFO exists to fix.
+const _pendingInboundByChat = {};
+const MAX_PENDING_QUOTES = 20;
 const QUOTE_WINDOW_MS = 15 * 60 * 1000;
+
+function _rememberForQuote(chatId, msg, isOwner) {
+  const q = (_pendingInboundByChat[chatId] = _pendingInboundByChat[chatId] || []);
+  if (isOwner) q.unshift({ msg, ts: Date.now() });
+  else q.push({ msg, ts: Date.now() });
+  // Evict from the tail on overflow, not the head — mirrors the message queue's
+  // own overflow policy so a just-unshifted owner entry isn't immediately dropped.
+  if (q.length > MAX_PENDING_QUOTES) q.pop();
+}
 // Outbound de-dup: the gateway's MEDIA: delivery and the viko-media-autosend hook can
 // both try to send the same file — drop a duplicate (same chat+name+size) within a window.
 const _recentSends = {};
@@ -141,16 +163,29 @@ function sendWithTimeout(chatId, payload, timeoutMs = SEND_TIMEOUT_MS) {
       timeoutMs,
     );
   });
-  // Reply-threaded: quote the chat's most recent inbound message so the bot's reply
-  // renders as a WhatsApp reply to whoever it's answering — clearer in a busy group.
-  // Best-effort: only when a recent inbound is on record; never blocks a send.
+  // Reply-threaded: quote the OLDEST not-yet-quoted inbound message for this chat
+  // (FIFO), so a reply threads onto the message that actually triggered its turn —
+  // not whatever arrived most recently, which can belong to a different concurrent
+  // turn (e.g. two members mentioning Viko seconds apart). Best-effort: only when
+  // a pending, still-fresh inbound is on record; never blocks a send.
   const _opts = {};
-  const _q = _lastInboundByChat[chatId];
-  if (_q && _q.msg && Date.now() - _q.ts < QUOTE_WINDOW_MS) _opts.quoted = _q.msg;
+  const _pending = _pendingInboundByChat[chatId];
+  if (_pending && _pending.length) {
+    const _q = _pending.shift();
+    if (_q && _q.msg && Date.now() - _q.ts < QUOTE_WINDOW_MS) _opts.quoted = _q.msg;
+  }
   return Promise.race([sock.sendMessage(chatId, payload, _opts), timeoutPromise]).finally(() =>
     clearTimeout(timer),
   );
 }
+
+// Raw technical/API errors (HTTP status codes, provider error JSON) that must
+// never reach the user verbatim — replaced with one friendly fallback line.
+// Deliberately anchored to markers that only appear in an actual API error blob
+// (not generic words like "attempt 3/5" or "reset after 5 minutes", which can
+// show up in ordinary conversation and would falsely trigger the fallback).
+const _TECH_ERROR_RE =
+  /(?:HTTP [45]\d{2}[:\s]|"type"\s*:\s*"error"|rate.limit.error|API call failed|Rate limited[. ])/i;
 
 function formatOutgoingMessage(message) {
   // Strip internal scope/role markers the model may have echoed back. They're injected
@@ -161,6 +196,9 @@ function formatOutgoingMessage(message) {
     .replace(/\[(?:CTX|READ-ONLY MEMBER|Mentioned)\b[^\]]*\]/gi, '')
     .replace(/\bCTX\b[:.\s]*/gi, '')
     .replace(/^[\s:–—-]+/, '');
+  if (_TECH_ERROR_RE.test(message)) {
+    message = 'Hmm, ada gangguan sesaat dari server. Coba lagi dalam beberapa detik ya.';
+  }
   if (/^[a-z]/.test(message)) message = message.charAt(0).toUpperCase() + message.slice(1);
   // In bot mode, messages come from a different number so the prefix is
   // redundant — the sender identity is already clear.  Only prepend in
@@ -394,6 +432,8 @@ const MAX_RECENT_IDS = 50;
 
 let sock = null;
 let connectionState = 'disconnected';
+let connectedAt = null;
+const bridgeStartedAt = Date.now();
 
 async function startSocket() {
   const { state, saveCreds } = await useMultiFileAuthState(SESSION_DIR);
@@ -433,6 +473,7 @@ async function startSocket() {
     if (connection === 'close') {
       const reason = new Boom(lastDisconnect?.error)?.output?.statusCode;
       connectionState = 'disconnected';
+      connectedAt = null;
 
       if (reason === DisconnectReason.loggedOut) {
         console.log('❌ Logged out. Delete session and restart to re-authenticate.');
@@ -448,6 +489,7 @@ async function startSocket() {
       }
     } else if (connection === 'open') {
       connectionState = 'connected';
+      connectedAt = Date.now();
       console.log('✅ WhatsApp connected!');
       if (PAIR_ONLY) {
         console.log('✅ Pairing complete. Credentials saved.');
@@ -494,11 +536,6 @@ async function startSocket() {
       if (!msg.key.fromMe && msg.pushName && senderNumber) {
         _nameByNumber[senderNumber] = msg.pushName;
       }
-      // Remember the latest inbound per chat so the bot's reply can quote it (reply-threading).
-      if (!msg.key.fromMe && msg.message) {
-        _lastInboundByChat[chatId] = { msg, ts: Date.now() };
-      }
-
       // Handle fromMe messages based on mode
       if (msg.key.fromMe) {
         if (chatId.includes('status')) continue;
@@ -1010,9 +1047,15 @@ async function startSocket() {
           );
           continue;
         }
+        // Owner priority: an owner message jumps ahead of already-queued member
+        // messages in the same batch (unshift instead of push) so it's processed
+        // first. On overflow, drop from the tail (newest low-priority entry)
+        // rather than the head, so a just-unshifted owner message isn't evicted.
         const _pq = (messageQueues[String(_targetPort)] = messageQueues[String(_targetPort)] || []);
-        _pq.push(event);
-        if (_pq.length > MAX_QUEUE_SIZE) _pq.shift();
+        if (isOwner) _pq.unshift(event);
+        else _pq.push(event);
+        if (_pq.length > MAX_QUEUE_SIZE) _pq.pop();
+        _rememberForQuote(chatId, msg, isOwner);
       } else {
         // Unregistered group: only forward if the message is directed at Viko —
         // it mentions "viko"/@Viko, OR it's a reply to one of Viko's own messages.
@@ -1026,6 +1069,7 @@ async function startSocket() {
           // Backward compat: also push to legacy messageQueue (Admin Hermes uses this)
           messageQueue.push(event);
           if (messageQueue.length > MAX_QUEUE_SIZE) messageQueue.shift();
+          _rememberForQuote(chatId, msg);
         } else {
           try {
             console.log(
@@ -1329,6 +1373,46 @@ if (RELAY_MODE) {
     next();
   });
 
+  // ── Relay rate limiting ──────────────────────────────────────────────────
+  // Caps outbound sends per relay token so a runaway/compromised project
+  // container can't spam a WhatsApp group. Loopback (admin Hermes) is never
+  // limited — only Bearer-token relay callers on the scoped paths above.
+  const _rateBuckets = new Map(); // token -> { tokens, lastRefill }
+  const RATE_LIMIT_MAX = parseInt(process.env.RELAY_RATE_LIMIT || '20', 10);
+  const RATE_LIMIT_WINDOW_MS = 60_000;
+
+  function _consumeRateLimit(token) {
+    const now = Date.now();
+    let b = _rateBuckets.get(token);
+    if (!b) {
+      b = { tokens: RATE_LIMIT_MAX, lastRefill: now };
+      _rateBuckets.set(token, b);
+    }
+    if (now - b.lastRefill >= RATE_LIMIT_WINDOW_MS) {
+      b.tokens = RATE_LIMIT_MAX;
+      b.lastRefill = now;
+    }
+    if (b.tokens <= 0) return false;
+    b.tokens -= 1;
+    return true;
+  }
+
+  app.use((req, res, next) => {
+    const scoped = req.method === 'POST' ? _scopedPath(req.path) : null;
+    if (scoped) {
+      const token = _bearer(req);
+      if (token && !_consumeRateLimit(token)) {
+        const _msg = `rate-limit ${req.path} token=${token.slice(0, 8)}…`;
+        console.warn(`[bridge] ${_msg}`);
+        _securityLog(_msg);
+        return res
+          .status(429)
+          .json({ error: 'rate_limited', retry_after_ms: RATE_LIMIT_WINDOW_MS });
+      }
+    }
+    next();
+  });
+
   // Relay scope introspection — a project relay (or the boot guard) presents its
   // token and gets back the exact port + JID(s) it is allowed to talk to. Used to
   // self-verify isolation without spraying a canary message into a group.
@@ -1380,6 +1464,12 @@ if (RELAY_MODE) {
       // (likely dead). Requeue its msgs at the head (a recovered relay still gets them;
       // gateway dedupes), drop the in-flight, and fall through to drain — so a never-acking
       // relay can't wedge the port forever and new messages aren't pinned behind it.
+      // NOTE: this unshifts onto the same array the owner-priority push below writes to.
+      // If an owner message arrived (and jumped the queue) WHILE this batch was in flight,
+      // a subsequent give-up requeue puts the older unacked messages ahead of it again —
+      // the at-least-once delivery guarantee (never lose a message) takes precedence over
+      // owner-priority ordering here. This only matters when a relay is unresponsive for
+      // the full TTL (2 min / 30 polls), an already-abnormal condition.
       if (
         inflight &&
         (Date.now() - inflight.ts > INFLIGHT_TTL_MS || inflight.tries >= INFLIGHT_MAX_TRIES)
@@ -1883,6 +1973,8 @@ if (RELAY_MODE) {
       ),
       routingEntries: Object.keys(_routing).length,
       uptime: process.uptime(),
+      uptime_ms: Date.now() - bridgeStartedAt,
+      connected_duration_ms: connectedAt ? Date.now() - connectedAt : null,
     });
   });
 

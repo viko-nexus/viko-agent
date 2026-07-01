@@ -10,7 +10,7 @@ This file tells Claude Code how to work in this repository.
 
 Source of truth for **Viko** — a self-hosted multi-project AI developer agent. It contains:
 - Hermes-Admin identity and onboarding skill (`admin/`)
-- WhatsApp bridge source (`bridge/`)
+- WhatsApp bridge source (`patches/whatsapp-bridge.js`)
 - Patches applied to the Hermes image at build time (`patches/`)
 - Event hooks and MCP servers (`hooks/`, `mcp-servers/`)
 - Onboarding and init scripts (`scripts/`)
@@ -37,8 +37,7 @@ VPS (Central)
 ```
 viko-agent/
 ├── admin/              ← Hermes-Admin identity (SOUL.md, rules/, skills/)
-├── bridge/             ← Standalone WA bridge (Node.js/Baileys)
-├── patches/            ← Python scripts applied to Hermes image at build time
+├── patches/            ← Build-time patches (Python) + the WA bridge (whatsapp-bridge.js, Node.js/Baileys)
 ├── hooks/              ← Event hooks mounted at /opt/data/hooks/
 ├── mcp-servers/        ← MCP server implementations
 ├── scripts/            ← Onboarding, spawning, init automation
@@ -59,7 +58,7 @@ viko-agent/
 ## Docker Operations
 
 ```bash
-# Build Hermes image (required after patches/ or bridge/ changes)
+# Build Hermes image (required after patches/ changes)
 docker compose build hermes
 
 # Start everything (9router + Hermes)
@@ -101,7 +100,7 @@ docker logs -f viko-hermes
 | `admin/skills/onboarding.md` | Onboarding skill (slash command) |
 | `patches/isolation-guard.py` | Boot-time isolation check (fail-closed) |
 | `patches/patch-model-router.py` | Auto-routes messages to viko-chat or viko-code combo |
-| `bridge/whatsapp-bridge.js` | Admin + relay mode WA bridge; security gate |
+| `patches/whatsapp-bridge.js` | Admin + relay mode WA bridge; security gate |
 | `scripts/init-9router.py` | Creates viko-chat + viko-code combos in 9router |
 | `scripts/init-hermes-config.py` | Applies Hermes config overrides (idempotent) |
 | `scripts/spawn-hermes.py` | Spawns an isolated Hermes-Project container |
@@ -128,7 +127,7 @@ See `.env.example` for the full list. Key variables:
 ## Security Rules (never break these)
 
 1. `WHATSAPP_OWNER_NUMBER` must always come from env var — never a literal phone number in code
-2. `bridge/whatsapp-bridge.js` relay token scope check is the real security gate — do not bypass
+2. `patches/whatsapp-bridge.js` relay token scope check is the real security gate — do not bypass
 3. `patches/isolation-guard.py` verifies per-project isolation at boot — must run before gateway
 4. `project.json` stores per-project DB credentials at mode 600 — never read from env vars
 5. Relay tokens in `routing.json` are unique per project — never reuse or share between projects

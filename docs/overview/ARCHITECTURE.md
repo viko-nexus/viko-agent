@@ -15,7 +15,7 @@ WhatsApp
 │  viko-hermes (Hermes-Admin container)                     │
 │                                                           │
 │  ┌─────────────────────────────────────────────────────┐ │
-│  │  bridge/whatsapp-bridge.js (port 3000)               │ │
+│  │  patches/whatsapp-bridge.js (port 3000)              │ │
 │  │                                                       │ │
 │  │  routing.json check:                                  │ │
 │  │    known JID → Hermes-Project (relay, no LLM)         │ │
@@ -56,7 +56,7 @@ of new projects. Does NOT know about or interact with registered project groups.
 - Authorization: `admin/rules/authorization.md`
 - Onboarding: `admin/skills/onboarding.md`
 
-### WhatsApp Bridge (`bridge/`)
+### WhatsApp Bridge (`patches/whatsapp-bridge.js`)
 
 A standalone Node.js process (Baileys library) running inside the admin container.
 Two modes controlled by `WHATSAPP_RELAY_MODE` env var:

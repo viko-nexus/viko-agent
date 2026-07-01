@@ -138,14 +138,13 @@ docker compose build hermes
 docker compose --profile full up -d --force-recreate hermes
 ```
 
-### Editing `bridge/` (WhatsApp bridge)
+### Editing the WhatsApp bridge (`patches/whatsapp-bridge.js`)
 
-The bridge is a Node.js process (`bridge/whatsapp-bridge.js`) baked into the image.
-Changes require a rebuild.
+The bridge is a Node.js process baked into the image. Changes require a rebuild
+(or use the bind-mount iteration loop below to skip the rebuild while developing).
 
 ```bash
-nano bridge/whatsapp-bridge.js
-cd bridge && npm install   # update dependencies locally if needed
+nano patches/whatsapp-bridge.js
 docker compose build hermes
 docker compose --profile full up -d --force-recreate hermes
 ```
@@ -269,8 +268,7 @@ npm/uv/apt installation (~15-20 min).
 
 Rebuild triggers (only Dockerfile.hermes and patches/):
 - `Dockerfile.hermes` changed
-- Any file in `patches/` changed
-- `bridge/whatsapp-bridge.js` or `bridge/package.json` changed
+- Any file in `patches/` changed (including `patches/whatsapp-bridge.js`)
 
 The CI build job checks `git diff` for these files before rebuilding.
 

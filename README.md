@@ -98,8 +98,7 @@ for the full workflow and caveats.
 ```
 viko-agent/
 ├── admin/          ← Hermes-Admin identity + onboarding skill
-├── bridge/         ← WhatsApp bridge (Node.js/Baileys, standalone)
-├── patches/        ← Python scripts applied to Hermes image at build time
+├── patches/        ← Build-time patches (Python) + the WA bridge (whatsapp-bridge.js, Node.js/Baileys)
 ├── hooks/          ← Event hooks mounted at /opt/data/hooks/
 ├── scripts/        ← Onboarding, spawning, and init automation
 ├── mcp-servers/    ← MCP server implementations (registered in config.yaml)

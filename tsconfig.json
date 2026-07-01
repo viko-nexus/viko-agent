@@ -22,11 +22,6 @@
     "forceConsistentCasingInFileNames": true,
     "resolveJsonModule": true
   },
-  "include": [
-    "patches/whatsapp-bridge.js",
-    "patches/allowlist.d.ts",
-    "bridge/**/*.js",
-    "types/**/*.d.ts"
-  ],
+  "include": ["patches/whatsapp-bridge.js", "patches/allowlist.d.ts", "types/**/*.d.ts"],
   "exclude": ["node_modules", "**/node_modules", "data", "backups"]
 }

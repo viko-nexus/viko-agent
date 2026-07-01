@@ -22,8 +22,7 @@ Full architecture: [docs/overview/ARCHITECTURE.md](docs/overview/ARCHITECTURE.md
 | Folder | Purpose | Requires rebuild? |
 |--------|---------|-------------------|
 | `admin/` | Hermes-Admin identity + onboard skill | Restart viko-hermes container |
-| `bridge/` | WhatsApp bridge (Node.js, Baileys) — standalone process | Yes — docker build |
-| `patches/` | Python scripts run at container startup (isolation-guard, model-router) | Yes — docker build |
+| `patches/` | Build-time patches (isolation-guard, model-router) + the WA bridge (Node.js, Baileys) | Yes — docker build |
 | `hooks/` | Event hooks, mounted at `/opt/data/hooks/` | Restart container |
 | `scripts/` | Called by Admin or run manually on VPS | No — run directly |
 | `mcp-servers/` | MCP server implementations | Yes — docker build |
@@ -32,18 +31,18 @@ Full architecture: [docs/overview/ARCHITECTURE.md](docs/overview/ARCHITECTURE.md
 
 ## Bridge Architecture
 
-The WhatsApp bridge (`bridge/whatsapp-bridge.js`) is a standalone Node.js process.
+The WhatsApp bridge (`patches/whatsapp-bridge.js`) is a standalone Node.js process.
 
 ```
 Admin container:
-  bridge/whatsapp-bridge.js (WHATSAPP_RELAY_MODE unset)
+  patches/whatsapp-bridge.js (WHATSAPP_RELAY_MODE unset)
     ├── Holds the single WA session (Baileys)
     ├── Reads routing.json — routes registered group messages to per-port queues
     ├── Stamps [CTX project=slug caller=owner|member] on every routed message
     └── Validates outbound relay tokens (each project can only send to its own JID)
 
 Project container:
-  bridge/whatsapp-bridge.js (WHATSAPP_RELAY_MODE=true)
+  patches/whatsapp-bridge.js (WHATSAPP_RELAY_MODE=true)
     ├── No WA session — proxies all requests to admin bridge
     └── Filters polling by port (WHATSAPP_PORT_FILTER)
 ```
@@ -81,7 +80,7 @@ Available variables:
 ## Security Rules (do not break these)
 
 1. `WHATSAPP_OWNER_NUMBER` must always come from env var — never appear as a literal phone number in code
-2. `bridge/whatsapp-bridge.js` relay token scope check is the real security gate — never bypass
+2. `patches/whatsapp-bridge.js` relay token scope check is the real security gate — never bypass
 3. `patches/isolation-guard.py` must verify HERMES_HOME is scoped to the correct slug
 4. `project.json` stores DB credentials — must have mode 600, never read from env vars
 5. Relay tokens in routing.json are unique per project — never share tokens between projects
@@ -142,5 +141,5 @@ python3 scripts/init-9router.py
 
 - Do not hardcode `WHATSAPP_OWNER_NUMBER`, phone numbers, or group JIDs in committed files
 - Do not run `apt install`, `pip install`, `npm install -g` inside containers at runtime
-- Do not bypass the relay token scope check in `bridge/whatsapp-bridge.js`
+- Do not bypass the relay token scope check in `patches/whatsapp-bridge.js`
 - Do not add `channel_prompts` to `scripts/init-hermes-config.py` — configure per-deployment

@@ -16,7 +16,7 @@
 
 - [ ] No hardcoded phone numbers, group JIDs, or project slugs in committed files
 - [ ] `OWNER_WA` only comes from env var
-- [ ] Relay token scope check in `bridge/whatsapp-bridge.js` not bypassed
+- [ ] Relay token scope check in `patches/whatsapp-bridge.js` not bypassed
 - [ ] Isolation guard in `patches/isolation-guard.py` not weakened
 - [ ] No deployment-specific values committed (channel_prompts, routing entries)
 - [ ] No sensitive files committed (`.env`, `data/`, `backups/`, `projects/*/`)

@@ -12,9 +12,10 @@ export default [
 
   js.configs.recommended,
 
-  // Node.js bridge sources (ES modules)
+  // Node.js bridge source (ES modules). patches/whatsapp-bridge.js is THE bridge —
+  // it's copied verbatim into the Hermes image at build time (Dockerfile.hermes).
   {
-    files: ['bridge/**/*.js', 'bridge/**/*.mjs', 'patches/whatsapp-bridge.js'],
+    files: ['patches/whatsapp-bridge.js'],
     languageOptions: {
       ecmaVersion: 2023,
       sourceType: 'module',
