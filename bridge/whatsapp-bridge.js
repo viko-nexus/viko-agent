@@ -164,12 +164,18 @@ function dequeuePort(port) {
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
+const _TECH_ERROR_RE = /(?:HTTP [45]\d{2}[:\s]|"type"\s*:\s*"error"|rate.limit.error|API call failed|Rate limited[. ]|attempt \d+\/\d+|reset after \d)/i;
+
 function formatOutgoing(text) {
   // Strip any CTX markers that leaked into outbound text
   let s = String(text || '')
     .replace(/\[(?:CTX|READ-ONLY MEMBER|Mentioned)\b[^\]]*\]/gi, '')
     .replace(/\bCTX\b[:.\s]*/gi, '')
     .replace(/^[\s:–—-]+/, '');
+  // Replace raw internal error messages with a friendly fallback
+  if (_TECH_ERROR_RE.test(s)) {
+    s = 'Hmm, ada gangguan sesaat dari server. Coba lagi dalam beberapa detik ya.';
+  }
   if (s.length > 0) s = s.charAt(0).toUpperCase() + s.slice(1);
   if (WHATSAPP_MODE !== 'self-chat') return s;
   return REPLY_PREFIX ? `${REPLY_PREFIX.trimEnd()} ${s}` : s;
