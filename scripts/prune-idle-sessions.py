@@ -28,7 +28,11 @@ except ImportError:
     _DREAMING_AVAILABLE = False
 
 DATA_ROOT = Path("/home/deploy/viko-agent/data")
-DEFAULT_IDLE_HOURS = 1
+# Long enough that a same-day gap in chat activity doesn't wipe the session (and
+# lose "today's" context); short enough that idle sessions still get pruned and
+# dreamed within the same day. Longer gaps are bridged by patch-session-context-inject.py
+# reading the dreamed summary back in when a fresh session starts.
+DEFAULT_IDLE_HOURS = 6
 
 
 def parse_args():
