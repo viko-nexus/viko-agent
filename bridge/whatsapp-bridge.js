@@ -164,7 +164,8 @@ function dequeuePort(port) {
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-const _TECH_ERROR_RE = /(?:HTTP [45]\d{2}[:\s]|"type"\s*:\s*"error"|rate.limit.error|API call failed|Rate limited[. ]|attempt \d+\/\d+|reset after \d)/i;
+const _TECH_ERROR_RE =
+  /(?:HTTP [45]\d{2}[:\s]|"type"\s*:\s*"error"|rate.limit.error|API call failed|Rate limited[. ]|attempt \d+\/\d+|reset after \d)/i;
 
 function formatOutgoing(text) {
   // Strip any CTX markers that leaked into outbound text
