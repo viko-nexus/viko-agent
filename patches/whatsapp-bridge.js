@@ -1377,16 +1377,25 @@ if (RELAY_MODE) {
   // Caps outbound sends per relay token so a runaway/compromised project
   // container can't spam a WhatsApp group. Loopback (admin Hermes) is never
   // limited — only Bearer-token relay callers on the scoped paths above.
-  const _rateBuckets = new Map(); // token -> { tokens, lastRefill }
+  //
+  // /typing gets its own bucket, separate from /send + /send-media + /edit.
+  // It used to share one counter with real content sends, but Hermes refreshes
+  // the typing indicator far more often than it actually sends messages — the
+  // ephemeral typing pings were exhausting the shared budget and causing real
+  // replies (and their fallback retry, which hits this same limiter) to get
+  // dropped with 429 mid-task. Typing indicators don't leave lasting content
+  // in a group the way a flooded /send would, so they don't need the same cap.
   const RATE_LIMIT_MAX = parseInt(process.env.RELAY_RATE_LIMIT || '20', 10);
   const RATE_LIMIT_WINDOW_MS = 60_000;
+  const _sendRateBuckets = new Map(); // token -> { tokens, lastRefill }
+  const _typingRateBuckets = new Map();
 
-  function _consumeRateLimit(token) {
+  function _consumeRateLimit(buckets, token) {
     const now = Date.now();
-    let b = _rateBuckets.get(token);
+    let b = buckets.get(token);
     if (!b) {
       b = { tokens: RATE_LIMIT_MAX, lastRefill: now };
-      _rateBuckets.set(token, b);
+      buckets.set(token, b);
     }
     if (now - b.lastRefill >= RATE_LIMIT_WINDOW_MS) {
       b.tokens = RATE_LIMIT_MAX;
@@ -1401,7 +1410,8 @@ if (RELAY_MODE) {
     const scoped = req.method === 'POST' ? _scopedPath(req.path) : null;
     if (scoped) {
       const token = _bearer(req);
-      if (token && !_consumeRateLimit(token)) {
+      const buckets = scoped === '/typing' ? _typingRateBuckets : _sendRateBuckets;
+      if (token && !_consumeRateLimit(buckets, token)) {
         const _msg = `rate-limit ${req.path} token=${token.slice(0, 8)}…`;
         console.warn(`[bridge] ${_msg}`);
         _securityLog(_msg);
