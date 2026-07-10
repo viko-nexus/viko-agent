@@ -45,3 +45,9 @@ docker-compose.override.yml
 
 # Local .env backups created by dev-init.sh (contain secrets)
 .env.bak*
+
+# AI planning-session transcripts — tend to capture real ops details (SSH
+# aliases, deploy paths, client project names) that shouldn't be public.
+# Existing committed files under this path are intentionally left as-is;
+# this only stops new ones from being tracked.
+docs/superpowers/plans/
