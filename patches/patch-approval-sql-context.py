@@ -50,17 +50,17 @@ def _sql_exec_context_present(command_lower):
 
 '''
 
-OLD_LOOP = """        if pattern_re.search(command_lower):
-            pattern_key = description
-            return (True, pattern_key, description)"""
+OLD_LOOP = """            if pattern_re.search(command_lower):
+                pattern_key = description
+                return (True, pattern_key, description)"""
 
-NEW_LOOP = """        if pattern_re.search(command_lower):
-            # viko patch: a SQL keyword present only as text (no DB client/driver) is
-            # not an execution and must not trip the approval gate.
-            if description.startswith("SQL ") and not _sql_exec_context_present(command_lower):
-                continue
-            pattern_key = description
-            return (True, pattern_key, description)"""
+NEW_LOOP = """            if pattern_re.search(command_lower):
+                # viko patch: a SQL keyword present only as text (no DB client/driver) is
+                # not an execution and must not trip the approval gate.
+                if description.startswith("SQL ") and not _sql_exec_context_present(command_lower):
+                    continue
+                pattern_key = description
+                return (True, pattern_key, description)"""
 
 ANCHOR = "def detect_dangerous_command(command: str) -> tuple:"
 
