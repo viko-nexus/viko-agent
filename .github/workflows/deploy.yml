@@ -204,12 +204,6 @@ jobs:
       - name: Semantic Release
         id: release
         uses: cycjimmy/semantic-release-action@v4
-        with:
-          # @semantic-release/git is not bundled with the action — it commits the
-          # bumped package.json/package-lock.json back to main so the package
-          # version always tracks the release tag. (npm/github/analyzer are bundled.)
-          extra_plugins: |
-            @semantic-release/git@10
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
