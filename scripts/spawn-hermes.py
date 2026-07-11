@@ -620,6 +620,13 @@ def create_hermes_data_dir(slug: str, port: int, group_jid: str, env: dict) -> P
         f"WHATSAPP_PORT_FILTER={port}\n"
         f"WHATSAPP_ENABLED=true\n"
         f"WHATSAPP_HOME_CHANNEL={env.get('WHATSAPP_HOME_CHANNEL', '')}\n"
+        # Hermes defaults both policies to "pairing" as of v2026.7.7.2. For groups
+        # "pairing" has no handshake — _is_group_allowed() hard-returns False — so
+        # every relay-mode project container silently dropped all group messages
+        # until this was set explicitly. Must stay "open": these containers are
+        # already scoped to their one group via routing.json + relay token.
+        f"WHATSAPP_GROUP_POLICY=open\n"
+        f"WHATSAPP_DM_POLICY=open\n"
         # Authorize all senders: routing already scopes this container to its one
         # group, so "all users" = that group's members. Execution stays gated to
         # Eksa via the bridge's [READ-ONLY MEMBER] tagging + channel_prompt rules.
@@ -873,6 +880,10 @@ def spawn_container(slug: str, port: int, data_dir: Path, env: dict, proj_ssh_di
         "-e", "WHATSAPP_RELAY_MODE=true",
         "-e", "WHATSAPP_RELAY_TARGET=http://viko-hermes:3000",
         "-e", f"WHATSAPP_PORT_FILTER={port}",
+        # See the matching comment in create_hermes_data_dir(): Hermes >=v2026.7.7.2
+        # defaults both policies to "pairing", which hard-drops all group messages.
+        "-e", "WHATSAPP_GROUP_POLICY=open",
+        "-e", "WHATSAPP_DM_POLICY=open",
         # OPENAI_API_KEY / NINEROUTER_KEY / HERMES_RELAY_TOKEN are secret-bearing and
         # are passed via --env-file (below), NOT -e, so they don't appear in the
         # docker-run argv / ps / /proc/<pid>/cmdline during spawn. The relay scope

@@ -116,6 +116,12 @@ services:
       VIKO_OWNER_NAME: ${VIKO_OWNER_NAME:-}
       # Allow group messages (self-chat mode default blocks all groups)
       WHATSAPP_SELF_CHAT_ALLOW_GROUPS: "true"
+      # Hermes >=v2026.7.7.2 defaults both policies to "pairing"; for groups that
+      # has no handshake and hard-blocks all messages (gateway/platforms/
+      # whatsapp_common.py _is_group_allowed returns False). Without this, the
+      # WHATSAPP_HOME_CHANNEL group (and any group DM to the admin) goes silent.
+      WHATSAPP_GROUP_POLICY: open
+      WHATSAPP_DM_POLICY: open
       # 9Router media API (image gen, TTS, STT) — same URL and key as OPENAI_*
       NINEROUTER_URL: http://viko-9router:20128
       NINEROUTER_KEY: ${OPENAI_API_KEY}
