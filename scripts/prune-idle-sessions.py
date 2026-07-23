@@ -75,6 +75,8 @@ def prune_project(sessions_file: Path, idle_threshold_hours: float, dry_run: boo
     kept = []
 
     for key, session in data.items():
+        if not isinstance(session, dict):  # skip metadata keys like _README
+            continue
         updated_at = parse_dt(session.get("updated_at"))
         if updated_at is None:
             kept.append(key)
