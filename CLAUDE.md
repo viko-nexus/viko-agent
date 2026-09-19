@@ -141,6 +141,35 @@ See `.env.example` for the full list. Key variables:
 - Do not commit `data/`, `backups/`, `.env`, or any `projects/*/` files other than `projects/viko-agent/`
 - Do not use relative paths — always use `Path(__file__).parent.parent.resolve()` for the repo root
 
+## Delivery Procedure
+
+Applies to every change. Same gate as the other eksa repos (`doa-sas/infra`, `siprodev`, `shipflo`).
+
+### Testing
+- `ruff check scripts/ patches/ mcp-servers/` — Python lint, zero findings
+- `npm run check` — lint + format + type-check on `patches/whatsapp-bridge.js`
+- `docker compose config --quiet` — validate compose after any `docker-compose.yml` change
+- A linter that is not installed is skipped **and said so** — never pretend it ran
+
+### Development
+- Conventional Commits: `feat` / `fix` / `chore` / `docs` / `refactor` / `test`
+- Code, comments, commit messages in English; chat with the owner in Bahasa Indonesia
+- Comments at most two lines, only for a non-obvious WHY; no leftover debug output
+- Never commit `.env`, `data/`, `backups/`, or `projects/*/` (except `projects/viko-agent/`)
+- Every fix goes on its own branch — no direct commits to `main`
+
+### Deployment
+`main` push → `.github/workflows/deploy.yml` (`quality → build → deploy → release`). Image rebuild only when `Dockerfile.hermes` or `patches/` changed (~15–20 min).
+
+1. Run every check above and fix every finding. A deliberate warning gets a two-line comment saying why.
+2. Back up `data/` on the VPS before any change that touches Hermes state or the WA bridge session (`tar czf ~/backups/viko-data-$(date +%F).tgz /home/deploy/viko-agent/data` must exit 0).
+3. Branch, open a PR. Body states which containers get recreated and what that interrupts.
+4. Merge when checks pass.
+5. `gh run watch` to completion, then `ssh deploy@<vps-ip> "cd /home/deploy/viko-agent && docker compose ps"` — every container healthy. A deploy is done when the containers are healthy, not when the merge succeeded.
+
+- Pin image tags; never `:latest` in compose. Every service declares a `healthcheck`.
+- Never `docker compose down` on the VPS — restart a single service instead.
+
 ## Docs
 
 - [docs/overview/ARCHITECTURE.md](docs/overview/ARCHITECTURE.md) — full system design

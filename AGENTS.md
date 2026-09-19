@@ -137,6 +137,15 @@ docker logs viko-<slug> -f
 python3 scripts/init-9router.py
 ```
 
+## Delivery Procedure
+
+Every change follows the same testing → development → deployment gate as the other eksa repos.
+Full detail in [CLAUDE.md](CLAUDE.md#delivery-procedure); the short form:
+
+1. **Test**: `ruff check scripts/ patches/ mcp-servers/`, `npm run check`, `docker compose config --quiet`. Fix every finding. A tool that is not installed is skipped and reported — never assumed to have passed.
+2. **Develop**: Conventional Commits, English code and comments (two lines max, WHY only), no debug leftovers, never commit `.env` / `data/` / `backups/`.
+3. **Deploy**: never commit to `main` directly. Branch → PR (body says which containers get recreated) → merge on green → `gh run watch` → `docker compose ps` on the VPS shows every container healthy. Done means healthy containers, not a merged PR.
+
 ## Do Not
 
 - Do not hardcode `WHATSAPP_OWNER_NUMBER`, phone numbers, or group JIDs in committed files
